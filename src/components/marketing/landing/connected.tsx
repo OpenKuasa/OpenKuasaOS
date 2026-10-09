@@ -217,6 +217,29 @@ export function Connected() {
             })}
           </ul>
         </div>
+
+        <div className="mx-auto mt-16 grid max-w-4xl gap-4 text-center sm:grid-cols-2 sm:text-left lg:mt-20">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+              why OpenKuasa
+            </p>
+            <p className="mt-2 text-white/70">
+              <span className="font-semibold text-white">Kuasa</span> is Malay
+              for power. OpenKuasa puts the power to run a business in the
+              open: free software anyone can read, host and change.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+              why Taming Sari
+            </p>
+            <p className="mt-2 text-white/70">
+              The keris was said to make whoever carried it unbeatable. The AI
+              is named for it because every product carries it, and it is the
+              edge they share.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );

@@ -85,19 +85,25 @@ export function ProductTour() {
               ))}
             </ol>
 
-            <div className="mt-6 min-h-[12rem] lg:mt-10">
+            <div className="mt-6 min-h-[16rem] lg:mt-10">
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/40">
                 {String(active + 1).padStart(2, '0')} / {String(count).padStart(2, '0')} ·{' '}
                 {current.category}
               </p>
               <p className="mt-2 text-xl font-semibold">{current.tagline}</p>
               <p className="mt-2 max-w-md text-white/60">{current.blurb}</p>
-              <p className="mt-3 flex items-center gap-2 text-sm text-emerald-400/80">
-                <svg viewBox="0 0 24 24" aria-hidden className="size-3.5 shrink-0" fill="currentColor">
-                  <path d="M12 2.5 16.5 12 12 21.5 7.5 12Z" />
-                </svg>
-                {LEGEND[current.key].note}
-              </p>
+              <div className="mt-4 flex max-w-md gap-2.5 border-l border-emerald-400/40 pl-3 text-sm">
+                <p className="text-white/55">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+                    why {current.name}
+                  </span>
+                  <br />
+                  {LEGEND[current.key].who}{' '}
+                  <span className="text-white/85">
+                    {LEGEND[current.key].why}
+                  </span>
+                </p>
+              </div>
               <Link
                 href={current.href}
                 className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-400 hover:underline"
