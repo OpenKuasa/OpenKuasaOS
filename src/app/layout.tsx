@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Lexend, Geist_Mono } from "next/font/google";
+import { ThemeSync } from "@/components/theme/theme-sync";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
@@ -42,11 +43,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${lexend.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        {/* Applies the saved theme before first paint, so there is no flash. */}
+      <body className="min-h-full flex flex-col">
+        {/*
+          Applies the saved theme before anything in <body> paints. It sits at
+          the top of <body>, not in <head>: rendering our own <head> makes React
+          check that element's children on hydration, and hosts that inject
+          markup there (Netlify adds a comment) then fail the whole page.
+        */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-      </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+        <ThemeSync />
+        {children}
+      </body>
     </html>
   );
 }
