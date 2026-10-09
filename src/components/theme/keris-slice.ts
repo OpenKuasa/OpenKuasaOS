@@ -4,9 +4,11 @@ import {
   KERIS_HILT,
 } from '@/components/brand/keris-mark';
 
-const DURATION = 1000;
-/** Share of the timeline the keris spends crossing the screen. */
-const CUT = 0.42;
+/** Time the keris takes to cross the screen, corner to corner. */
+const CROSSING_MS = 1100;
+/** How fast the cut opens behind the blade: half-width per px travelled. */
+const SPREAD = 0.5;
+const EASING = 'cubic-bezier(0.35, 0, 0.75, 1)';
 const NAME = 'keris-slice';
 
 function createKeris(size: number) {
@@ -20,9 +22,11 @@ function createKeris(size: number) {
 
 /**
  * Switches theme with a keris cutting the screen from the top right to the
- * bottom left: the new theme first shows as a thin cut along the diagonal,
- * then opens out from it. Falls back to an instant switch when the browser
- * has no View Transitions or the visitor prefers reduced motion.
+ * bottom left. The new theme opens as a wake behind the blade: closed at the
+ * tip and wider the further back you look, in one continuous motion that
+ * carries on until the wake has swept the last two corners.
+ * Falls back to an instant switch when the browser has no View Transitions or
+ * the visitor prefers reduced motion.
  */
 export function sliceTheme(apply: () => void) {
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -35,26 +39,41 @@ export function sliceTheme(apply: () => void) {
   const w = window.innerWidth;
   const h = window.innerHeight;
   const len = Math.hypot(w, h);
-  // Unit normal to the diagonal that runs from the top right to the bottom left.
+  // Unit direction of travel (top right → bottom left) and its normal.
+  const dx = -w / len;
+  const dy = h / len;
   const nx = h / len;
   const ny = w / len;
 
-  // A band along the diagonal, from just past the top-right corner to the
-  // point `t` of the way to the bottom left, `half` px wide each side.
-  const band = (t: number, half: number) => {
-    const sx = w + w * 0.2;
-    const sy = -h * 0.2;
-    const ex = w - w * t;
-    const ey = h * t;
-    const p = (x: number, y: number) => `${x.toFixed(1)}px ${y.toFixed(1)}px`;
-    return `polygon(${p(sx + nx * half, sy + ny * half)}, ${p(sx - nx * half, sy - ny * half)}, ${p(ex - nx * half, ey - ny * half)}, ${p(ex + nx * half, ey + ny * half)})`;
+  // Distances are measured along the diagonal from the top-right corner.
+  const start = -0.08 * len;
+  // The wake has covered the screen once it reaches the two far corners.
+  const cornerAlong = Math.max(w * w, h * h) / len;
+  const cornerAcross = (w * h) / len;
+  const end = cornerAlong + cornerAcross / SPREAD + 0.05 * len;
+  const duration = (CROSSING_MS * (end - start)) / len;
+
+  const p = (x: number, y: number) => `${x.toFixed(1)}px ${y.toFixed(1)}px`;
+  // A wedge with its point at distance `s` and its base far behind the start.
+  const wake = (s: number) => {
+    const base = -len;
+    const half = SPREAD * (s - base);
+    const ax = w + dx * s;
+    const ay = dy * s;
+    const bx = w + dx * base;
+    const by = dy * base;
+    return `polygon(${p(ax, ay)}, ${p(bx + nx * half, by + ny * half)}, ${p(bx - nx * half, by - ny * half)})`;
   };
 
   const size = Math.max(160, Math.min(w, h) * 0.36);
-  // The keris is drawn tip-up; turn it to point along the cut.
+  // The keris is drawn tip-up; turn it to point along the cut, tip on the wedge.
   const angle = (Math.atan2(-w, -h) * 180) / Math.PI;
-  const at = (t: number) =>
-    `translate(${(w - w * t - size / 2).toFixed(1)}px,${(h * t - size / 2).toFixed(1)}px) rotate(${angle.toFixed(2)}deg)`;
+  const tipOffset = size * 0.46;
+  const at = (s: number) => {
+    const cx = w + dx * (s - tipOffset);
+    const cy = dy * (s - tipOffset);
+    return `translate(${(cx - size / 2).toFixed(1)}px, ${(cy - size / 2).toFixed(1)}px) rotate(${angle.toFixed(2)}deg)`;
+  };
 
   const keris = createKeris(size);
   root.classList.add('theme-slicing');
@@ -66,29 +85,15 @@ export function sliceTheme(apply: () => void) {
 
   transition.ready
     .then(() => {
-      root.animate(
-        [
-          { clipPath: band(-0.2, 2), easing: 'cubic-bezier(0.5, 0, 0.9, 0.7)' },
-          {
-            clipPath: band(1.2, 2),
-            offset: CUT,
-            easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)',
-          },
-          { clipPath: band(1.2, len) },
-        ],
-        { duration: DURATION, pseudoElement: '::view-transition-new(root)' },
-      );
-      root.animate(
-        [
-          { transform: at(-0.25), easing: 'cubic-bezier(0.5, 0, 0.9, 0.7)' },
-          { transform: at(1.3), offset: CUT + 0.04 },
-          { transform: at(1.3) },
-        ],
-        {
-          duration: DURATION,
-          pseudoElement: `::view-transition-group(${NAME})`,
-        },
-      );
+      const timing = { duration, easing: EASING };
+      root.animate([{ clipPath: wake(start) }, { clipPath: wake(end) }], {
+        ...timing,
+        pseudoElement: '::view-transition-new(root)',
+      });
+      root.animate([{ transform: at(start) }, { transform: at(end) }], {
+        ...timing,
+        pseudoElement: `::view-transition-group(${NAME})`,
+      });
     })
     .catch(() => {
       // The transition was skipped; the theme has still been applied.
