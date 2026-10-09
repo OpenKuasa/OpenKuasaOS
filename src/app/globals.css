@@ -206,6 +206,69 @@
   --sidebar-ring: var(--pc);
 }
 
+/* Dark theme: products use their brighter accent, with dark text on it. */
+.dark {
+  color-scheme: dark;
+}
+.dark[data-product='command'],
+.dark [data-product='command'],
+.dark .brand-scope {
+  --pc: oklch(0.64 0.13 164);
+  --pc-soft: oklch(0.3 0.03 164);
+  --pc-ink: oklch(0.9 0.05 164);
+}
+.dark[data-product='reach'],
+.dark [data-product='reach'] {
+  --pc: oklch(0.68 0.17 8);
+  --pc-soft: oklch(0.3 0.04 8);
+  --pc-ink: oklch(0.9 0.05 8);
+}
+.dark[data-product='crm'],
+.dark [data-product='crm'] {
+  --pc: oklch(0.7 0.11 207);
+  --pc-soft: oklch(0.3 0.03 210);
+  --pc-ink: oklch(0.9 0.05 210);
+  --chart-2: oklch(0.64 0.13 164);
+}
+.dark[data-product='people'],
+.dark [data-product='people'] {
+  --pc: oklch(0.68 0.14 255);
+  --pc-soft: oklch(0.3 0.04 257);
+  --pc-ink: oklch(0.9 0.05 257);
+  --chart-5: oklch(0.64 0.13 164);
+}
+.dark[data-product='hire'],
+.dark [data-product='hire'] {
+  --pc: oklch(0.7 0.15 52);
+  --pc-soft: oklch(0.3 0.04 55);
+  --pc-ink: oklch(0.9 0.05 55);
+}
+.dark[data-product='finance'],
+.dark [data-product='finance'] {
+  --pc: oklch(0.74 0.13 85);
+  --pc-soft: oklch(0.3 0.04 85);
+  --pc-ink: oklch(0.9 0.06 85);
+  --chart-3: oklch(0.64 0.13 164);
+}
+
+/*
+ * Theme switch: a keris cuts the screen (see components/theme/keris-slice.ts).
+ * The script drives the snapshots, so the default cross-fade is switched off.
+ */
+.theme-slicing::view-transition-old(root),
+.theme-slicing::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+.theme-slicing::view-transition-group(keris-slice) {
+  animation: none;
+  /* The blade's tip in the keris image; the script pivots on it. */
+  transform-origin: 5% 94.8%;
+}
+.theme-slicing::view-transition-new(keris-slice) {
+  animation: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

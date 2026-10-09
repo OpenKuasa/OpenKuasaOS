@@ -8,6 +8,7 @@ import { Logo } from '@/components/brand/logo';
 import { AccountSidebar } from '@/components/account/account-sidebar';
 import { UserMenu } from '@/components/app/user-menu';
 import { SignOutButton } from '@/components/auth/sign-out-button';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 export function AccountShell({
   children,
@@ -56,6 +57,7 @@ export function AccountShell({
           >
             <LogOut className="size-5" />
           </SignOutButton>
+          <ThemeToggle className="rounded-full text-muted-foreground" />
           <UserMenu />
         </div>
       </header>

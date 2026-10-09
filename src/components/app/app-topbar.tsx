@@ -5,6 +5,7 @@ import { Bell, CircleHelp, PanelLeftOpen, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/app/user-menu';
 import { NavSearch } from '@/components/app/nav-search';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { GitHubIcon } from '@/components/brand/github-icon';
 import { REPO_URL } from '@/config/marketing';
 import { useIconHover } from '@animateicons/react';
@@ -62,6 +63,8 @@ export function AppTopbar({
       <NavSearch />
 
       <div className="ml-auto flex items-center gap-2">
+        <ThemeToggle />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Help" {...helpTrigger}>
