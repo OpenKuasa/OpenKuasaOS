@@ -53,8 +53,7 @@ const AGENTS: Record<string, AgentMeta> = {
 const CANNED_DEMO_ANSWER =
   'Here’s a quick read, Saudara: your best cost-per-lead is the "Lead Magnet — eBook" campaign at RM 6.88, while "Brand Awareness" is the most expensive at RM 50.00. WhatsApp brings the most leads. To chat with Jebat about your own numbers, sign up for a free account.';
 
-const COLLAPSE_DELAY = 450;
-const HOVER_INTENT = 220;
+const COLLAPSE_DELAY = 120;
 
 type AnyPart = UIMessage['parts'][number];
 
@@ -109,7 +108,8 @@ export function AskJebatHero({
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
   const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
-  const { messages, sendMessage, status, error } = useChat({ transport });
+  // Throttle batches token updates into smooth frames while streaming.
+  const { messages, sendMessage, status, error } = useChat({ transport, throttle: 50 });
 
   const busy = status === 'submitted' || status === 'streaming';
   const hasConversation = isDemo ? demoAsked : messages.length > 0;
@@ -117,9 +117,8 @@ export function AskJebatHero({
   // Refs so the debounced collapse reads live state without stale closures.
   const focusedRef = useRef(false);
   const busyRef = useRef(false);
-  const panelHoverRef = useRef(false);
+  const cardHoverRef = useRef(false);
   const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const cancelCollapse = useCallback(() => {
@@ -129,25 +128,18 @@ export function AskJebatHero({
 
   const scheduleCollapse = useCallback(() => {
     cancelCollapse();
-    // Never auto-collapse while typing, streaming, or hovering the panel.
-    if (focusedRef.current || busyRef.current || panelHoverRef.current) return;
+    // Never auto-collapse while typing, streaming, or hovering the card.
+    if (focusedRef.current || busyRef.current || cardHoverRef.current) return;
     collapseTimer.current = setTimeout(() => setExpanded(false), COLLAPSE_DELAY);
   }, [cancelCollapse]);
 
-  const clearHoverIntent = useCallback(() => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    hoverTimer.current = null;
-  }, []);
-
-  function onPanelEnter() {
-    panelHoverRef.current = true;
+  function onCardEnter() {
+    cardHoverRef.current = true;
     cancelCollapse();
-    clearHoverIntent();
-    hoverTimer.current = setTimeout(() => setExpanded(true), HOVER_INTENT);
+    if (hasConversation) setExpanded(true);
   }
-  function onPanelLeave() {
-    panelHoverRef.current = false;
-    clearHoverIntent();
+  function onCardLeave() {
+    cardHoverRef.current = false;
     scheduleCollapse();
   }
 
@@ -193,29 +185,24 @@ export function AskJebatHero({
     return () => clearTimeout(t);
   }, [messages, status, expanded]);
 
-  useEffect(
-    () => () => {
-      cancelCollapse();
-      clearHoverIntent();
-    },
-    [cancelCollapse, clearHoverIntent],
-  );
+  useEffect(() => cancelCollapse, [cancelCollapse]);
 
   function submit(text: string) {
     const t = text.trim();
     if (!t || busy) return;
+    // Expand to the tall view to watch the agents work — but only when the user
+    // is on the card (clicked a chip / typing), so a stray send stays compact.
+    if (cardHoverRef.current || focusedRef.current) setExpanded(true);
     if (isDemo) {
       setDemoAsked(true);
-      setExpanded(true);
       return;
     }
     sendMessage({ text: t });
     setInput('');
-    setExpanded(true); // auto-expand so the agents' work is visible
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4" onMouseEnter={onCardEnter} onMouseLeave={onCardLeave}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground/70">
@@ -273,13 +260,13 @@ export function AskJebatHero({
       </div>
 
       {hasConversation && (
-        <div className="relative" onMouseEnter={onPanelEnter} onMouseLeave={onPanelLeave}>
+        <div className="relative">
+          {/* Fixed height per state → streaming scrolls inside (no reflow/stutter);
+              only expand/collapse animates, between two fixed heights. */}
           <div
             ref={scrollRef}
-            className={`overflow-y-auto overscroll-contain rounded-2xl bg-primary-foreground/10 p-3 pr-10 ring-1 ring-inset transition-[max-height] duration-300 ease-out motion-reduce:transition-none ${
-              expanded
-                ? 'max-h-[65vh] ring-primary-foreground/25'
-                : 'max-h-56 ring-primary-foreground/15'
+            className={`overflow-y-auto overscroll-contain rounded-2xl bg-primary-foreground/10 p-3 pr-10 ring-1 ring-inset transition-[height] duration-300 ease-out motion-reduce:transition-none ${
+              expanded ? 'h-[60vh] ring-primary-foreground/25' : 'h-52 ring-primary-foreground/15'
             }`}
           >
             <Thread
@@ -297,7 +284,6 @@ export function AskJebatHero({
             type="button"
             onClick={() => {
               cancelCollapse();
-              clearHoverIntent();
               setExpanded((v) => !v);
             }}
             aria-label={expanded ? 'Collapse chat' : 'Expand chat'}
