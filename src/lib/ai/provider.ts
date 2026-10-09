@@ -36,25 +36,33 @@ export function hasProviderKey(env: EnvLike = process.env): boolean {
   return Boolean(env.OPENROUTER_API_KEY?.trim());
 }
 
-let provider: ReturnType<typeof createOpenRouter> | null = null;
-
-function getProvider() {
-  if (!process.env.OPENROUTER_API_KEY?.trim()) {
-    throw new Error('OPENROUTER_API_KEY is not set — Ask-Jebat cannot reach the model.');
-  }
-  if (!provider) {
-    provider = createOpenRouter({
-      apiKey: process.env.OPENROUTER_API_KEY,
-      // Optional second intermediary (Cloudflare AI Gateway); off unless configured.
-      baseURL: process.env.AI_GATEWAY_BASE_URL?.trim() || undefined,
-      appName: 'OpenKuasa OS',
-      appUrl: 'https://openkuasa.com',
-    });
-  }
-  return provider;
+function createProvider(apiKey: string) {
+  return createOpenRouter({
+    apiKey,
+    // Optional second intermediary (Cloudflare AI Gateway); off unless configured.
+    baseURL: process.env.AI_GATEWAY_BASE_URL?.trim() || undefined,
+    appName: 'OpenKuasa OS',
+    appUrl: 'https://openkuasa.com',
+  });
 }
 
-/** The model for a given agent layer. */
-export function getModel(layer: AgentLayer): LanguageModel {
-  return getProvider()(pickModelId(layer));
+let platformProvider: ReturnType<typeof createOpenRouter> | null = null;
+
+function getPlatformProvider() {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error('OPENROUTER_API_KEY is not set — chat cannot reach the model.');
+  }
+  platformProvider ??= createProvider(apiKey);
+  return platformProvider;
+}
+
+/**
+ * The model for a given agent layer. Pass a workspace's own key to bill that
+ * workspace (bring-your-own-key); omit it to use the platform key.
+ */
+export function getModel(layer: AgentLayer, apiKey?: string): LanguageModel {
+  // A workspace provider is built per request so keys are never cached.
+  const provider = apiKey ? createProvider(apiKey) : getPlatformProvider();
+  return provider(pickModelId(layer));
 }

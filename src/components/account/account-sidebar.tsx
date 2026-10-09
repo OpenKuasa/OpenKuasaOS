@@ -18,6 +18,7 @@ import {
   FileText,
   LayoutGrid,
   Code2,
+  Sparkles,
   LogOut,
   type LucideIcon,
 } from 'lucide-react';
@@ -68,6 +69,7 @@ const SECTIONS: { label: string; needs?: Capability; items: Item[] }[] = [
     label: 'Apps',
     items: [
       { label: 'Connected apps', href: '/account/connected-apps', icon: LayoutGrid },
+      { label: 'AI key', href: '/account/ai', icon: Sparkles },
       { label: 'Developers', href: '/account/developers', icon: Code2, needs: 'manage-developers' },
     ],
   },

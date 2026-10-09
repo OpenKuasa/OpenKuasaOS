@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
 import {
   Sparkles,
   Plus,
@@ -12,7 +14,6 @@ import {
   Receipt,
   SquareKanban,
   MessageSquare,
-  Coins,
   Compass,
   Megaphone,
   UserRound,
@@ -22,13 +23,19 @@ import {
 import { ASSISTANT } from '@/config/nav';
 import { ReplyCard, type CardType } from '@/components/command/reply-cards';
 import { useViewer } from '@/components/app/viewer-context';
+import {
+  ChatKeyNotice,
+  chatErrorCode,
+  isChatLocked,
+  useChatStatus,
+} from '@/components/chat/chat-key-notice';
 import { cn } from '@/lib/utils';
 
 type Role = 'user' | 'assistant';
-type Message = { id: number; role: Role; text: string; card?: CardType };
+type Message = { id: number | string; role: Role; text: string; card?: CardType };
 type Reply = { text: string; card?: CardType };
 
-/** Scripted "AI" — matches a question to a canned answer + optional data card. */
+/** Sample answers for demo guests, who never reach a model: a canned reply + optional data card. */
 function getReply(q: string): Reply {
   const t = q.toLowerCase();
   if (/(overdue|unpaid|owe|invoice|collect|receivable)/.test(t))
@@ -107,11 +114,44 @@ export function SariConversation({
 }) {
   const viewer = useViewer();
   const firstName = viewer.isDemo ? null : viewer.name.split(' ')[0];
-  const [messages, setMessages] = useState<Message[]>([]);
+  // Signed-up users talk to the real assistant; demo guests get sample answers.
+  const live = !viewer.isDemo;
+  const [demoMessages, setDemoMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [thinking, setThinking] = useState(false);
+  const [demoThinking, setDemoThinking] = useState(false);
   const idRef = useRef(1);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const [transport] = useState(
+    () => new DefaultChatTransport({ api: '/api/chat' }),
+  );
+  const chat = useChat({ transport, throttle: 50 });
+  const busy = chat.status === 'submitted' || chat.status === 'streaming';
+
+  // Who is paying: the workspace's own key, or the user's free weekly questions.
+  const { status: chatStatus, refresh: refreshChatStatus } = useChatStatus(live);
+  const keyRequired = chatErrorCode(chat.error) === 'key_required';
+  const locked = live && (isChatLocked(chatStatus) || keyRequired);
+  // Re-read the allowance after each turn, whether it answered or was refused.
+  const chatState = chat.status;
+  useEffect(() => {
+    if (chatState === 'ready' || chatState === 'error') void refreshChatStatus();
+  }, [chatState, refreshChatStatus]);
+
+  const liveMessages: Message[] = chat.messages
+    .map((m) => ({
+      id: m.id,
+      role: (m.role === 'user' ? 'user' : 'assistant') as Role,
+      text: m.parts
+        .map((part) => (part.type === 'text' ? part.text : ''))
+        .join(''),
+    }))
+    .filter((m) => m.text.trim().length > 0);
+  const messages = live ? liveMessages : demoMessages;
+  // Show the dots until the first words of the answer arrive.
+  const thinking = live
+    ? busy && liveMessages[liveMessages.length - 1]?.role !== 'assistant'
+    : demoThinking;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -119,18 +159,30 @@ export function SariConversation({
 
   function send(raw: string) {
     const q = raw.trim();
-    if (!q || thinking) return;
-    setMessages((m) => [...m, { id: idRef.current++, role: 'user', text: q }]);
+    if (!q) return;
+    if (live) {
+      if (busy || locked) return;
+      void chat.sendMessage({ text: q });
+      setInput('');
+      return;
+    }
+    if (demoThinking) return;
+    setDemoMessages((m) => [...m, { id: idRef.current++, role: 'user', text: q }]);
     setInput('');
-    setThinking(true);
+    setDemoThinking(true);
     window.setTimeout(() => {
       const r = getReply(q);
-      setMessages((m) => [
+      setDemoMessages((m) => [
         ...m,
         { id: idRef.current++, role: 'assistant', text: r.text, card: r.card },
       ]);
-      setThinking(false);
+      setDemoThinking(false);
     }, 800);
+  }
+
+  function newChat() {
+    if (live) chat.setMessages([]);
+    else setDemoMessages([]);
   }
 
   const empty = messages.length === 0;
@@ -144,7 +196,7 @@ export function SariConversation({
           <div className="p-3">
             <button
               type="button"
-              onClick={() => setMessages([])}
+              onClick={newChat}
               className="flex w-full items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent"
             >
               <Plus className="size-4" />
@@ -165,10 +217,6 @@ export function SariConversation({
                 <span className="truncate">{title}</span>
               </button>
             ))}
-          </div>
-          <div className="flex items-center gap-2 border-t px-4 py-3 text-xs text-muted-foreground">
-            <Coins className="size-4 text-primary" />
-            27,240 credits left
           </div>
         </aside>
       ) : null}
@@ -209,7 +257,9 @@ export function SariConversation({
                   value={input}
                   onChange={setInput}
                   onSend={() => send(input)}
+                  disabled={locked}
                 />
+                <ChatKeyNotice status={chatStatus} className="mt-2" />
                 <p className="mt-2 text-center text-xs text-muted-foreground">
                   AI can make mistakes. Check important info.
                 </p>
@@ -267,7 +317,9 @@ export function SariConversation({
                     <div key={m.id} className="flex gap-3">
                       <SariAvatar />
                       <div className="min-w-0 flex-1 space-y-3 pt-1">
-                        <p className="text-sm leading-relaxed">{m.text}</p>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                          {m.text}
+                        </p>
                         {m.card ? <ReplyCard type={m.card} /> : null}
                       </div>
                     </div>
@@ -287,6 +339,13 @@ export function SariConversation({
                     </div>
                   </div>
                 ) : null}
+                {live && chat.error ? (
+                  <p role="alert" className="text-sm text-muted-foreground">
+                    {keyRequired
+                      ? 'That question was not sent: your free questions are used up.'
+                      : 'Tuah could not respond just now. Please try again.'}
+                  </p>
+                ) : null}
                 <div ref={endRef} />
               </div>
             </div>
@@ -297,7 +356,9 @@ export function SariConversation({
                   value={input}
                   onChange={setInput}
                   onSend={() => send(input)}
+                  disabled={locked}
                 />
+                <ChatKeyNotice status={chatStatus} className="mt-2" />
                 <p className="mt-2 text-center text-xs text-muted-foreground">
                   AI can make mistakes. Check important info.
                 </p>
@@ -322,10 +383,12 @@ function Composer({
   value,
   onChange,
   onSend,
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
@@ -346,7 +409,11 @@ function Composer({
           }
         }}
         rows={1}
-        placeholder="Ask anything…"
+        placeholder={
+          disabled ? 'Add an OpenRouter key to keep chatting' : 'Ask anything…'
+        }
+        disabled={disabled}
+        aria-label="Ask anything"
         className="max-h-40 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
       />
       <button
@@ -360,7 +427,7 @@ function Composer({
         type="button"
         aria-label="Send"
         onClick={onSend}
-        disabled={!value.trim()}
+        disabled={disabled || !value.trim()}
         className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
       >
         <ArrowUp className="size-4" />

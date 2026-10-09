@@ -7,6 +7,7 @@ export type Capability =
   | 'manage-company'
   | 'manage-billing'
   | 'manage-members'
+  | 'manage-ai-key'
   | 'manage-developers'
   | 'delete-workspace';
 
@@ -24,6 +25,7 @@ export const PERMISSIONS: {
   { capability: 'manage-company', label: 'Edit company details', allow: ['owner', 'admin'] },
   { capability: 'manage-billing', label: 'Manage billing & plan', allow: ['owner', 'admin'] },
   { capability: 'manage-members', label: 'Invite & manage members', allow: ['owner', 'admin'] },
+  { capability: 'manage-ai-key', label: 'Manage the workspace AI key', allow: ['owner', 'admin'] },
   { capability: 'manage-developers', label: 'Manage API keys & webhooks', allow: ['owner'] },
   { capability: 'delete-workspace', label: 'Delete workspace', allow: ['owner'] },
 ];

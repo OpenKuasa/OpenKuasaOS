@@ -17,6 +17,7 @@ const ACCOUNT_ENTRIES: Entry[] = [
   { href: '/account/notifications', label: 'Notifications', context: 'Account' },
   { href: '/account/company', label: 'Company details', context: 'Account' },
   { href: '/account/team', label: 'Team', context: 'Account' },
+  { href: '/account/ai', label: 'AI key', context: 'Account' },
 ];
 
 const ENTRIES: Entry[] = [

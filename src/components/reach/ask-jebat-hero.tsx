@@ -16,6 +16,12 @@ import { useEffect, useRef, useState, type ComponentType } from 'react';
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
 import {
+  ChatKeyNotice,
+  chatErrorCode,
+  isChatLocked,
+  useChatStatus,
+} from '@/components/chat/chat-key-notice';
+import {
   convertFileListToFileUIParts,
   DefaultChatTransport,
   type FileUIPart,
@@ -115,6 +121,14 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
   const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
   const { messages, sendMessage, status, error } = useChat({ transport, throttle: 50 });
 
+  // Who is paying: the workspace's own key, or the user's free weekly questions.
+  const { status: chatStatus, refresh: refreshChatStatus } = useChatStatus(!isDemo);
+  const locked = isChatLocked(chatStatus) || chatErrorCode(error) === 'key_required';
+  // Re-read the allowance after each turn, whether it answered or was refused.
+  useEffect(() => {
+    if (status === 'ready' || status === 'error') void refreshChatStatus();
+  }, [status, refreshChatStatus]);
+
   const busy = status === 'submitted' || status === 'streaming';
   const hasConversation = isDemo ? demoAsked : messages.length > 0;
   // Forced open while typing or streaming, or pinned via the button; otherwise it
@@ -148,6 +162,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
   function submit(text: string) {
     const t = text.trim();
     if ((!t && attachments.length === 0) || busy) return;
+    if (locked) return;
     if (isDemo) {
       setDemoAsked(true);
       setInput('');
@@ -182,7 +197,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
                 key={p}
                 type="button"
                 onClick={() => submit(p)}
-                disabled={busy}
+                disabled={busy || locked}
                 className="rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground ring-1 ring-inset ring-primary-foreground/20 transition hover:bg-primary-foreground/20 disabled:opacity-50"
               >
                 {p}
@@ -257,13 +272,14 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
             </span>
             <button
               type="submit"
-              disabled={busy || (!input.trim() && attachments.length === 0)}
+              disabled={busy || locked || (!input.trim() && attachments.length === 0)}
               aria-label="Send"
               className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground text-primary transition hover:opacity-90 disabled:opacity-50"
             >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
             </button>
           </form>
+          <ChatKeyNotice status={chatStatus} tone="onPrimary" className="mt-2" />
         </div>
       </div>
 
@@ -394,7 +410,9 @@ function Thread({
       })}
       {error && (
         <div className="text-xs text-primary-foreground/80">
-          Jebat couldn’t respond just now. Please try again.
+          {chatErrorCode(error) === 'key_required'
+            ? 'That question was not sent: your free questions are used up. Add an OpenRouter key to keep chatting.'
+            : 'Jebat couldn’t respond just now. Please try again.'}
         </div>
       )}
     </div>

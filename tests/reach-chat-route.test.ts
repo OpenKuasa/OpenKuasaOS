@@ -3,15 +3,29 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Shared, hoisted control surface so the mock factories can read mutable state.
 const ctl = vi.hoisted(() => ({
   user: null as { id: string; is_anonymous: boolean } | null,
-  rpcData: 49 as number,
-  rpcError: null as { message: string } | null,
+  /** What consume_free_question answers: questions left, or -1 when used up. */
+  freeRemaining: 2 as number,
+  /** The workspace's stored (sealed) key, or null when none is set. */
+  sealedKey: null as string | null,
   providerKey: true,
+  /** The key each model was built with: undefined means the platform key. */
+  usedKeys: [] as (string | undefined)[],
+  freeConsumed: 0,
 }));
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: ctl.user }, error: null }) },
-    rpc: async () => ({ data: ctl.rpcData, error: ctl.rpcError }),
+    rpc: async (name: string) => {
+      if (name === 'org_ai_key_ciphertext') {
+        return { data: ctl.sealedKey, error: null };
+      }
+      if (name === 'consume_free_question') {
+        ctl.freeConsumed += 1;
+        return { data: ctl.freeRemaining, error: null };
+      }
+      return { data: null, error: { message: `unexpected rpc ${name}` } };
+    },
   }),
 }));
 
@@ -21,8 +35,9 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
   return {
     ...actual,
     hasProviderKey: () => ctl.providerKey,
-    getModel: () =>
-      new MockLanguageModelV4({
+    getModel: (_layer: string, apiKey?: string) => {
+      ctl.usedKeys.push(apiKey);
+      return new MockLanguageModelV4({
         // Minimal valid V4 text stream; cast because the spec's usage/finish
         // shapes are richer than this fixture needs (runtime ignores the extras).
         doStream: async () => ({
@@ -37,9 +52,13 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
             ],
           }),
         }),
-      } as unknown as ConstructorParameters<typeof MockLanguageModelV4>[0]),
+      } as unknown as ConstructorParameters<typeof MockLanguageModelV4>[0]);
+    },
   };
 });
+
+const SECRET = 'test-secret-for-sealing-workspace-keys-0123456789';
+const { encryptApiKey } = await import('@/lib/ai/key-crypto');
 
 const { POST } = await import('@/app/api/reach/chat/route');
 
@@ -57,9 +76,12 @@ const validBody = {
 
 beforeEach(() => {
   ctl.user = { id: 'u1', is_anonymous: false };
-  ctl.rpcData = 49;
-  ctl.rpcError = null;
+  ctl.freeRemaining = 2;
+  ctl.sealedKey = null;
   ctl.providerKey = true;
+  ctl.usedKeys = [];
+  ctl.freeConsumed = 0;
+  process.env.AI_KEYS_ENCRYPTION_SECRET = SECRET;
 });
 
 describe('POST /api/reach/chat gating', () => {
@@ -73,14 +95,35 @@ describe('POST /api/reach/chat gating', () => {
     expect((await POST(post(validBody))).status).toBe(403);
   });
 
-  it('503 when the provider key is missing', async () => {
-    ctl.providerKey = false;
-    expect((await POST(post(validBody))).status).toBe(503);
+  it('402 key_required when the free questions are used up', async () => {
+    ctl.freeRemaining = -1;
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ code: 'key_required' });
+    expect(ctl.usedKeys).toEqual([]);
   });
 
-  it('429 when the daily quota is exhausted', async () => {
-    ctl.rpcData = -1;
-    expect((await POST(post(validBody))).status).toBe(429);
+  it('402 key_required when there is no platform key to run free questions on', async () => {
+    ctl.providerKey = false;
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(402);
+    expect(ctl.freeConsumed).toBe(0);
+  });
+
+  it('does not spend a free question on a malformed request', async () => {
+    expect((await POST(post({ messages: [] }))).status).toBe(400);
+    expect(ctl.freeConsumed).toBe(0);
+  });
+
+  it('fails closed when the workspace key cannot be opened on this server', async () => {
+    ctl.sealedKey = encryptApiKey('sk-or-v1-workspace-key-aaaaaaaaaaaa');
+    process.env.AI_KEYS_ENCRYPTION_SECRET = 'a-different-secret-than-the-one-used-to-seal-it';
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'key_unavailable' });
+    // Never falls back to the platform key or the free allowance.
+    expect(ctl.usedKeys).toEqual([]);
+    expect(ctl.freeConsumed).toBe(0);
   });
 
   it('400 on an empty/invalid message list', async () => {
@@ -89,10 +132,46 @@ describe('POST /api/reach/chat gating', () => {
 });
 
 describe('POST /api/reach/chat happy path', () => {
-  it('streams a 200 response for a signed-in member', async () => {
+  it('runs a free question on the platform key', async () => {
     const res = await POST(post(validBody));
     expect(res.status).toBe(200);
     const text = await res.text();
     expect(text).toContain('Lead Magnet');
+    expect(ctl.freeConsumed).toBe(1);
+    expect(ctl.usedKeys).toEqual([undefined]);
+  });
+
+  it('runs on the workspace key without touching the free allowance', async () => {
+    ctl.sealedKey = encryptApiKey('sk-or-v1-workspace-key-aaaaaaaaaaaa');
+    // Even with the free questions used up and no platform key at all.
+    ctl.freeRemaining = -1;
+    ctl.providerKey = false;
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(ctl.freeConsumed).toBe(0);
+    expect(ctl.usedKeys).toEqual(['sk-or-v1-workspace-key-aaaaaaaaaaaa']);
+  });
+});
+
+describe('POST /api/chat (Tuah)', () => {
+  it('uses the same gate and streams an answer', async () => {
+    const { POST: tuah } = await import('@/app/api/chat/route');
+    const request = () =>
+      new Request('http://localhost/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(validBody),
+      });
+
+    const ok = await tuah(request());
+    expect(ok.status).toBe(200);
+    await ok.text();
+    expect(ctl.freeConsumed).toBe(1);
+
+    ctl.freeRemaining = -1;
+    const refused = await tuah(request());
+    expect(refused.status).toBe(402);
+    expect(await refused.json()).toMatchObject({ code: 'key_required' });
   });
 });
