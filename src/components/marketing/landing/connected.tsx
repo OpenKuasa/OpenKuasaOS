@@ -1,24 +1,40 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { ArrowUpRight } from 'lucide-react';
 import { animate, createScope, onScroll, stagger, svg } from 'animejs';
 import { PRODUCT_CARDS } from '@/config/marketing';
+import { cn } from '@/lib/utils';
 import { ScrollWords } from './scroll-words';
 
-const CENTER = { x: 400, y: 250 };
-const RX = 300;
-const RY = 185;
+/** Who each product is named after, in the legends of the Melaka court. */
+const LEGEND: Record<string, string> = {
+  command: 'Hang Tuah',
+  reach: 'Hang Jebat',
+  crm: 'Hang Kasturi',
+  people: 'Hang Lekiu',
+  hire: 'Hang Lekir',
+  finance: 'The Bendahara',
+};
 
-// Six products evenly spaced on an ellipse around the shared core.
-const NODES = PRODUCT_CARDS.map((p, i) => {
-  const angle = (-90 + i * 60) * (Math.PI / 180);
-  return {
-    key: p.key,
-    name: p.name,
-    category: p.category,
-    x: Math.round(CENTER.x + RX * Math.cos(angle)),
-    y: Math.round(CENTER.y + RY * Math.sin(angle)),
-  };
+// Diagram space is 1200 × 700. Three products flank the keris on each side;
+// each connector runs from a point on the blade out to its card's inner edge.
+const ROWS = [
+  { card: 120, blade: 215 },
+  { card: 350, blade: 330 },
+  { card: 580, blade: 445 },
+];
+
+const COURT = PRODUCT_CARDS.map((p, i) => {
+  const side = i < 3 ? 'left' : 'right';
+  const row = ROWS[i % 3];
+  const path =
+    side === 'left'
+      ? `M582 ${row.blade} C 480 ${row.blade}, 410 ${row.card}, 300 ${row.card}`
+      : `M618 ${row.blade} C 720 ${row.blade}, 790 ${row.card}, 900 ${row.card}`;
+  return { ...p, side, top: (row.card / 700) * 100, path };
 });
 
 export function Connected() {
@@ -31,53 +47,58 @@ export function Connected() {
     }).add((self) => {
       if (self?.matches.reduceMotion) return;
 
-      // Lines draw out from the core as the diagram scrolls through the viewport.
+      const scrub = () =>
+        onScroll({
+          target: '[data-court]',
+          enter: 'bottom top+=10%',
+          leave: 'center center',
+          sync: 0.45,
+        });
+
+      // The keris is unsheathed from hilt to tip as the court scrolls in.
+      animate('[data-keris]', {
+        clipPath: ['inset(100% 0% 0% 0%)', 'inset(0% 0% 0% 0%)'],
+        scale: [0.86, 1],
+        ease: 'linear',
+        autoplay: scrub(),
+      });
+
+      // Connectors draw outward from the blade, then the cards arrive.
       animate(svg.createDrawable('[data-link]'), {
         draw: ['0 0', '0 1'],
         ease: 'inOutQuad',
-        delay: stagger(80),
-        autoplay: onScroll({
-          target: '[data-diagram]',
-          enter: 'bottom top+=15%',
-          leave: 'center center',
-          sync: 0.4,
-        }),
-      });
-
-      animate('[data-node]', {
-        scale: [0, 1],
-        opacity: [0, 1],
-        ease: 'outBack(2)',
-        delay: stagger(80),
-        autoplay: onScroll({
-          target: '[data-diagram]',
-          enter: 'bottom top+=15%',
-          leave: 'center center',
-          sync: 0.4,
-        }),
-      });
-
-      animate('[data-chip]', {
-        scale: [0.6, 1],
-        opacity: [0, 1],
-        ease: 'outBack(2)',
         delay: stagger(70),
-        autoplay: onScroll({
-          target: '[data-stack]',
-          enter: 'bottom top+=10%',
-          leave: 'center center',
-          sync: 0.4,
-        }),
+        autoplay: scrub(),
+      });
+      animate('[data-card="left"]', {
+        x: [-70, 0],
+        opacity: [0, 1],
+        ease: 'outQuad',
+        delay: stagger(90),
+        autoplay: scrub(),
+      });
+      animate('[data-card="right"]', {
+        x: [70, 0],
+        opacity: [0, 1],
+        ease: 'outQuad',
+        delay: stagger(90),
+        autoplay: scrub(),
       });
 
-      // The core keeps a slow pulse.
-      animate('[data-core-ring]', {
-        scale: [1, 1.9],
-        opacity: [0.5, 0],
-        duration: 2200,
-        ease: 'outQuad',
+      // Idle life: the keris breathes and light keeps flowing out to each product.
+      animate('[data-keris-float]', {
+        y: [-8, 8],
+        duration: 3200,
+        ease: 'inOutSine',
+        alternate: true,
         loop: true,
-        delay: stagger(700),
+      });
+      animate('[data-pulse]', {
+        strokeDashoffset: [0, -100],
+        duration: 2400,
+        ease: 'linear',
+        loop: true,
+        delay: stagger(380),
       });
     });
 
@@ -85,121 +106,124 @@ export function Connected() {
   }, []);
 
   return (
-    <section ref={root} className="bg-[#050807] text-white">
+    <section ref={root} className="overflow-hidden bg-[#050807] text-white">
       <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
-        <div className="mx-auto max-w-2xl text-center">
+        <div className="mx-auto max-w-3xl text-center">
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
-            one shared core
+            named after the court of Melaka
           </p>
           <ScrollWords
             as="h2"
             className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl"
           >
-            Every product knows the rest.
+            Five warriors, a Bendahara and one keris.
           </ScrollWords>
-          <ScrollWords className="mt-5 text-lg text-white/60">
-            The same contacts, team and AI sit under all six. Work flows from a lead to a hire to a paid invoice without leaving OpenKuasa.
+          <ScrollWords className="mx-auto mt-5 max-w-2xl text-lg text-white/60">
+            In the legends of Melaka, Hang Tuah and his four companions served a court run by the Bendahara, and Tuah carried Taming Sari, the keris said to make its bearer unbeatable. Here the six are your products, and Taming Sari is the AI every one of them shares.
           </ScrollWords>
         </div>
 
-        <svg
-          data-diagram
-          viewBox="0 0 800 500"
-          role="img"
-          aria-label="Six products — Tuah, Jebat, Kasturi, Lekiu, Lekir and Bendahara — all connected to Taming Sari AI at the centre"
-          className="mx-auto mt-14 hidden w-full max-w-4xl overflow-visible sm:block"
+        <div
+          data-court
+          className="relative mx-auto mt-14 max-w-6xl lg:mt-20 lg:aspect-[12/7]"
         >
-          <g fill="none" stroke="rgb(52 211 153)" strokeWidth="1.5" strokeLinecap="round">
-            {NODES.map((n) => (
-              <path
-                key={n.key}
-                data-link
-                d={`M${CENTER.x} ${CENTER.y} Q${(CENTER.x + n.x) / 2} ${n.y} ${n.x} ${n.y}`}
-                opacity="0.55"
+          {/* Taming Sari */}
+          <div className="relative mx-auto h-80 w-44 lg:absolute lg:inset-y-0 lg:left-1/2 lg:h-full lg:w-[33%] lg:-translate-x-1/2">
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-[radial-gradient(50%_45%_at_50%_45%,rgba(16,185,129,0.28),transparent)]"
+            />
+            <div
+              data-keris-float
+              className="size-full [mask-image:radial-gradient(46%_50%_at_50%_48%,black_62%,transparent)]"
+            >
+              <Image
+                data-keris
+                src="/landing/keris.jpg"
+                alt="Taming Sari, drawn as a glowing keris"
+                width={781}
+                height={1400}
+                sizes="(min-width: 1024px) 380px, 176px"
+                className="size-full object-contain will-change-transform"
               />
-            ))}
-          </g>
-
-          <g className="[transform-box:fill-box] [&_circle]:origin-center">
-            <circle data-core-ring cx={CENTER.x} cy={CENTER.y} r="46" fill="rgb(16 185 129)" opacity="0" />
-            <circle data-core-ring cx={CENTER.x} cy={CENTER.y} r="46" fill="rgb(16 185 129)" opacity="0" />
-            <circle cx={CENTER.x} cy={CENTER.y} r="46" fill="rgb(5 150 105)" />
-            <text
-              x={CENTER.x}
-              y={CENTER.y - 3}
-              textAnchor="middle"
-              className="fill-white text-[13px] font-bold"
-            >
-              Taming Sari
-            </text>
-            <text
-              x={CENTER.x}
-              y={CENTER.y + 14}
-              textAnchor="middle"
-              className="fill-white/70 font-mono text-[10px]"
-            >
-              AI
-            </text>
-          </g>
-
-          {NODES.map((n) => (
-            <g
-              key={n.key}
-              data-node
-              className="[transform-box:fill-box] origin-center"
-            >
-              <rect
-                x={n.x - 62}
-                y={n.y - 26}
-                width="124"
-                height="52"
-                rx="12"
-                fill="#0d1412"
-                stroke="rgb(255 255 255 / 0.14)"
-              />
-              <text
-                x={n.x}
-                y={n.y - 2}
-                textAnchor="middle"
-                className="fill-white text-[15px] font-bold"
-              >
-                {n.name}
-              </text>
-              <text
-                x={n.x}
-                y={n.y + 15}
-                textAnchor="middle"
-                className="fill-white/50 font-mono text-[10px]"
-              >
-                {n.category}
-              </text>
-            </g>
-          ))}
-        </svg>
-
-        {/* Phones: the same idea as a stack — the core, then the six products. */}
-        <div data-stack className="mt-12 sm:hidden">
-          <div
-            data-chip
-            className="mx-auto w-fit rounded-full bg-emerald-600 px-6 py-3 text-center"
-          >
-            <p className="font-bold">Taming Sari</p>
-            <p className="font-mono text-[11px] text-white/75">AI</p>
+            </div>
+            <p className="absolute inset-x-0 bottom-0 text-center lg:bottom-[3%]">
+              <span className="block text-lg font-bold">Taming Sari</span>
+              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+                the shared AI
+              </span>
+            </p>
           </div>
-          <div aria-hidden className="mx-auto h-8 w-px bg-emerald-400/50" />
-          <ul className="grid grid-cols-2 gap-3">
-            {NODES.map((n) => (
-              <li
-                key={n.key}
-                data-chip
-                className="rounded-xl border border-white/15 bg-[#0d1412] px-4 py-3 text-center"
-              >
-                <p className="font-bold">{n.name}</p>
-                <p className="font-mono text-[11px] text-white/50">
-                  {n.category}
-                </p>
-              </li>
+
+          <svg
+            viewBox="0 0 1200 700"
+            aria-hidden
+            className="pointer-events-none absolute inset-0 hidden size-full lg:block"
+            fill="none"
+            strokeLinecap="round"
+          >
+            {COURT.map((p) => (
+              <g key={p.key}>
+                <path
+                  data-link
+                  d={p.path}
+                  stroke="rgb(52 211 153)"
+                  strokeOpacity="0.35"
+                  strokeWidth="1.5"
+                />
+                <path
+                  data-pulse
+                  d={p.path}
+                  pathLength={100}
+                  stroke="rgb(167 243 208)"
+                  strokeWidth="2.5"
+                  strokeDasharray="6 94"
+                />
+              </g>
             ))}
+          </svg>
+
+          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:mt-0 lg:block">
+            {COURT.map((p) => {
+              const Icon = p.icon;
+              return (
+                <li
+                  key={p.key}
+                  className={cn(
+                    'min-w-0 lg:absolute lg:w-[25%] lg:-translate-y-1/2',
+                    p.side === 'left' ? 'lg:left-0' : 'lg:right-0',
+                  )}
+                  style={{ top: `${p.top}%` }}
+                >
+                  <Link
+                    href={p.href}
+                    data-card={p.side}
+                    className="group block rounded-2xl border border-white/10 bg-[#0b1210]/90 p-4 backdrop-blur transition-colors duration-300 hover:border-emerald-400/60 hover:bg-[#0f1a16]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-400/10 text-emerald-400 transition-colors group-hover:bg-emerald-400 group-hover:text-[#050807]">
+                        <Icon className="size-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-lg font-bold leading-tight">
+                          {p.name}
+                        </p>
+                        <p className="truncate font-mono text-[11px] text-white/45">
+                          {LEGEND[p.key]} · {p.category}
+                        </p>
+                      </div>
+                      <ArrowUpRight className="ml-auto size-4 shrink-0 text-white/30 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-emerald-400" />
+                    </div>
+                    <p className="mt-3 text-sm font-medium text-white/85">
+                      {p.tagline}
+                    </p>
+                    <p className="mt-1 truncate font-mono text-[11px] text-white/40">
+                      {p.features.join(' · ')}
+                    </p>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </div>

@@ -92,7 +92,11 @@ export function OpenSource() {
   }, []);
 
   return (
-    <section ref={root} id="pricing" className="bg-[#050807] text-white">
+    <section
+      ref={root}
+      id="pricing"
+      className="overflow-hidden bg-[#050807] text-white"
+    >
       <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
         <div className="grid grid-cols-2 gap-y-10 border-y border-white/10 py-12 lg:grid-cols-4">
           {STATS.map((s) => (
