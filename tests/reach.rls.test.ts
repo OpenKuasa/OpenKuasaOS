@@ -59,13 +59,40 @@ testWithSupabase('the demo org is seeded and a demo viewer can read it', async (
   expect(campaigns.data ?? []).toHaveLength(5);
   const leads = await d.c.from('leads').select('id', { count: 'exact', head: true }).eq('org_id', demoId);
   expect(leads.count).toBe(342);
-  const appts = await d.c.from('appointments').select('scheduled_at').eq('org_id', demoId);
+  const appts = await d.c.from('appointments').select('contact_name').eq('org_id', demoId);
   expect(appts.data ?? []).toHaveLength(3);
-  expect((appts.data ?? []).every((a) => new Date(a.scheduled_at) > new Date())).toBe(true);
+  // Independent of seed age: the nightly reseed (or none) may have moved the dates.
+  expect((appts.data ?? []).map((a) => a.contact_name).sort()).toEqual(
+    ['Aisyah Rahim', 'Faiz Hakim', 'Nurul Huda'],
+  );
 
   // Isolation: the fresh owner (not a demo member) sees none of the demo rows.
   const ownerSees = await owner.c.from('campaigns').select('id');
   expect(ownerSees.data ?? []).toHaveLength(0);
+
+  await d.c.auth.signOut();
+});
+
+testWithSupabase('demo leads honor the exact channel and stage marginals', async () => {
+  const d = await anonUser();
+  const { data: demoId, error } = await d.c.rpc('join_demo_org');
+  expect(error, error?.message).toBeNull();
+
+  const { data, error: leadsError } = await d.c
+    .from('leads')
+    .select('channel, stage')
+    .eq('org_id', demoId)
+    .limit(1000);
+  expect(leadsError, leadsError?.message).toBeNull();
+  expect(data ?? []).toHaveLength(342);
+
+  const tally = (key: 'channel' | 'stage') => {
+    const counts: Record<string, number> = {};
+    for (const row of data ?? []) counts[row[key]] = (counts[row[key]] ?? 0) + 1;
+    return counts;
+  };
+  expect(tally('channel')).toEqual({ whatsapp: 142, facebook: 96, instagram: 68, tiktok: 36 });
+  expect(tally('stage')).toEqual({ lead: 78, contacted: 106, qualified: 62, booked: 48, won: 48 });
 
   await d.c.auth.signOut();
 });
