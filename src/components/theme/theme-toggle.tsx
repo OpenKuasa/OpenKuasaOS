@@ -11,7 +11,7 @@ import {
   subscribeTheme,
 } from '@/lib/theme';
 import { cn } from '@/lib/utils';
-import { sliceTheme } from './keris-slice';
+import { preloadKeris, sliceTheme } from './keris-slice';
 
 /** Light/dark switch. The change is drawn as a keris cutting across the screen. */
 export function ThemeToggle({ className }: { className?: string }) {
@@ -21,12 +21,13 @@ export function ThemeToggle({ className }: { className?: string }) {
   // dropping the class the inline script set. Re-apply it; a no-op in production.
   useLayoutEffect(() => {
     applyTheme(resolveTheme());
+    preloadKeris();
   }, []);
 
   const toggle = () => {
     const next = dark ? 'light' : 'dark';
     saveTheme(next);
-    sliceTheme(() => applyTheme(next));
+    void sliceTheme(() => applyTheme(next));
   };
 
   return (

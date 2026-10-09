@@ -262,7 +262,8 @@
 }
 .theme-slicing::view-transition-group(keris-slice) {
   animation: none;
-  transform-origin: center;
+  /* The blade's tip in the keris image; the script pivots on it. */
+  transform-origin: 5% 94.8%;
 }
 .theme-slicing::view-transition-new(keris-slice) {
   animation: none;
