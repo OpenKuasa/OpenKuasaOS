@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GitHubIcon } from '@/components/brand/github-icon';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { MarketingFooter } from '@/components/marketing/marketing-footer';
 import { REPO_URL } from '@/config/marketing';
@@ -104,31 +105,37 @@ const FAQS = [
   },
 ];
 
+// Outline button on the marketing surface. The dark: overrides cancel the
+// shadcn outline variant's own dark fill so the button stays transparent.
+const OUTLINE =
+  'rounded-full border-mk-border bg-transparent text-mk-fg hover:bg-mk-fg/10 hover:text-mk-fg dark:border-mk-border dark:bg-transparent dark:hover:bg-mk-fg/10';
+
+const EYEBROW = 'font-mono text-xs uppercase tracking-[0.2em]';
+
+// Soft emerald glow behind the hero and the closing band.
+const GLOW =
+  'pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_oklch,var(--mk-accent)_16%,transparent),transparent)]';
+
 export default function PricingPage() {
   return (
-    <div className="min-h-dvh bg-background">
+    <div className="min-h-dvh bg-mk-bg text-mk-fg">
       <MarketingHeader />
 
       {/* Hero */}
-      <section className="relative overflow-hidden bg-[#06110d] text-white">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(90% 60% at 50% 115%, oklch(0.55 0.13 164 / 0.55) 0%, transparent 60%)',
-          }}
-        />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.12] [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:26px_26px]" />
+      <section className="relative overflow-hidden">
+        <div aria-hidden className={GLOW} />
 
-        <div className="relative mx-auto flex max-w-7xl flex-col items-center px-6 py-20 text-center sm:py-28">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-3.5 py-1.5 text-sm font-semibold text-primary ring-1 ring-inset ring-primary/30">
+        <div className="relative mx-auto flex max-w-7xl flex-col items-center px-6 py-24 text-center sm:py-32">
+          <span
+            className={`inline-flex items-center gap-2 text-mk-accent ${EYEBROW}`}
+          >
             <Sparkles className="size-4" />
             Open source · AGPL-3.0
           </span>
-          <h1 className="mt-6 max-w-3xl text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl">
+          <h1 className="mt-6 max-w-4xl text-5xl font-bold leading-[1.05] tracking-tight sm:text-7xl">
             Free to self-host
           </h1>
-          <p className="mt-5 max-w-xl text-lg text-white/70">
+          <p className="mt-6 max-w-xl text-lg text-mk-muted">
             Run OpenKuasa on your own infrastructure at no cost. A paid hosted
             version is on the way for teams who would rather not run it
             themselves.
@@ -141,12 +148,7 @@ export default function PricingPage() {
                 <ArrowRight className="size-4" />
               </a>
             </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="rounded-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
-            >
+            <Button asChild size="lg" variant="outline" className={OUTLINE}>
               <Link href="/command">Explore the demo</Link>
             </Button>
           </div>
@@ -154,125 +156,143 @@ export default function PricingPage() {
       </section>
 
       {/* Two ways to run it */}
-      <section className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
-        <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-2">
-          <div className="flex flex-col rounded-2xl border border-primary bg-card p-8 shadow-md ring-1 ring-primary">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">Self-hosted</h2>
-              <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
-                Available now
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Run it yourself, on your own infrastructure.
-            </p>
-            <div className="mt-5 flex items-end gap-2">
-              <span className="text-5xl font-bold tracking-tight">RM 0</span>
-              <span className="pb-1.5 text-sm text-muted-foreground">
-                forever
-              </span>
-            </div>
-            <ul className="mt-7 flex-1 space-y-3">
-              {INCLUDED.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-sm">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Button asChild className="mt-8 w-full rounded-full">
-              <a href={REPO_URL} target="_blank" rel="noreferrer">
-                Get the code
-              </a>
-            </Button>
-          </div>
-
-          <div className="flex flex-col rounded-2xl border bg-card p-8 shadow-sm">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">Hosted</h2>
-              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                Coming soon
-              </span>
-            </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              We run it for you, for a fee.
-            </p>
-            <div className="mt-5 flex items-end gap-2">
-              <span className="text-5xl font-bold tracking-tight">Paid</span>
-              <span className="pb-1.5 text-sm text-muted-foreground">
-                pricing to be announced
-              </span>
-            </div>
-            <ul className="mt-7 flex-1 space-y-3">
-              {HOSTED.map((f) => (
-                <li key={f} className="flex items-start gap-2.5 text-sm">
-                  <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-                  {f}
-                </li>
-              ))}
-            </ul>
-            <Button
-              asChild
-              variant="outline"
-              className="mt-8 w-full rounded-full"
-            >
-              <a href={REPO_URL} target="_blank" rel="noreferrer">
-                Follow on GitHub for updates
-              </a>
-            </Button>
-          </div>
-        </div>
-
-        <div className="mx-auto mt-16 grid max-w-5xl gap-8 lg:grid-cols-3">
-          {PILLARS.map((p) => (
-            <div key={p.title}>
-              <span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
-                <p.icon className="size-5" />
-              </span>
-              <h3 className="mt-4 font-semibold">{p.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                {p.body}
+      <section className="border-t border-mk-border">
+        <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
+          <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
+            <div className="flex flex-col rounded-2xl border border-primary bg-mk-surface p-7 ring-1 ring-primary sm:p-8">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">Self-hosted</h2>
+                <span className="rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
+                  Available now
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-mk-muted">
+                Run it yourself, on your own infrastructure.
               </p>
+              <div className="mt-6 flex flex-wrap items-end gap-x-3 gap-y-1">
+                <span className="text-5xl font-bold tracking-tight tabular-nums sm:text-6xl">
+                  RM 0
+                </span>
+                <span className={`pb-2 text-mk-subtle ${EYEBROW}`}>
+                  forever
+                </span>
+              </div>
+              <ul className="mt-7 flex-1 space-y-3 border-t border-mk-border pt-7">
+                {INCLUDED.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-mk-accent" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Button asChild className="mt-8 w-full rounded-full">
+                <a href={REPO_URL} target="_blank" rel="noreferrer">
+                  Get the code
+                </a>
+              </Button>
             </div>
-          ))}
+
+            <div className="flex flex-col rounded-2xl border border-mk-border bg-mk-surface p-7 sm:p-8">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">Hosted</h2>
+                <span className="rounded-full border border-mk-border bg-mk-surface-2 px-2.5 py-0.5 text-xs font-semibold text-mk-muted">
+                  Coming soon
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-mk-muted">
+                We run it for you, for a fee.
+              </p>
+              <div className="mt-6 flex flex-wrap items-end gap-x-3 gap-y-1">
+                <span className="text-5xl font-bold tracking-tight sm:text-6xl">
+                  Paid
+                </span>
+                <span className={`pb-2 text-mk-subtle ${EYEBROW}`}>
+                  pricing to be announced
+                </span>
+              </div>
+              <ul className="mt-7 flex-1 space-y-3 border-t border-mk-border pt-7">
+                {HOSTED.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-sm">
+                    <Check className="mt-0.5 size-4 shrink-0 text-mk-accent" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                asChild
+                variant="outline"
+                className={`mt-8 w-full ${OUTLINE}`}
+              >
+                <a href={REPO_URL} target="_blank" rel="noreferrer">
+                  <GitHubIcon />
+                  Follow on GitHub for updates
+                </a>
+              </Button>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-5 grid max-w-5xl gap-5 lg:grid-cols-3">
+            {PILLARS.map((p) => (
+              <div
+                key={p.title}
+                className="rounded-2xl border border-mk-border bg-mk-surface p-7"
+              >
+                <span className="grid size-11 place-items-center rounded-xl bg-mk-accent/10 text-mk-accent">
+                  <p.icon className="size-5" />
+                </span>
+                <h3 className="mt-5 text-lg font-bold">{p.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-mk-muted">
+                  {p.body}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Self-hosting steps */}
-      <section className="border-t">
-        <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+      <section className="border-t border-mk-border">
+        <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-4xl font-bold tracking-tight sm:text-6xl">
               Host it yourself
             </h2>
-            <p className="mt-4 text-muted-foreground">
+            <p className="mt-5 text-lg text-mk-muted">
               Three steps from the repository to a running instance.
             </p>
           </div>
 
-          <ol className="mt-12 grid gap-6 lg:grid-cols-3">
+          <ol className="mt-14 grid gap-5 lg:grid-cols-3">
             {STEPS.map((step, i) => (
               <li
                 key={step.title}
-                className="flex flex-col rounded-2xl border bg-card p-6 shadow-sm"
+                className="flex min-w-0 flex-col rounded-2xl border border-mk-border bg-mk-surface p-7"
               >
-                <span className="grid size-8 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                <span className="grid size-8 place-items-center rounded-full bg-primary font-mono text-sm font-bold text-primary-foreground">
                   {i + 1}
                 </span>
-                <h3 className="mt-4 font-semibold">{step.title}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {step.body}
-                </p>
+                <h3 className="mt-5 text-lg font-bold">{step.title}</h3>
+                <p className="mt-2 text-sm text-mk-muted">{step.body}</p>
                 {step.code ? (
-                  <code className="mt-4 block overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs">
-                    {step.code}
-                  </code>
+                  <div className="mt-5 overflow-hidden rounded-xl border border-mk-border bg-mk-surface-2 font-mono text-xs">
+                    <div
+                      aria-hidden
+                      className="flex h-8 items-center gap-1.5 border-b border-mk-border px-3"
+                    >
+                      <span className="size-2 rounded-full bg-mk-fg/15" />
+                      <span className="size-2 rounded-full bg-mk-fg/15" />
+                      <span className="size-2 rounded-full bg-mk-fg/15" />
+                    </div>
+                    <code className="block overflow-x-auto whitespace-nowrap px-3.5 py-3 text-mk-fg">
+                      {step.code}
+                    </code>
+                  </div>
                 ) : null}
               </li>
             ))}
           </ol>
 
-          <p className="mx-auto mt-8 max-w-2xl text-center text-sm text-muted-foreground">
+          <p className="mx-auto mt-10 max-w-2xl text-center text-sm text-mk-muted">
             OpenKuasa is in early development and currently runs on sample
             data. It is provided as is, without warranty of any kind.
           </p>
@@ -280,26 +300,26 @@ export default function PricingPage() {
       </section>
 
       {/* FAQ */}
-      <section className="border-t bg-muted/40">
-        <div className="mx-auto max-w-7xl px-6 py-20 sm:py-24">
+      <section className="border-t border-mk-border">
+        <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
           <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              <h2 className="text-4xl font-bold tracking-tight sm:text-6xl">
                 Frequently asked questions
               </h2>
-              <p className="mt-4 text-muted-foreground">
+              <p className="mt-5 text-lg text-mk-muted">
                 Self-hosting, the hosted version and the license.
               </p>
-              <div className="mt-6 rounded-2xl border bg-card p-6 shadow-sm">
-                <p className="font-semibold">Still have questions?</p>
-                <p className="mt-1 text-sm text-muted-foreground">
+              <div className="mt-8 rounded-2xl border border-mk-border bg-mk-surface p-6">
+                <p className="font-bold">Still have questions?</p>
+                <p className="mt-1 text-sm text-mk-muted">
                   Ask the community by opening an issue on GitHub.
                 </p>
                 <a
                   href={`${REPO_URL}/issues`}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+                  className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-mk-accent hover:underline"
                 >
                   Open an issue
                   <ArrowRight className="size-4" />
@@ -311,13 +331,13 @@ export default function PricingPage() {
               {FAQS.map((faq) => (
                 <details
                   key={faq.q}
-                  className="group rounded-xl border bg-card shadow-sm"
+                  className="group rounded-2xl border border-mk-border bg-mk-surface"
                 >
                   <summary className="flex cursor-pointer select-none items-center justify-between gap-4 p-5 font-medium list-none [&::-webkit-details-marker]:hidden">
                     {faq.q}
-                    <Plus className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-45" />
+                    <Plus className="size-4 shrink-0 text-mk-subtle transition-transform group-open:rotate-45" />
                   </summary>
-                  <p className="border-t px-5 py-4 text-sm text-muted-foreground">
+                  <p className="border-t border-mk-border px-5 py-4 text-sm leading-relaxed text-mk-muted">
                     {faq.a}
                   </p>
                 </details>
@@ -328,21 +348,14 @@ export default function PricingPage() {
       </section>
 
       {/* Final CTA */}
-      <section className="relative overflow-hidden bg-[#06110d] text-white">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(90% 60% at 50% 115%, oklch(0.55 0.13 164 / 0.55) 0%, transparent 60%)',
-          }}
-        />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.12] [background-image:radial-gradient(white_1px,transparent_1px)] [background-size:26px_26px]" />
+      <section className="relative overflow-hidden border-t border-mk-border">
+        <div aria-hidden className={GLOW} />
 
-        <div className="relative mx-auto max-w-3xl px-6 py-24 text-center">
-          <h2 className="text-4xl font-bold tracking-tight sm:text-5xl">
+        <div className="relative mx-auto max-w-3xl px-6 py-32 text-center sm:py-44">
+          <h2 className="text-4xl font-bold tracking-tight sm:text-6xl">
             Built in the open, by its community
           </h2>
-          <p className="mt-4 text-lg text-white/70">
+          <p className="mt-5 text-lg text-mk-muted">
             Run it, read it, improve it. OpenKuasa belongs to the people who
             build it.
           </p>
@@ -353,12 +366,7 @@ export default function PricingPage() {
                 <ArrowRight className="size-4" />
               </a>
             </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="rounded-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
-            >
+            <Button asChild size="lg" variant="outline" className={OUTLINE}>
               <a
                 href={`${REPO_URL}/blob/main/CONTRIBUTING.md`}
                 target="_blank"
