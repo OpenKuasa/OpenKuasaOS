@@ -95,10 +95,10 @@ export function OpenSource() {
     <section
       ref={root}
       id="pricing"
-      className="overflow-hidden bg-[#050807] text-white"
+      className="overflow-hidden bg-mk-bg text-mk-fg"
     >
       <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
-        <div className="grid grid-cols-2 gap-y-10 border-y border-white/10 py-12 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-y-10 border-y border-mk-border py-12 lg:grid-cols-4">
           {STATS.map((s) => (
             <div key={s.label} className="text-center">
               <p className="text-5xl font-bold tracking-tight tabular-nums sm:text-6xl">
@@ -106,7 +106,7 @@ export function OpenSource() {
                 <span data-count={s.value}>{s.value}</span>
                 {s.suffix}
               </p>
-              <p className="mt-2 font-mono text-xs uppercase tracking-[0.2em] text-white/45">
+              <p className="mt-2 font-mono text-xs uppercase tracking-[0.2em] text-mk-subtle">
                 {s.label}
               </p>
             </div>
@@ -115,7 +115,7 @@ export function OpenSource() {
 
         <div className="mt-24 grid items-center gap-12 [perspective:1400px] lg:grid-cols-2">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-mk-accent">
               open source · AGPL-3.0
             </p>
             <ScrollWords
@@ -124,7 +124,7 @@ export function OpenSource() {
             >
               Free to self-host.
             </ScrollWords>
-            <p className="mt-5 max-w-lg text-lg text-white/60">
+            <p className="mt-5 max-w-lg text-lg text-mk-muted">
               Every product and feature is included, and it runs on
               infrastructure you control.
             </p>
@@ -139,7 +139,7 @@ export function OpenSource() {
                 asChild
                 size="lg"
                 variant="outline"
-                className="rounded-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                className="rounded-full border-mk-fg/20 bg-transparent text-mk-fg hover:bg-mk-fg/10 hover:text-mk-fg"
               >
                 <Link href="/pricing">
                   See your options
@@ -151,23 +151,23 @@ export function OpenSource() {
 
           <div
             data-terminal
-            className="overflow-hidden rounded-xl border border-white/10 bg-[#0d1412] font-mono text-sm"
+            className="overflow-hidden rounded-xl border border-mk-border bg-mk-surface font-mono text-sm"
           >
-            <div className="flex h-9 items-center gap-2 border-b border-white/10 px-3.5">
-              <span className="size-2.5 rounded-full bg-white/15" />
-              <span className="size-2.5 rounded-full bg-white/15" />
-              <span className="size-2.5 rounded-full bg-white/15" />
+            <div className="flex h-9 items-center gap-2 border-b border-mk-border bg-mk-surface-2 px-3.5 dark:bg-transparent">
+              <span className="size-2.5 rounded-full bg-mk-fg/15" />
+              <span className="size-2.5 rounded-full bg-mk-fg/15" />
+              <span className="size-2.5 rounded-full bg-mk-fg/15" />
             </div>
-            <div className="space-y-2 overflow-x-auto p-5 text-white/80">
+            <div className="space-y-2 overflow-x-auto p-5 text-mk-fg/80">
               <p className="whitespace-nowrap">
-                <span className="text-emerald-400">$ </span>
+                <span className="text-mk-accent">$ </span>
                 <span data-typed>git clone {REPO_URL}.git</span>
               </p>
               <p className="whitespace-nowrap">
-                <span className="text-emerald-400">$ </span>
+                <span className="text-mk-accent">$ </span>
                 <span data-typed>pnpm install &amp;&amp; pnpm dev</span>
               </p>
-              <p className="text-white/40"># six products, running on your machine</p>
+              <p className="text-mk-subtle"># six products, running on your machine</p>
             </div>
           </div>
         </div>
@@ -177,10 +177,10 @@ export function OpenSource() {
             <div
               key={point.title}
               data-point
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-7"
+              className="rounded-2xl border border-mk-border bg-mk-surface p-7 dark:bg-mk-fg/[0.03]"
             >
               <h3 className="text-lg font-bold">{point.title}</h3>
-              <p className="mt-2 text-sm text-white/55">{point.desc}</p>
+              <p className="mt-2 text-sm text-mk-muted dark:text-mk-fg/55">{point.desc}</p>
             </div>
           ))}
         </div>

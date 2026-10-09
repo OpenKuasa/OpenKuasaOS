@@ -58,7 +58,7 @@ export function GridField({ cols, rows, className }: GridFieldProps) {
         <span key={i} className="grid aspect-square place-items-center">
           <span
             data-cell
-            className="size-[3px] rounded-full bg-emerald-400 opacity-[0.16]"
+            className="size-[3px] rounded-full bg-mk-accent opacity-[0.16]"
           />
         </span>
       ))}

@@ -91,9 +91,16 @@ export function Hero() {
   return (
     <section
       ref={root}
-      className="relative bg-[#050807] text-white motion-safe:h-[260vh]"
+      className="relative bg-mk-bg text-mk-fg motion-safe:h-[260vh]"
     >
-      <div className="relative overflow-hidden motion-safe:sticky motion-safe:top-0 motion-safe:h-dvh">
+      {/* The panel carries the page colour so the artwork has something to blend into. */}
+      <div className="relative overflow-hidden bg-mk-bg motion-safe:sticky motion-safe:top-0 motion-safe:h-dvh">
+        {/*
+          The artwork is emerald line art on black. In light mode it is inverted
+          (black becomes white) and hue-rotated 180° so the lines come back to
+          emerald rather than the pink a plain invert gives, then multiplied
+          into the page so its white ground disappears.
+        */}
         <Image
           data-hero-art
           src="/landing/hero-pamor.jpg"
@@ -102,11 +109,11 @@ export function Hero() {
           height={1228}
           priority
           sizes="100vw"
-          className="pointer-events-none absolute inset-0 size-full object-cover opacity-70 will-change-transform"
+          className="pointer-events-none absolute inset-0 size-full object-cover opacity-70 mix-blend-multiply invert hue-rotate-180 will-change-transform dark:mix-blend-normal dark:invert-0 dark:hue-rotate-0"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_35%,rgba(5,8,7,0.92),rgba(5,8,7,0.35)_70%,transparent)]"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_70%_at_50%_35%,color-mix(in_oklch,var(--mk-bg)_92%,transparent),color-mix(in_oklch,var(--mk-bg)_35%,transparent)_70%,transparent)]"
         />
         <div data-hero-grid className="absolute inset-x-0 top-0 opacity-60">
           <GridField
@@ -128,9 +135,9 @@ export function Hero() {
           <Link
             href="/pricing"
             data-hero-fade
-            className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/40 px-3 py-1 font-mono text-xs text-white/75 backdrop-blur transition-colors hover:bg-white/10"
+            className="mb-8 inline-flex items-center gap-2 rounded-full border border-mk-fg/15 bg-mk-bg/70 px-3 py-1 font-mono text-xs text-mk-fg/75 backdrop-blur transition-colors hover:bg-mk-fg/10 dark:bg-mk-bg/40"
           >
-            <span className="size-1.5 rounded-full bg-emerald-400" />
+            <span className="size-1.5 rounded-full bg-mk-accent" />
             free and open source · AGPL-3.0
             <ArrowRight className="size-3.5" />
           </Link>
@@ -142,7 +149,7 @@ export function Hero() {
             Run the whole business from one place.
           </h1>
 
-          <p data-hero-fade className="mt-7 max-w-xl text-lg text-white/70">
+          <p data-hero-fade className="mt-7 max-w-xl text-lg text-mk-fg/70">
             Marketing, sales, people and finance — six products on one login,
             named for the court of Melaka and powered by Taming Sari AI.
           </p>
@@ -158,7 +165,7 @@ export function Hero() {
               asChild
               size="lg"
               variant="outline"
-              className="rounded-full border-white/20 bg-black/30 text-white backdrop-blur hover:bg-white/10 hover:text-white"
+              className="rounded-full border-mk-fg/20 bg-mk-bg/60 text-mk-fg backdrop-blur hover:bg-mk-fg/10 hover:text-mk-fg"
             >
               <a href={REPO_URL} target="_blank" rel="noreferrer">
                 <GitHubIcon />
@@ -170,13 +177,13 @@ export function Hero() {
           <ul
             data-hero-fade
             aria-label="The six products"
-            className="mt-10 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-xs uppercase tracking-[0.2em] text-white/45"
+            className="mt-10 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-xs uppercase tracking-[0.2em] text-mk-subtle"
           >
             {PRODUCT_CARDS.map((p) => (
               <li
                 key={p.key}
                 className="flex items-center gap-2"
-                style={{ color: `var(--product-${p.key}-bright)` }}
+                style={{ color: `var(--mk-product-${p.key})` }}
               >
                 <span aria-hidden className="size-1.5 rounded-full bg-current" />
                 {p.name}

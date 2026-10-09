@@ -41,8 +41,13 @@ export function FinalCta() {
   return (
     <section
       ref={root}
-      className="relative overflow-hidden border-t border-white/10 bg-[#050807] text-white"
+      className="relative overflow-hidden border-t border-mk-border bg-mk-bg text-mk-fg"
     >
+      {/*
+        Emerald line art on black. Light mode inverts it and rotates the hue
+        180° (a plain invert would turn emerald pink), then multiplies it
+        into the page so the white ground disappears.
+      */}
       <Image
         data-cta-art
         src="/landing/cta-pamor.jpg"
@@ -50,7 +55,7 @@ export function FinalCta() {
         width={2200}
         height={933}
         sizes="100vw"
-        className="pointer-events-none absolute inset-0 size-full object-cover opacity-75 will-change-transform [mask-image:radial-gradient(70%_80%_at_50%_50%,black,transparent)]"
+        className="pointer-events-none absolute inset-0 size-full object-cover opacity-75 mix-blend-multiply invert hue-rotate-180 will-change-transform dark:mix-blend-normal dark:invert-0 dark:hue-rotate-0 [mask-image:radial-gradient(70%_80%_at_50%_50%,black,transparent)]"
       />
       <div className="relative mx-auto max-w-3xl px-6 py-32 text-center sm:py-44">
         <ScrollWords
@@ -59,7 +64,7 @@ export function FinalCta() {
         >
           Start with one product.
         </ScrollWords>
-        <p className="mt-5 text-lg text-white/75">
+        <p className="mt-5 text-lg text-mk-fg/75">
           The rest already know your customers and your team.
         </p>
         <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
@@ -73,7 +78,7 @@ export function FinalCta() {
             asChild
             size="lg"
             variant="outline"
-            className="rounded-full border-white/20 bg-black/40 text-white backdrop-blur hover:bg-white/10 hover:text-white"
+            className="rounded-full border-mk-fg/20 bg-mk-bg/70 text-mk-fg backdrop-blur hover:bg-mk-fg/10 hover:text-mk-fg"
           >
             <a href={REPO_URL} target="_blank" rel="noreferrer">
               <GitHubIcon />

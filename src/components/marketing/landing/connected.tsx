@@ -97,10 +97,10 @@ export function Connected() {
   }, []);
 
   return (
-    <section ref={root} className="overflow-hidden bg-[#050807] text-white">
+    <section ref={root} className="overflow-hidden bg-mk-bg text-mk-fg">
       <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
+          <p className="font-mono text-xs uppercase tracking-[0.2em] text-mk-accent">
             named after the court of Melaka
           </p>
           <ScrollWords
@@ -109,7 +109,7 @@ export function Connected() {
           >
             Five warriors, a Bendahara and one keris.
           </ScrollWords>
-          <ScrollWords className="mx-auto mt-5 max-w-2xl text-lg text-white/60">
+          <ScrollWords className="mx-auto mt-5 max-w-2xl text-lg text-mk-muted">
             In the legends of Melaka, Hang Tuah and his four companions served a court run by the Bendahara, and Tuah carried Taming Sari, the keris said to make its bearer unbeatable. Here the six are your products, and Taming Sari is the AI every one of them shares.
           </ScrollWords>
         </div>
@@ -119,14 +119,20 @@ export function Connected() {
           className="relative mx-auto mt-14 max-w-6xl lg:mt-20 lg:aspect-[12/7]"
         >
           {/* Taming Sari */}
-          <div className="relative mx-auto h-80 w-44 lg:absolute lg:inset-y-0 lg:left-1/2 lg:h-full lg:w-[33%] lg:-translate-x-1/2">
+          <div className="relative mx-auto h-80 w-44 bg-mk-bg lg:absolute lg:inset-y-0 lg:left-1/2 lg:h-full lg:w-[33%] lg:-translate-x-1/2">
             <div
               aria-hidden
               className="absolute inset-0 bg-[radial-gradient(50%_45%_at_50%_45%,rgba(16,185,129,0.28),transparent)]"
             />
+            {/*
+              Emerald line art on black. In light mode the image is inverted
+              and hue-rotated 180° (a plain invert would turn emerald pink)
+              and multiplied into the page. The blend sits on this wrapper, not
+              the image, because the mask isolates whatever is inside it.
+            */}
             <div
               data-keris-float
-              className="size-full [mask-image:radial-gradient(46%_50%_at_50%_48%,black_62%,transparent)]"
+              className="size-full mix-blend-multiply dark:mix-blend-normal [mask-image:radial-gradient(46%_50%_at_50%_48%,black_62%,transparent)]"
             >
               <Image
                 data-keris
@@ -135,12 +141,12 @@ export function Connected() {
                 width={781}
                 height={1400}
                 sizes="(min-width: 1024px) 380px, 176px"
-                className="size-full object-contain will-change-transform"
+                className="size-full object-contain invert hue-rotate-180 will-change-transform dark:invert-0 dark:hue-rotate-0"
               />
             </div>
             <p className="absolute inset-x-0 bottom-0 text-center lg:bottom-[3%]">
               <span className="block text-lg font-bold">Taming Sari</span>
-              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+              <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-mk-accent">
                 the shared AI
               </span>
             </p>
@@ -158,7 +164,7 @@ export function Connected() {
                 <path
                   data-link
                   d={p.path}
-                  style={{ stroke: `var(--product-${p.key}-bright)` }}
+                  style={{ stroke: `var(--mk-product-${p.key})` }}
                   strokeOpacity="0.45"
                   strokeWidth="1.5"
                 />
@@ -166,7 +172,7 @@ export function Connected() {
                   data-pulse
                   d={p.path}
                   pathLength={100}
-                  style={{ stroke: `var(--product-${p.key}-bright)` }}
+                  style={{ stroke: `var(--mk-product-${p.key})` }}
                   strokeWidth="2.5"
                   strokeDasharray="6 94"
                 />
@@ -187,33 +193,33 @@ export function Connected() {
                   style={
                     {
                       top: `${p.top}%`,
-                      '--pc': `var(--product-${p.key}-bright)`,
+                      '--pc': `var(--mk-product-${p.key})`,
                     } as React.CSSProperties
                   }
                 >
                   <Link
                     href={p.href}
                     data-card={p.side}
-                    className="group block rounded-2xl border border-white/10 bg-[#0b1210]/90 p-4 backdrop-blur transition-colors duration-300 hover:border-(--pc)/70 hover:bg-[#0f1a16]"
+                    className="group block rounded-2xl border border-mk-border bg-mk-surface/90 p-4 backdrop-blur transition-colors duration-300 hover:border-(--pc)/70 hover:bg-mk-surface dark:bg-mk-surface-2/90 dark:hover:bg-[#0f1a16]"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-(--pc)/12 text-(--pc) transition-colors group-hover:bg-(--pc) group-hover:text-[#050807]">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-(--pc)/12 text-(--pc) transition-colors group-hover:bg-(--pc) group-hover:text-mk-bg">
                         <Icon className="size-5" />
                       </span>
                       <div className="min-w-0">
                         <p className="text-lg font-bold leading-tight">
                           {p.name}
                         </p>
-                        <p className="truncate font-mono text-[11px] text-white/45">
+                        <p className="truncate font-mono text-[11px] text-mk-subtle">
                           {LEGEND[p.key].name} · {p.category}
                         </p>
                       </div>
-                      <ArrowUpRight className="ml-auto size-4 shrink-0 text-white/30 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-(--pc)" />
+                      <ArrowUpRight className="ml-auto size-4 shrink-0 text-mk-subtle dark:text-mk-fg/30 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-(--pc)" />
                     </div>
-                    <p className="mt-3 text-sm font-medium text-white/85">
+                    <p className="mt-3 text-sm font-medium text-mk-fg/85">
                       {p.tagline}
                     </p>
-                    <p className="mt-1 truncate font-mono text-[11px] text-white/40">
+                    <p className="mt-1 truncate font-mono text-[11px] text-mk-subtle">
                       {p.features.join(' · ')}
                     </p>
                   </Link>
@@ -224,21 +230,21 @@ export function Connected() {
         </div>
 
         <div className="mx-auto mt-16 grid max-w-4xl gap-4 text-center sm:grid-cols-2 sm:text-left lg:mt-20">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+          <div className="rounded-2xl border border-mk-border bg-mk-surface p-6 dark:bg-mk-fg/[0.03]">
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-mk-accent">
               why OpenKuasa
             </p>
-            <p className="mt-2 text-white/70">
-              <span className="font-semibold text-white">Kuasa</span> is Malay
+            <p className="mt-2 text-mk-fg/70">
+              <span className="font-semibold text-mk-fg">Kuasa</span> is Malay
               for power. OpenKuasa puts the power to run a business in the
               open: free software anyone can read, host and change.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+          <div className="rounded-2xl border border-mk-border bg-mk-surface p-6 dark:bg-mk-fg/[0.03]">
+            <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-mk-accent">
               why Taming Sari
             </p>
-            <p className="mt-2 text-white/70">
+            <p className="mt-2 text-mk-fg/70">
               The keris was said to make whoever carried it unbeatable. The AI
               is named for it because every product carries it, and it is the
               edge they share.

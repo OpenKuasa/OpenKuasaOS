@@ -59,10 +59,10 @@ export function ProductTour() {
     <section
       ref={root}
       id="products"
-      className="relative h-[520vh] bg-[#050807] text-white"
+      className="relative h-[520vh] bg-mk-bg text-mk-fg"
       style={
         {
-          '--pc': `var(--product-${current.key}-bright)`,
+          '--pc': `var(--mk-product-${current.key})`,
           '--frame-glow': 'color-mix(in oklch, var(--pc) 38%, transparent)',
         } as React.CSSProperties
       }
@@ -70,7 +70,7 @@ export function ProductTour() {
       <div className="flex flex-col justify-center sticky top-0 h-dvh overflow-hidden px-6">
         <div className="mx-auto grid w-full max-w-[1500px] items-center gap-8 lg:grid-cols-[0.55fr_1.45fr] lg:gap-12">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] text-mk-accent">
               the court of Melaka · six products
             </p>
 
@@ -83,7 +83,7 @@ export function ProductTour() {
                     'text-2xl font-bold tracking-tight transition-all duration-500 motion-reduce:transition-none sm:text-3xl lg:text-5xl',
                     i === active
                       ? 'text-(--pc) lg:translate-x-3'
-                      : 'text-white/20',
+                      : 'text-mk-fg/20',
                   )}
                 >
                   {p.name}
@@ -92,20 +92,20 @@ export function ProductTour() {
             </ol>
 
             <div className="mt-6 min-h-[16rem] lg:mt-10">
-              <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/40">
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-mk-subtle">
                 {String(active + 1).padStart(2, '0')} / {String(count).padStart(2, '0')} ·{' '}
                 {current.category}
               </p>
               <p className="mt-2 text-xl font-semibold">{current.tagline}</p>
-              <p className="mt-2 max-w-md text-white/60">{current.blurb}</p>
+              <p className="mt-2 max-w-md text-mk-muted">{current.blurb}</p>
               <div className="mt-4 flex max-w-md gap-2.5 border-l border-(--pc)/50 pl-3 text-sm">
-                <p className="text-white/55">
+                <p className="text-mk-muted dark:text-mk-fg/55">
                   <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-(--pc)">
                     why {current.name}
                   </span>
                   <br />
                   {LEGEND[current.key].who}{' '}
-                  <span className="text-white/85">
+                  <span className="text-mk-fg dark:text-mk-fg/85">
                     {LEGEND[current.key].why}
                   </span>
                 </p>
@@ -119,7 +119,7 @@ export function ProductTour() {
               </Link>
             </div>
 
-            <div className="mt-6 h-px w-full max-w-md bg-white/10">
+            <div className="mt-6 h-px w-full max-w-md bg-mk-border">
               <div
                 data-tour-progress
                 className="h-px origin-left scale-x-0 bg-(--pc)"

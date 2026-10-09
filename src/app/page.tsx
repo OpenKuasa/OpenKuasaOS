@@ -8,7 +8,7 @@ import { FinalCta } from '@/components/marketing/landing/final-cta';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-dvh bg-[#050807]">
+    <div className="min-h-dvh bg-mk-bg">
       <MarketingHeader />
       <Hero />
       <ProductTour />
