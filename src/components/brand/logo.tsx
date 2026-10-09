@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import { KerisMark } from './keris-mark';
 
 type LogoProps = {
   className?: string;
@@ -9,7 +10,7 @@ type LogoProps = {
 };
 
 /**
- * OpenKuasa brand lockup: an emerald mark with a stylized kris-blade glyph,
+ * OpenKuasa brand lockup: an emerald mark with a keris (after Taming Sari),
  * optionally followed by the wordmark.
  */
 export function Logo({
@@ -28,10 +29,7 @@ export function Logo({
         )}
         aria-hidden
       >
-        <svg viewBox="0 0 24 24" className="size-[18px]" fill="currentColor">
-          {/* kris-blade diamond */}
-          <path d="M12 2.5 16.5 12 12 21.5 7.5 12Z" />
-        </svg>
+        <KerisMark className="size-[78%]" />
       </span>
       {showWordmark ? (
         <span
