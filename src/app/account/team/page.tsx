@@ -1,5 +1,5 @@
+import { headers } from 'next/headers';
 import { Check, Minus, Users } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -17,9 +17,22 @@ import {
 } from '@/components/ui/table';
 import { EmptyState } from '@/components/screen/empty-state';
 import { ReadOnlyNotice } from '@/components/account/settings-form';
+import { TeamInviteForm } from '@/components/account/team-invite-form';
+import { TeamMemberActions } from '@/components/account/team-member-actions';
+import {
+  TeamPendingInvites,
+  type PendingInviteRow,
+} from '@/components/account/team-pending-invites';
+import { UserAvatar } from '@/components/account/user-avatar';
 import { getTeam } from '@/lib/account/data';
+import {
+  getPendingInvites,
+  inviteUrl,
+  originFromHeaders,
+} from '@/lib/account/invites';
 import { PERMISSIONS, ROLES, can, roleLabel } from '@/lib/auth/permissions';
 import { getViewer } from '@/lib/auth/viewer';
+import { createClient } from '@/lib/supabase/server';
 
 const JOINED = new Intl.DateTimeFormat('en-MY', {
   day: '2-digit',
@@ -29,7 +42,21 @@ const JOINED = new Intl.DateTimeFormat('en-MY', {
 
 export default async function TeamPage() {
   const [viewer, team] = await Promise.all([getViewer(), getTeam()]);
-  const canInvite = !viewer.isDemo && can(viewer.role, 'manage-members');
+  const canManage = !viewer.isDemo && can(viewer.role, 'manage-members');
+
+  // RLS only shows invites to owners and admins, so others skip the query.
+  let invites: PendingInviteRow[] = [];
+  if (canManage) {
+    const [supabase, h] = await Promise.all([createClient(), headers()]);
+    const origin = originFromHeaders(h);
+    invites = (await getPendingInvites(supabase, viewer.orgId)).map((i) => ({
+      id: i.id,
+      email: i.email,
+      role: i.role,
+      link: inviteUrl(origin, i.token),
+      expires: JOINED.format(new Date(i.expiresAt)),
+    }));
+  }
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
@@ -60,6 +87,9 @@ export default async function TeamPage() {
                     <TableHead>Member</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Joined</TableHead>
+                    {canManage ? (
+                      <TableHead className="text-right">Manage</TableHead>
+                    ) : null}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -67,11 +97,12 @@ export default async function TeamPage() {
                     <TableRow key={m.userId}>
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar className="size-9">
-                            <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
-                              {m.initials}
-                            </AvatarFallback>
-                          </Avatar>
+                          <UserAvatar
+                            initials={m.initials}
+                            avatarUrl={m.avatarUrl}
+                            className="size-9"
+                            fallbackClassName="text-xs"
+                          />
                           <div>
                             <p className="font-semibold">
                               {m.name}
@@ -93,6 +124,17 @@ export default async function TeamPage() {
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {JOINED.format(new Date(m.joinedAt))}
                       </TableCell>
+                      {canManage ? (
+                        <TableCell>
+                          {m.isYou || m.role === 'owner' ? null : (
+                            <TeamMemberActions
+                              userId={m.userId}
+                              name={m.name}
+                              role={m.role}
+                            />
+                          )}
+                        </TableCell>
+                      ) : null}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -106,13 +148,28 @@ export default async function TeamPage() {
             <CardTitle>Invite a member</CardTitle>
           </CardHeader>
           <CardContent>
-            <ReadOnlyNotice>
-              {canInvite
-                ? 'Email invites are not available yet. For now, each person signs up with their own workspace.'
-                : 'Only owners and admins can invite members, and email invites are not available yet.'}
-            </ReadOnlyNotice>
+            {canManage ? (
+              <TeamInviteForm />
+            ) : (
+              <ReadOnlyNotice>
+                {viewer.isDemo
+                  ? 'The demo workspace is read-only. Sign up to invite your own team.'
+                  : 'Only owners and admins can invite and manage members.'}
+              </ReadOnlyNotice>
+            )}
           </CardContent>
         </Card>
+
+        {canManage ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending invites</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TeamPendingInvites invites={invites} />
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>
