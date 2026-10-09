@@ -191,7 +191,7 @@ export default async function OverviewScreen() {
         {/* Spend + funnel + health */}
         <BentoCard
           title="Spend by channel"
-          subtitle="This month (RM)"
+          subtitle="All campaigns (RM)"
           icon={Coins}
           className="col-span-2 md:col-span-4"
         >
@@ -234,7 +234,7 @@ export default async function OverviewScreen() {
         {/* Campaigns + best time */}
         <BentoCard
           title="Top campaigns"
-          subtitle="By leads this month"
+          subtitle="By leads"
           icon={Megaphone}
           className="col-span-2 md:col-span-8"
         >
@@ -242,8 +242,8 @@ export default async function OverviewScreen() {
             <Muted>No campaigns yet</Muted>
           ) : (
             <ul className="divide-y">
-              {model.topCampaigns.map((c) => (
-                <li key={c.name} className="flex items-center gap-3 py-2.5">
+              {model.topCampaigns.map((c, i) => (
+                <li key={i} className="flex items-center gap-3 py-2.5">
                   <LiveDot active={c.status === 'Active'} />
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">
                     {c.name}
@@ -307,9 +307,9 @@ export default async function OverviewScreen() {
             <Muted>No upcoming appointments</Muted>
           ) : (
             <ul className="space-y-2">
-              {model.appointments.map((a) => (
+              {model.appointments.map((a, i) => (
                 <li
-                  key={a.name}
+                  key={i}
                   className="flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2"
                 >
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">

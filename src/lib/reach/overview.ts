@@ -32,10 +32,16 @@ const STAGE_LABEL: Record<LeadStage, string> = {
 
 /** "Today · 2:30pm" / "Tomorrow · 10:00am" / "Thu · 4:00pm" relative to now. */
 export function formatWhen(iso: string, now: Date): string {
+  const TZ = 'Asia/Kuala_Lumpur';
   const d = new Date(iso);
-  const days = Math.floor((d.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86_400_000);
-  const day = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : d.toLocaleDateString('en-MY', { weekday: 'short' });
-  const time = d.toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+  const dayKey = (x: Date) => x.toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD in KL
+  const dayDiff = Math.round(
+    (Date.parse(`${dayKey(d)}T00:00:00Z`) - Date.parse(`${dayKey(now)}T00:00:00Z`)) / 86_400_000,
+  );
+  const day = dayDiff === 0 ? 'Today' : dayDiff === 1 ? 'Tomorrow'
+    : d.toLocaleDateString('en-MY', { weekday: 'short', timeZone: TZ });
+  const time = d.toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit', timeZone: TZ })
+    .toLowerCase().replace(/\s/g, '');
   return `${day} · ${time}`;
 }
 
