@@ -1,59 +1,79 @@
 'use client';
 
 /**
- * Ask-Jebat hero — the working streaming chat that replaces the mock input.
+ * Ask-Jebat — a right-docked chat for the Jebat (CMO) module.
  *
- * Signed-in members stream a real answer from /api/reach/chat; demo / anonymous
- * viewers never POST (canned answer + sign-up gate, $0 LLM spend).
- *
- * UX: the conversation shows a live "agent activity" trail (which sub-agent the
- * orchestrator is consulting, expandable to read its reply). The panel expands
- * *inline* — it grows its height and pushes the rest of the dashboard down, with
- * a smooth transition — rather than opening a modal. It expands on hover-intent,
- * on send, or via an explicit button; it collapses when the pointer leaves
- * (debounced), but never while the input is focused or a response is streaming.
- * Escape collapses. Animation is max-height/opacity only and respects
- * reduced-motion.
+ * The dashboard card shows a compact launcher (heading + quick prompts + a
+ * trigger). Clicking it slides in a proper chat dock on the right: streaming
+ * answers, live tool-call cards (the real read-only data tools), and image / PDF
+ * / text attachments. Signed-in members hit /api/reach/chat; demo / anonymous
+ * viewers get a canned answer + sign-up gate (never POST, $0 LLM).
  */
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-} from 'react';
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import {
+  convertFileListToFileUIParts,
+  DefaultChatTransport,
+  type FileUIPart,
+  type UIMessage,
+} from 'ai';
 import {
   ArrowUp,
+  CalendarDays,
   Check,
+  ClipboardList,
+  Coins,
+  FileText,
+  ImageIcon,
   Loader2,
-  Maximize2,
+  Megaphone,
   Mic,
-  Minimize2,
-  PenLine,
-  Plus,
-  Search,
+  Paperclip,
+  PieChart,
+  Send,
   Sparkles,
-  Target,
+  TrendingUp,
+  Users,
+  Wrench,
+  X,
+  Zap,
 } from 'lucide-react';
 
-type AgentMeta = { label: string; Icon: ComponentType<{ className?: string }>; verb: string };
+type Icon = ComponentType<{ className?: string }>;
 
-// Client-safe sub-agent labels (the server orchestrator pulls in the provider
-// SDK, which must not reach the browser bundle).
-const AGENTS: Record<string, AgentMeta> = {
-  consultAnalyst: { label: 'Analyst', Icon: Search, verb: 'checking your numbers' },
-  consultOptimizer: { label: 'Optimizer', Icon: Target, verb: 'finding moves to make' },
-  consultCopywriter: { label: 'Copywriter', Icon: PenLine, verb: 'drafting copy' },
+// Friendly labels + icons for the read-only data tools the stream surfaces.
+const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
+  getAdsOverview: { label: 'Ads overview', Icon: PieChart },
+  getCampaigns: { label: 'Campaigns', Icon: Megaphone },
+  getLeadSummary: { label: 'Lead summary', Icon: TrendingUp },
+  getSpendByChannel: { label: 'Spend by channel', Icon: Coins },
+  getUpcomingAppointments: { label: 'Appointments', Icon: CalendarDays },
+  listContacts: { label: 'Contacts', Icon: Users },
+  listForms: { label: 'Lead forms', Icon: ClipboardList },
+  listBroadcasts: { label: 'Broadcasts', Icon: Send },
+  listAutomations: { label: 'Automations', Icon: Zap },
 };
 
-const CANNED_DEMO_ANSWER =
-  'Here’s a quick read, Saudara: your best cost-per-lead is the "Lead Magnet — eBook" campaign at RM 6.88, while "Brand Awareness" is the most expensive at RM 50.00. WhatsApp brings the most leads. To chat with Jebat about your own numbers, sign up for a free account.';
+function humanize(name: string): string {
+  const spaced = name.replace(/^(get|list)/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).trim();
+}
 
-const COLLAPSE_DELAY = 120;
+function toolMeta(name: string): { label: string; Icon: Icon } {
+  return TOOL_META[name] ?? { label: humanize(name) || 'Tool', Icon: Wrench };
+}
+
+const CANNED_DEMO_ANSWER =
+  'Jap, saya tengok dulu… Cost-per-lead terbaik awak ialah campaign "Lead Magnet — eBook" pada RM 6.88, manakala "Brand Awareness" paling mahal (RM 50.00). WhatsApp bawa paling banyak lead. Untuk Jebat jawab guna nombor sebenar bisnes awak, sila sign up akaun percuma.';
+
+const PROMPT_SUGGESTIONS = [
+  'Draft a Raya promo campaign',
+  'Which ad is performing best?',
+  'Lower my cost per lead',
+];
 
 type AnyPart = UIMessage['parts'][number];
 
@@ -61,320 +81,420 @@ function isText(p: AnyPart): p is Extract<AnyPart, { type: 'text' }> {
   return p.type === 'text';
 }
 
+function isFile(p: AnyPart): p is Extract<AnyPart, { type: 'file' }> {
+  return p.type === 'file';
+}
+
 function textOf(message: UIMessage): string {
   return message.parts.filter(isText).map((p) => p.text).join('');
 }
 
-type Step = {
+type ToolStep = {
   key: string;
-  meta: AgentMeta;
+  name: string;
   running: boolean;
-  question: string | null;
-  output: string | null;
+  input: unknown;
+  output: unknown;
 };
 
-function toStep(part: AnyPart, messageId: string, index: number): Step | null {
-  if (typeof part.type !== 'string' || !part.type.startsWith('tool-')) return null;
-  const meta = AGENTS[part.type.slice('tool-'.length)];
-  if (!meta) return null;
+function toToolStep(part: AnyPart, messageId: string, index: number): ToolStep | null {
+  const type = part.type;
+  let name: string | null = null;
+  if (type === 'dynamic-tool') name = (part as { toolName?: string }).toolName ?? null;
+  else if (typeof type === 'string' && type.startsWith('tool-')) name = type.slice('tool-'.length);
+  if (!name) return null;
   const state = 'state' in part ? (part.state as string) : undefined;
   const running = state !== 'output-available' && state !== 'output-error';
-  const raw = ('input' in part ? part.input : undefined) as Record<string, unknown> | undefined;
-  const question =
-    (raw?.question as string) ?? (raw?.situation as string) ?? (raw?.brief as string) ?? null;
-  const output = 'output' in part ? (part.output as string) : null;
+  const input = 'input' in part ? part.input : undefined;
+  const output = 'output' in part ? part.output : undefined;
   const key = ('toolCallId' in part ? (part.toolCallId as string) : undefined) ?? `${messageId}-${index}`;
-  return { key, meta, running, question, output };
+  return { key, name, running, input, output };
 }
 
-function hasVisibleContent(message: UIMessage): boolean {
-  return message.parts.some(
-    (p) =>
-      (isText(p) && p.text.trim().length > 0) ||
-      (typeof p.type === 'string' && p.type.startsWith('tool-') && !!AGENTS[p.type.slice('tool-'.length)]),
-  );
-}
-
-export function AskJebatHero({
-  prompts,
-  isDemo,
-}: {
-  prompts: string[];
-  isDemo: boolean;
-}) {
+export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: boolean }) {
   const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
+  const [entered, setEntered] = useState(false);
   const [demoAsked, setDemoAsked] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [attachments, setAttachments] = useState<FileUIPart[]>([]);
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
   const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
-  // Throttle batches token updates into smooth frames while streaming.
-  const { messages, sendMessage, status, error } = useChat({ transport, throttle: 50 });
+  const { messages, sendMessage, status, error, stop } = useChat({ transport, throttle: 50 });
 
   const busy = status === 'submitted' || status === 'streaming';
-  const hasConversation = isDemo ? demoAsked : messages.length > 0;
-
-  // Refs so the debounced collapse reads live state without stale closures.
-  const focusedRef = useRef(false);
-  const busyRef = useRef(false);
-  const cardHoverRef = useRef(false);
-  const collapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const cancelCollapse = useCallback(() => {
-    if (collapseTimer.current) clearTimeout(collapseTimer.current);
-    collapseTimer.current = null;
+  const openDock = useCallback(() => {
+    setOpen(true);
+    requestAnimationFrame(() => setEntered(true));
+    setTimeout(() => inputRef.current?.focus(), 60);
   }, []);
 
-  const scheduleCollapse = useCallback(() => {
-    cancelCollapse();
-    // Never auto-collapse while typing, streaming, or hovering the card.
-    if (focusedRef.current || busyRef.current || cardHoverRef.current) return;
-    collapseTimer.current = setTimeout(() => setExpanded(false), COLLAPSE_DELAY);
-  }, [cancelCollapse]);
+  const closeDock = useCallback(() => {
+    setEntered(false);
+    setTimeout(() => setOpen(false), 250);
+  }, []);
 
-  function onCardEnter() {
-    cardHoverRef.current = true;
-    cancelCollapse();
-    if (hasConversation) setExpanded(true);
-  }
-  function onCardLeave() {
-    cardHoverRef.current = false;
-    scheduleCollapse();
-  }
-
-  function onFocus() {
-    focusedRef.current = true;
-    cancelCollapse();
-  }
-  function onBlur() {
-    focusedRef.current = false;
-    scheduleCollapse();
-  }
-
-  // Keep busyRef live for the debounced collapse; when a response finishes,
-  // re-evaluate whether to collapse.
+  // Escape closes the dock.
   useEffect(() => {
-    busyRef.current = busy;
-    if (!busy) scheduleCollapse();
-  }, [busy, scheduleCollapse]);
-
-  // Escape collapses the expanded panel.
-  useEffect(() => {
-    if (!expanded) return;
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        cancelCollapse();
-        setExpanded(false);
-      }
+      if (e.key === 'Escape') closeDock();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [expanded, cancelCollapse]);
+  }, [open, closeDock]);
 
-  // Keep the newest message in view as it streams — and again after the
-  // expand/collapse height transition settles, so the resting panel shows the
-  // latest answer rather than the top of the thread.
+  // Keep the newest message in view as it streams.
   useEffect(() => {
-    const pin = () => {
-      const el = scrollRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
-    };
-    pin();
-    const t = setTimeout(pin, 320);
-    return () => clearTimeout(t);
-  }, [messages, status, expanded]);
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, status, open, attachments]);
 
-  useEffect(() => cancelCollapse, [cancelCollapse]);
-
-  function submit(text: string) {
+  function send(text: string) {
     const t = text.trim();
-    if (!t || busy) return;
-    // Expand to the tall view to watch the agents work — but only when the user
-    // is on the card (clicked a chip / typing), so a stray send stays compact.
-    if (cardHoverRef.current || focusedRef.current) setExpanded(true);
+    if ((!t && attachments.length === 0) || busy) return;
+    if (!open) openDock();
     if (isDemo) {
       setDemoAsked(true);
+      setInput('');
       return;
     }
-    sendMessage({ text: t });
+    sendMessage(attachments.length > 0 ? { text: t, files: attachments } : { text: t });
     setInput('');
+    setAttachments([]);
   }
 
-  return (
-    <div className="flex flex-col gap-4" onMouseEnter={onCardEnter} onMouseLeave={onCardLeave}>
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground/70">
-            <Sparkles className="size-3.5 animate-twinkle" />
-            Jebat · your CMO
-          </div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight">
-            How can I grow your business, Saudara?
-          </h1>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {prompts.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => submit(p)}
-                disabled={busy}
-                className="rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground ring-1 ring-inset ring-primary-foreground/20 transition hover:bg-primary-foreground/20 disabled:opacity-50"
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit(input);
-          }}
-          className="flex w-full items-center gap-2 rounded-2xl bg-primary-foreground/10 p-2 ring-1 ring-inset ring-primary-foreground/20 lg:w-96"
-        >
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground/15">
-            <Plus className="size-4" />
-          </span>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onFocus={onFocus}
-            onBlur={onBlur}
-            placeholder="Ask Jebat anything…"
-            aria-label="Ask Jebat anything"
-            className="min-w-0 flex-1 bg-transparent text-sm text-primary-foreground placeholder:text-primary-foreground/60 focus:outline-none"
-          />
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground/15">
-            <Mic className="size-4" />
-          </span>
-          <button
-            type="submit"
-            disabled={busy}
-            aria-label="Send"
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground text-primary transition hover:opacity-90 disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
-          </button>
-        </form>
-      </div>
+  async function onPickFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const parts = await convertFileListToFileUIParts(list);
+    setAttachments((prev) => [...prev, ...parts].slice(0, 4));
+    if (fileRef.current) fileRef.current.value = '';
+  }
 
-      {hasConversation && (
-        <div className="relative">
-          {/* Fixed height per state → streaming scrolls inside (no reflow/stutter);
-              only expand/collapse animates, between two fixed heights. */}
-          <div
-            ref={scrollRef}
-            className={`overflow-y-auto overscroll-contain rounded-2xl bg-primary-foreground/10 p-3 pr-10 ring-1 ring-inset transition-[height] duration-300 ease-out motion-reduce:transition-none ${
-              expanded ? 'h-[60vh] ring-primary-foreground/25' : 'h-52 ring-primary-foreground/15'
-            }`}
-          >
-            <Thread
-              isDemo={isDemo}
-              demoAsked={demoAsked}
-              messages={messages}
-              busy={busy}
-              error={error}
-              expanded={expanded}
-              openSteps={openSteps}
-              onToggleStep={(k) => setOpenSteps((s) => ({ ...s, [k]: !s[k] }))}
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              cancelCollapse();
-              setExpanded((v) => !v);
-            }}
-            aria-label={expanded ? 'Collapse chat' : 'Expand chat'}
-            className="absolute right-2 top-2 grid size-7 place-items-center rounded-lg bg-primary-foreground/15 text-primary-foreground transition hover:bg-primary-foreground/25"
-          >
-            {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-          </button>
+  const launcher = (
+    <div className="flex flex-col gap-4">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground/70">
+          <Sparkles className="size-3.5 animate-twinkle" />
+          Jebat · your CMO
         </div>
-      )}
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">
+          How can I grow your business, Saudara?
+        </h1>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(prompts.length ? prompts : PROMPT_SUGGESTIONS).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => send(p)}
+              className="rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground ring-1 ring-inset ring-primary-foreground/20 transition hover:bg-primary-foreground/20"
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={openDock}
+        className="flex w-full items-center gap-2 rounded-2xl bg-primary-foreground/10 p-2 text-left ring-1 ring-inset ring-primary-foreground/20 transition hover:bg-primary-foreground/15 lg:w-96"
+      >
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground/15">
+          <Sparkles className="size-4" />
+        </span>
+        <span className="flex-1 truncate text-sm text-primary-foreground/70">
+          Ask Jebat anything…
+        </span>
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground text-primary">
+          <ArrowUp className="size-4" />
+        </span>
+      </button>
+    </div>
+  );
+
+  const dock =
+    open && typeof document !== 'undefined'
+      ? createPortal(
+          <div className="fixed inset-0 z-[60]">
+            <div
+              aria-hidden="true"
+              onClick={closeDock}
+              className={`absolute inset-0 bg-black/30 transition-opacity duration-300 motion-reduce:transition-none ${
+                entered ? 'opacity-100' : 'opacity-0'
+              }`}
+            />
+            <aside
+              role="dialog"
+              aria-modal="true"
+              aria-label="Ask Jebat"
+              className={`absolute inset-y-0 right-0 flex w-full max-w-[440px] flex-col border-l border-border bg-card shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
+                entered ? 'translate-x-0' : 'translate-x-full'
+              }`}
+            >
+              <header className="flex items-center justify-between gap-2 bg-gradient-to-br from-primary to-primary/80 px-4 py-3 text-primary-foreground">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-7 place-items-center rounded-full bg-primary-foreground/15">
+                    <Sparkles className="size-4" />
+                  </span>
+                  <div className="leading-tight">
+                    <div className="text-sm font-semibold">Jebat</div>
+                    <div className="text-[11px] text-primary-foreground/70">Your AI CMO</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeDock}
+                  aria-label="Close chat"
+                  className="grid size-8 place-items-center rounded-lg text-primary-foreground/80 transition hover:bg-primary-foreground/15 hover:text-primary-foreground"
+                >
+                  <X className="size-4" />
+                </button>
+              </header>
+
+              <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+                {isDemo ? (
+                  demoAsked ? (
+                    <DemoBubble />
+                  ) : (
+                    <EmptyState prompts={prompts.length ? prompts : PROMPT_SUGGESTIONS} onPick={send} />
+                  )
+                ) : messages.length === 0 ? (
+                  <EmptyState prompts={prompts.length ? prompts : PROMPT_SUGGESTIONS} onPick={send} />
+                ) : (
+                  <MessageList
+                    messages={messages}
+                    busy={busy}
+                    error={error}
+                    openSteps={openSteps}
+                    onToggleStep={(k) => setOpenSteps((s) => ({ ...s, [k]: !s[k] }))}
+                  />
+                )}
+              </div>
+
+              <div className="border-t border-border bg-card p-3">
+                {attachments.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {attachments.map((a, i) => (
+                      <span
+                        key={`${a.filename ?? 'file'}-${i}`}
+                        className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs text-foreground"
+                      >
+                        {a.mediaType?.startsWith('image/') ? (
+                          <ImageIcon className="size-3.5 text-muted-foreground" />
+                        ) : (
+                          <FileText className="size-3.5 text-muted-foreground" />
+                        )}
+                        <span className="max-w-32 truncate">{a.filename ?? 'attachment'}</span>
+                        <button
+                          type="button"
+                          aria-label="Remove attachment"
+                          onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}
+                          className="text-muted-foreground transition hover:text-foreground"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    send(input);
+                  }}
+                  className="flex items-end gap-1.5 rounded-2xl border border-input bg-background p-1.5"
+                >
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    multiple
+                    accept="image/*,application/pdf,.txt,.csv,.md"
+                    className="hidden"
+                    onChange={(e) => onPickFiles(e.target.files)}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Add attachment"
+                    onClick={() => fileRef.current?.click()}
+                    className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  >
+                    <Paperclip className="size-4" />
+                  </button>
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask Jebat anything…"
+                    aria-label="Ask Jebat anything"
+                    className="min-w-0 flex-1 bg-transparent px-1 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    aria-label="Voice (coming soon)"
+                    title="Voice coming soon"
+                    className="grid size-8 shrink-0 place-items-center rounded-full text-muted-foreground/60"
+                  >
+                    <Mic className="size-4" />
+                  </button>
+                  {busy ? (
+                    <button
+                      type="button"
+                      onClick={() => stop()}
+                      aria-label="Stop"
+                      className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90"
+                    >
+                      <span className="size-2.5 rounded-[3px] bg-primary-foreground" />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      aria-label="Send"
+                      className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
+                      disabled={!input.trim() && attachments.length === 0}
+                    >
+                      <ArrowUp className="size-4" />
+                    </button>
+                  )}
+                </form>
+              </div>
+            </aside>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      {launcher}
+      {dock}
+    </>
+  );
+}
+
+function EmptyState({ prompts, onPick }: { prompts: string[]; onPick: (p: string) => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
+      <span className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+        <Sparkles className="size-6" />
+      </span>
+      <div>
+        <div className="text-sm font-semibold text-foreground">Ask Jebat, your AI CMO</div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Ads, leads, campaigns, broadcasts and appointments — grounded in your data.
+        </p>
+      </div>
+      <div className="flex w-full flex-col gap-1.5">
+        {prompts.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onPick(p)}
+            className="rounded-xl border border-border bg-background px-3 py-2 text-left text-xs text-foreground transition hover:bg-muted"
+          >
+            {p}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function Thread({
-  isDemo,
-  demoAsked,
+function MessageList({
   messages,
   busy,
   error,
-  expanded,
   openSteps,
   onToggleStep,
 }: {
-  isDemo: boolean;
-  demoAsked: boolean;
   messages: UIMessage[];
   busy: boolean;
   error: Error | undefined;
-  expanded: boolean;
   openSteps: Record<string, boolean>;
   onToggleStep: (key: string) => void;
 }) {
-  if (isDemo) {
-    return demoAsked ? <DemoBubble /> : null;
-  }
-
   return (
     <div className="flex flex-col gap-4">
       {messages.map((m) => {
         if (m.role === 'user') {
+          const files = m.parts.filter(isFile);
           return (
-            <div key={m.id} className="text-sm">
-              <div className="mb-0.5 text-xs font-semibold text-primary-foreground/60">You</div>
-              <div className="whitespace-pre-wrap leading-relaxed text-primary-foreground">
-                {textOf(m)}
-              </div>
+            <div key={m.id} className="flex flex-col items-end gap-1.5">
+              {files.length > 0 && (
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {files.map((f, i) =>
+                    f.mediaType?.startsWith('image/') ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={i}
+                        src={f.url}
+                        alt={f.filename ?? 'attachment'}
+                        className="max-h-32 rounded-lg border border-border object-cover"
+                      />
+                    ) : (
+                      <span
+                        key={i}
+                        className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1 text-xs text-foreground"
+                      >
+                        <FileText className="size-3.5 text-muted-foreground" />
+                        {f.filename ?? 'file'}
+                      </span>
+                    ),
+                  )}
+                </div>
+              )}
+              {textOf(m).trim() && (
+                <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm leading-relaxed text-primary-foreground">
+                  {textOf(m)}
+                </div>
+              )}
             </div>
           );
         }
 
-        // Render parts in their true order so you watch the flow: narration →
-        // Analyst → narration → Optimizer → final answer.
         return (
-          <div key={m.id} className="text-sm">
-            <div className="mb-1 text-xs font-semibold text-primary-foreground/60">Jebat</div>
-            <div className="flex flex-col gap-2">
-              {m.parts.map((part, i) => {
-                if (isText(part)) {
-                  return part.text.trim() ? (
-                    <div
-                      key={i}
-                      className="whitespace-pre-wrap leading-relaxed text-primary-foreground"
-                    >
-                      {part.text}
-                    </div>
-                  ) : null;
-                }
-                const step = toStep(part, m.id, i);
-                return step ? (
-                  <ActivityStep
-                    key={step.key}
-                    step={step}
-                    open={!!openSteps[step.key]}
-                    onToggle={() => onToggleStep(step.key)}
-                    detailed={expanded}
-                  />
+          <div key={m.id} className="flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <Sparkles className="size-3.5 text-primary" />
+              Jebat
+            </div>
+            {m.parts.map((part, i) => {
+              if (isText(part)) {
+                return part.text.trim() ? (
+                  <div
+                    key={i}
+                    className="whitespace-pre-wrap text-sm leading-relaxed text-foreground"
+                  >
+                    {part.text}
+                  </div>
                 ) : null;
-              })}
-              {!hasVisibleContent(m) && busy && (
-                <div className="flex items-center gap-2 text-xs text-primary-foreground/70">
+              }
+              const step = toToolStep(part, m.id, i);
+              return step ? (
+                <ToolCard
+                  key={step.key}
+                  step={step}
+                  open={!!openSteps[step.key]}
+                  onToggle={() => onToggleStep(step.key)}
+                />
+              ) : null;
+            })}
+            {m.parts.every((p) => !(isText(p) && p.text.trim())) &&
+              !m.parts.some((p) => typeof p.type === 'string' && p.type.startsWith('tool-')) &&
+              busy && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="size-3.5 animate-spin" />
                   Jebat is thinking…
                 </div>
               )}
-            </div>
           </div>
         );
       })}
-
       {error && (
-        <div className="text-xs text-primary-foreground/80">
+        <div className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
           Jebat couldn’t respond just now. Please try again.
         </div>
       )}
@@ -382,27 +502,19 @@ function Thread({
   );
 }
 
-function ActivityStep({
+function ToolCard({
   step,
   open,
   onToggle,
-  detailed,
 }: {
-  step: Step;
+  step: ToolStep;
   open: boolean;
   onToggle: () => void;
-  detailed: boolean;
 }) {
-  const { meta, running, question, output } = step;
-  const canExpand = !running && !!output;
+  const { label, Icon } = toolMeta(step.name);
+  const canExpand = !step.running && step.output != null;
   return (
-    <div
-      className={`rounded-xl ring-1 ring-inset transition-colors ${
-        running
-          ? 'bg-primary-foreground/15 ring-primary-foreground/20'
-          : 'bg-primary-foreground/10 ring-primary-foreground/10'
-      }`}
-    >
+    <div className="rounded-xl border border-border bg-muted/50">
       <button
         type="button"
         onClick={canExpand ? onToggle : undefined}
@@ -411,23 +523,23 @@ function ActivityStep({
           canExpand ? 'cursor-pointer' : 'cursor-default'
         }`}
       >
-        <span className="grid size-5 shrink-0 place-items-center rounded-md bg-primary-foreground/15">
-          <meta.Icon className="size-3" />
+        <span className="grid size-5 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+          <Icon className="size-3" />
         </span>
-        <span className="font-medium text-primary-foreground">{meta.label}</span>
-        <span className="min-w-0 flex-1 truncate text-primary-foreground/60">
-          {running ? meta.verb + '…' : detailed && question ? question : null}
+        <span className="font-medium text-foreground">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+          {step.running ? 'running…' : 'done'}
         </span>
-        {running ? (
-          <Loader2 className="size-3.5 shrink-0 animate-spin text-primary-foreground/70" />
+        {step.running ? (
+          <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
         ) : (
-          <Check className="size-3.5 shrink-0 text-primary-foreground/70" />
+          <Check className="size-3.5 shrink-0 text-primary" />
         )}
       </button>
       {canExpand && open && (
-        <div className="whitespace-pre-wrap border-t border-primary-foreground/10 px-2.5 py-2 text-xs leading-relaxed text-primary-foreground/80">
-          {output}
-        </div>
+        <pre className="max-h-48 overflow-auto border-t border-border px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          {JSON.stringify(step.output, null, 2)}
+        </pre>
       )}
     </div>
   );
@@ -435,14 +547,15 @@ function ActivityStep({
 
 function DemoBubble() {
   return (
-    <div className="flex flex-col gap-2 text-sm">
-      <div>
-        <div className="mb-0.5 text-xs font-semibold text-primary-foreground/60">Jebat (demo)</div>
-        <div className="leading-relaxed text-primary-foreground">{CANNED_DEMO_ANSWER}</div>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+        <Sparkles className="size-3.5 text-primary" />
+        Jebat (demo)
       </div>
+      <div className="text-sm leading-relaxed text-foreground">{CANNED_DEMO_ANSWER}</div>
       <Link
         href="/onboarding"
-        className="inline-flex w-fit items-center rounded-full bg-primary-foreground px-3 py-1 text-xs font-semibold text-primary transition hover:opacity-90"
+        className="inline-flex w-fit items-center rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:opacity-90"
       >
         Sign up free to chat with Jebat
       </Link>

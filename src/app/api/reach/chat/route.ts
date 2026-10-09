@@ -22,10 +22,11 @@ export const dynamic = 'force-dynamic';
 // multi-layer turn runs without a function timeout.
 export const maxDuration = 60;
 
-// Keep input bounded: the multi-layer fan-out re-sends history to every
-// sub-agent, so long histories/huge messages multiply token cost.
+// Keep input bounded: long histories multiply token cost. The larger byte cap
+// accommodates inline attachments (images / PDFs as data URLs); the client caps
+// the count/size, this backstops abuse.
 const MAX_MESSAGES = 12;
-const MAX_BODY_BYTES = 32 * 1024;
+const MAX_BODY_BYTES = 12 * 1024 * 1024;
 
 const bodySchema = z.object({ messages: z.array(z.unknown()).min(1) });
 
