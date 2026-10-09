@@ -11,6 +11,8 @@ export type Viewer = {
   name: string;
   email: string | null;
   initials: string;
+  /** Public URL of the uploaded profile photo, if any. */
+  avatarUrl: string | null;
   orgName: string;
   role: OrgRole;
   isDemo: boolean;
@@ -31,6 +33,7 @@ const PREVIEW_VIEWER: Viewer = {
   name: 'Guest',
   email: null,
   initials: 'G',
+  avatarUrl: null,
   orgName: 'Preview workspace',
   role: 'viewer',
   isDemo: true,
@@ -46,6 +49,7 @@ export function toViewer(
   user: ViewerUser,
   org: { id: string; name: string; role: OrgRole },
   profileName?: string | null,
+  avatarUrl: string | null = null,
 ): Viewer {
   const isDemo = user.is_anonymous === true;
   const email = user.email || null;
@@ -64,10 +68,18 @@ export function toViewer(
     name,
     email,
     initials: initialsOf(name),
+    avatarUrl,
     orgName: org.name,
     role: org.role,
     isDemo,
   };
+}
+
+/** Public URL for a path in the `avatars` storage bucket. */
+export function avatarPublicUrl(path: string | null | undefined): string | null {
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!path || !base) return null;
+  return `${base}/storage/v1/object/public/avatars/${path}`;
 }
 
 export function hasSupabaseEnv(): boolean {
@@ -90,33 +102,44 @@ export const getViewer = cache(async (): Promise<Viewer> => {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
 
-  // RLS lets a member read every row of their org, so scope to the caller.
-  const { data, error } = await supabase
-    .from('org_members')
-    .select('role, orgs(id, name)')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) redirect('/onboarding');
-
-  const org = (Array.isArray(data.orgs) ? data.orgs[0] : data.orgs) as
-    | { id: string; name: string }
-    | null
-    | undefined;
-  if (!org) redirect('/onboarding');
-
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name')
+    .select('full_name, avatar_path, current_org_id')
     .eq('user_id', user.id)
     .maybeSingle();
+
+  // RLS lets a member read every row of their org, so scope to the caller.
+  const memberships = () =>
+    supabase
+      .from('org_members')
+      .select('role, orgs(id, name)')
+      .eq('user_id', user.id);
+
+  // Prefer the workspace the user last chose, if they still belong to it.
+  let membership = profile?.current_org_id
+    ? (await memberships().eq('org_id', profile.current_org_id).maybeSingle())
+        .data
+    : null;
+  if (!membership) {
+    const { data, error } = await memberships()
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    membership = data;
+  }
+  if (!membership) redirect('/onboarding');
+
+  const org = (
+    Array.isArray(membership.orgs) ? membership.orgs[0] : membership.orgs
+  ) as { id: string; name: string } | null | undefined;
+  if (!org) redirect('/onboarding');
 
   return toViewer(
     user,
-    { id: org.id, name: org.name, role: data.role as OrgRole },
+    { id: org.id, name: org.name, role: membership.role as OrgRole },
     profile?.full_name,
+    avatarPublicUrl(profile?.avatar_path),
   );
 });
 

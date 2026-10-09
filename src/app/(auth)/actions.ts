@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { REMEMBER_COOKIE } from '@/lib/supabase/remember';
+import { recordEvent } from '@/lib/events';
 
 // Persist the "remember me" choice so token refreshes (in the proxy) keep the
 // same cookie lifetime. A session cookie itself clears on browser close.
@@ -80,6 +81,7 @@ export async function signInAction(
     password: parsed.data.password,
   });
   if (error) return { error: 'Incorrect email or password.', values };
+  await recordEvent(supabase, { action: 'Signed in', category: 'auth' });
   redirect('/command');
 }
 
@@ -125,6 +127,11 @@ export async function signUpAction(
   if (orgErr) {
     return { error: 'Could not create your workspace. Please try again.', values };
   }
+  await recordEvent(supabase, {
+    action: 'Created the workspace',
+    category: 'team',
+    target: parsed.data.orgName,
+  });
 
   redirect('/command');
 }
@@ -207,5 +214,15 @@ export async function updatePasswordAction(
   if (error) {
     return { error: 'Could not update your password. Please try again.' };
   }
+  await recordEvent(supabase, {
+    action: 'Reset password by email',
+    category: 'security',
+    notify: {
+      to: 'self',
+      event: 'security',
+      title: 'Your password was reset',
+      href: '/account/security',
+    },
+  });
   redirect('/command');
 }

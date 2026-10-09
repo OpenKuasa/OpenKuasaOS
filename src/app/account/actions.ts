@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getViewer } from '@/lib/auth/viewer';
 import { can } from '@/lib/auth/permissions';
+import { recordEvent } from '@/lib/events';
 import {
   COMPANY_SIZES,
   INDUSTRIES,
@@ -72,6 +73,8 @@ export async function updateProfileAction(
     return { error: 'Could not save your profile. Please try again.' };
   }
 
+  await recordEvent(supabase, { action: 'Updated their profile', category: 'data' });
+
   // The name appears in the nav of every signed-in layout.
   revalidatePath('/', 'layout');
   return { notice: 'Profile saved.' };
@@ -137,6 +140,12 @@ export async function updateCompanyAction(
     return { error: 'Could not save company details. Please try again.' };
   }
 
+  await recordEvent(supabase, {
+    action: 'Updated company details',
+    category: 'data',
+    target: v.name,
+  });
+
   revalidatePath('/', 'layout');
   return { notice: 'Company details saved.' };
 }
@@ -181,6 +190,11 @@ export async function updateNotificationsAction(
     return { error: 'Could not save your preferences. Please try again.' };
   }
 
+  await recordEvent(supabase, {
+    action: 'Updated notification preferences',
+    category: 'data',
+  });
+
   revalidatePath('/account/notifications');
   return { notice: 'Notification preferences saved.' };
 }
@@ -223,6 +237,17 @@ export async function changePasswordAction(
   if (error) {
     return { error: 'Could not update your password. Please try again.' };
   }
+  await recordEvent(supabase, {
+    action: 'Changed password',
+    category: 'security',
+    notify: {
+      to: 'self',
+      event: 'security',
+      title: 'Your password was changed',
+      body: 'If this was not you, reset your password now.',
+      href: '/account/security',
+    },
+  });
   return { notice: 'Password updated.' };
 }
 
@@ -237,5 +262,9 @@ export async function signOutOtherSessionsAction(
   const supabase = await createClient();
   const { error } = await supabase.auth.signOut({ scope: 'others' });
   if (error) return { error: 'Could not sign out other devices.' };
+  await recordEvent(supabase, {
+    action: 'Signed out other devices',
+    category: 'security',
+  });
   return { notice: 'Signed out of all other devices.' };
 }

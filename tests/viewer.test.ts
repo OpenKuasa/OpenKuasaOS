@@ -18,6 +18,7 @@ test('uses full_name from user metadata when present', () => {
     name: 'Siti Aminah',
     email: 'siti@acme.my',
     initials: 'SA',
+    avatarUrl: null,
     orgName: 'Acme Sdn Bhd',
     role: 'owner',
     isDemo: false,
