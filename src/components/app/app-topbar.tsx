@@ -36,7 +36,7 @@ export function AppTopbar({
 }) {
   const { ref: helpRef, triggerProps: helpTrigger } = useIconHover();
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
+    <header className="relative flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4 max-[359px]:gap-1 max-[359px]:px-2">
       {onOpenNav ? (
         <Button
           variant="ghost"
@@ -62,7 +62,7 @@ export function AppTopbar({
 
       <NavSearch />
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-2 max-[359px]:gap-1">
         <ThemeToggle />
 
         <DropdownMenu>
