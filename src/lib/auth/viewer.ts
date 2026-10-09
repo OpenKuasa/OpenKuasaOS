@@ -2,6 +2,7 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import type { OrgRole } from './current-org';
+import { MFA_VERIFY_PATH } from './mfa';
 import { canSee, type Capability } from './permissions';
 
 /** The signed-in person and their workspace, as shown in the app chrome. */
@@ -101,6 +102,14 @@ export const getViewer = cache(async (): Promise<Viewer> => {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect('/login');
+
+  // A user with an authenticator must pass it before anything else loads.
+  // Users without one skip the extra call entirely.
+  if (user.factors?.some((f) => f.status === 'verified')) {
+    const { data: aal } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel !== 'aal2') redirect(MFA_VERIFY_PATH);
+  }
 
   const { data: profile } = await supabase
     .from('profiles')
