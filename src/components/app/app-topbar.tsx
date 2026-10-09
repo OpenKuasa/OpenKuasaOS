@@ -68,7 +68,8 @@ export function AppTopbar({
         </Button>
       ) : null}
 
-      <div className="relative w-full max-w-sm">
+      {/* Below 400px there is no room for a usable search field. */}
+      <div className="relative w-full max-w-sm max-[400px]:hidden">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search contacts, deals, people…"
@@ -85,7 +86,7 @@ export function AppTopbar({
         >
           <AnimatedIcon ref={creditsRef} name={(Coins as unknown as { displayName?: string }).displayName} size={16} className="text-primary" />
           <span>27,240</span>
-          <span className="text-muted-foreground">credits</span>
+          <span className="text-muted-foreground max-lg:hidden">credits</span>
         </Link>
 
         <ThemeToggle />
