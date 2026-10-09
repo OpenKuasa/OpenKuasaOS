@@ -1,6 +1,11 @@
 import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
-import { getViewer, hasSupabaseEnv, initialsOf } from '@/lib/auth/viewer';
+import {
+  avatarPublicUrl,
+  getViewer,
+  hasSupabaseEnv,
+  initialsOf,
+} from '@/lib/auth/viewer';
 import type { OrgRole } from '@/lib/auth/current-org';
 import {
   resolveNotificationPrefs,
@@ -10,6 +15,7 @@ import {
 export type Profile = {
   fullName: string;
   email: string | null;
+  avatarUrl: string | null;
   phone: string;
   jobTitle: string;
   timezone: string;
@@ -36,6 +42,7 @@ export type TeamMember = {
   name: string;
   email: string;
   initials: string;
+  avatarUrl: string | null;
   role: OrgRole;
   joinedAt: string;
   isYou: boolean;
@@ -46,6 +53,7 @@ export const getProfile = cache(async (): Promise<Profile> => {
   const base: Profile = {
     fullName: viewer.isDemo ? '' : viewer.name,
     email: viewer.email,
+    avatarUrl: viewer.avatarUrl,
     phone: '',
     jobTitle: '',
     timezone: 'Asia/Kuala_Lumpur',
@@ -139,7 +147,7 @@ export const getTeam = cache(async (): Promise<TeamMember[]> => {
   // RLS already limits profiles to the viewer and their org-mates.
   const { data: profiles, error: profileErr } = await supabase
     .from('profiles')
-    .select('user_id, full_name, email')
+    .select('user_id, full_name, email, avatar_path')
     .not('email', 'is', null);
   if (profileErr) throw profileErr;
 
@@ -154,6 +162,7 @@ export const getTeam = cache(async (): Promise<TeamMember[]> => {
       name,
       email: p.email,
       initials: initialsOf(name),
+      avatarUrl: avatarPublicUrl(p.avatar_path),
       role: m.role as OrgRole,
       joinedAt: m.created_at,
       isYou: m.user_id === viewer.userId,
