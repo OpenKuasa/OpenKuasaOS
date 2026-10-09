@@ -8,11 +8,37 @@ import {
   PasswordForm,
   SignOutOthersForm,
 } from '@/components/account/security-forms';
+import { MfaCard } from '@/components/account/mfa-card';
 import { ReadOnlyNotice } from '@/components/account/settings-form';
+import { RECOVERY_CODE_COUNT, getMfaStatus } from '@/lib/auth/mfa';
 import { getViewer } from '@/lib/auth/viewer';
+import { createClient } from '@/lib/supabase/server';
 
-export default async function SecurityPage() {
+/** Whether the authenticator is on and how many recovery codes are unused. */
+async function loadMfa(): Promise<{
+  enabled: boolean;
+  remaining: number | null;
+}> {
+  const supabase = await createClient();
+  const status = await getMfaStatus(supabase);
+  if (!status.factors.length) return { enabled: false, remaining: null };
+
+  const { data, error } = await supabase.rpc('recovery_codes_remaining');
+  return {
+    enabled: true,
+    remaining: error || typeof data !== 'number' ? null : data,
+  };
+}
+
+export default async function SecurityPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string | string[] }>;
+}) {
+  const { notice } = await searchParams;
   const viewer = await getViewer();
+  // Demo guests (and the no-credentials preview) cannot enrol a second factor.
+  const mfa = viewer.isDemo ? null : await loadMfa();
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
@@ -24,6 +50,18 @@ export default async function SecurityPage() {
       </div>
 
       <div className="space-y-6">
+        {/* Set by /mfa/recover after a recovery code was used to sign in. */}
+        {notice === 'recovered' && mfa && !mfa.enabled ? (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
+          >
+            You signed in with a recovery code, so two-factor authentication
+            is now off and your other recovery codes no longer work. Set it up
+            again below to stay protected.
+          </p>
+        ) : null}
+
         <Card>
           <CardHeader>
             <CardTitle>Password</CardTitle>
@@ -44,16 +82,19 @@ export default async function SecurityPage() {
           <CardHeader>
             <CardTitle>Two-factor authentication</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-medium">Authenticator app</p>
-              <p className="text-sm text-muted-foreground">
-                Add a second step at sign-in
-              </p>
-            </div>
-            <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-              Not available yet
-            </span>
+          <CardContent>
+            {mfa ? (
+              <MfaCard
+                enabled={mfa.enabled}
+                remaining={mfa.remaining}
+                total={RECOVERY_CODE_COUNT}
+              />
+            ) : (
+              <ReadOnlyNotice>
+                Two-factor authentication is not available in the demo
+                workspace. Sign up to protect your own account.
+              </ReadOnlyNotice>
+            )}
           </CardContent>
         </Card>
 
