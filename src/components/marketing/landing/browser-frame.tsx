@@ -13,7 +13,7 @@ export function BrowserFrame({
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-xl border border-white/10 bg-[#0d1412] shadow-[0_40px_120px_-20px_rgba(16,185,129,0.35)]',
+        'overflow-hidden rounded-xl border border-white/10 bg-[#0d1412] shadow-[0_40px_120px_-20px_var(--frame-glow,rgba(16,185,129,0.35))] transition-shadow duration-700',
         className,
       )}
     >

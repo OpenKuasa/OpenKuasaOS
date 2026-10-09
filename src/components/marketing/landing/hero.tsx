@@ -173,7 +173,12 @@ export function Hero() {
             className="mt-10 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-xs uppercase tracking-[0.2em] text-white/45"
           >
             {PRODUCT_CARDS.map((p) => (
-              <li key={p.key} className="flex items-center gap-5">
+              <li
+                key={p.key}
+                className="flex items-center gap-2"
+                style={{ color: `var(--product-${p.key}-bright)` }}
+              >
+                <span aria-hidden className="size-1.5 rounded-full bg-current" />
                 {p.name}
               </li>
             ))}

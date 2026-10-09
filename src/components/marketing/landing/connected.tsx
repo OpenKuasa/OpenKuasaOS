@@ -158,15 +158,15 @@ export function Connected() {
                 <path
                   data-link
                   d={p.path}
-                  stroke="rgb(52 211 153)"
-                  strokeOpacity="0.35"
+                  style={{ stroke: `var(--product-${p.key}-bright)` }}
+                  strokeOpacity="0.45"
                   strokeWidth="1.5"
                 />
                 <path
                   data-pulse
                   d={p.path}
                   pathLength={100}
-                  stroke="rgb(167 243 208)"
+                  style={{ stroke: `var(--product-${p.key}-bright)` }}
                   strokeWidth="2.5"
                   strokeDasharray="6 94"
                 />
@@ -184,15 +184,20 @@ export function Connected() {
                     'min-w-0 lg:absolute lg:w-[25%] lg:-translate-y-1/2',
                     p.side === 'left' ? 'lg:left-0' : 'lg:right-0',
                   )}
-                  style={{ top: `${p.top}%` }}
+                  style={
+                    {
+                      top: `${p.top}%`,
+                      '--pc': `var(--product-${p.key}-bright)`,
+                    } as React.CSSProperties
+                  }
                 >
                   <Link
                     href={p.href}
                     data-card={p.side}
-                    className="group block rounded-2xl border border-white/10 bg-[#0b1210]/90 p-4 backdrop-blur transition-colors duration-300 hover:border-emerald-400/60 hover:bg-[#0f1a16]"
+                    className="group block rounded-2xl border border-white/10 bg-[#0b1210]/90 p-4 backdrop-blur transition-colors duration-300 hover:border-(--pc)/70 hover:bg-[#0f1a16]"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-emerald-400/10 text-emerald-400 transition-colors group-hover:bg-emerald-400 group-hover:text-[#050807]">
+                      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-(--pc)/12 text-(--pc) transition-colors group-hover:bg-(--pc) group-hover:text-[#050807]">
                         <Icon className="size-5" />
                       </span>
                       <div className="min-w-0">
@@ -203,7 +208,7 @@ export function Connected() {
                           {LEGEND[p.key].name} · {p.category}
                         </p>
                       </div>
-                      <ArrowUpRight className="ml-auto size-4 shrink-0 text-white/30 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-emerald-400" />
+                      <ArrowUpRight className="ml-auto size-4 shrink-0 text-white/30 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-(--pc)" />
                     </div>
                     <p className="mt-3 text-sm font-medium text-white/85">
                       {p.tagline}

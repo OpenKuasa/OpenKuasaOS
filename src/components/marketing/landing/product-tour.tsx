@@ -59,7 +59,13 @@ export function ProductTour() {
     <section
       ref={root}
       id="products"
-      className="relative bg-[#050807] text-white h-[520vh]"
+      className="relative h-[520vh] bg-[#050807] text-white"
+      style={
+        {
+          '--pc': `var(--product-${current.key}-bright)`,
+          '--frame-glow': 'color-mix(in oklch, var(--pc) 38%, transparent)',
+        } as React.CSSProperties
+      }
     >
       <div className="flex flex-col justify-center sticky top-0 h-dvh overflow-hidden px-6">
         <div className="mx-auto grid w-full max-w-[1500px] items-center gap-8 lg:grid-cols-[0.55fr_1.45fr] lg:gap-12">
@@ -76,7 +82,7 @@ export function ProductTour() {
                   className={cn(
                     'text-2xl font-bold tracking-tight transition-all duration-500 motion-reduce:transition-none sm:text-3xl lg:text-5xl',
                     i === active
-                      ? 'text-white lg:translate-x-3'
+                      ? 'text-(--pc) lg:translate-x-3'
                       : 'text-white/20',
                   )}
                 >
@@ -92,9 +98,9 @@ export function ProductTour() {
               </p>
               <p className="mt-2 text-xl font-semibold">{current.tagline}</p>
               <p className="mt-2 max-w-md text-white/60">{current.blurb}</p>
-              <div className="mt-4 flex max-w-md gap-2.5 border-l border-emerald-400/40 pl-3 text-sm">
+              <div className="mt-4 flex max-w-md gap-2.5 border-l border-(--pc)/50 pl-3 text-sm">
                 <p className="text-white/55">
-                  <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-(--pc)">
                     why {current.name}
                   </span>
                   <br />
@@ -106,7 +112,7 @@ export function ProductTour() {
               </div>
               <Link
                 href={current.href}
-                className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-400 hover:underline"
+                className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-(--pc) hover:underline"
               >
                 Open {current.name}
                 <ArrowRight className="size-4" />
@@ -116,7 +122,7 @@ export function ProductTour() {
             <div className="mt-6 h-px w-full max-w-md bg-white/10">
               <div
                 data-tour-progress
-                className="h-px origin-left scale-x-0 bg-emerald-400"
+                className="h-px origin-left scale-x-0 bg-(--pc)"
               />
             </div>
           </div>
