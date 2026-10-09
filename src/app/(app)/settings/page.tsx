@@ -1,12 +1,6 @@
-import { Settings } from 'lucide-react';
-import { PlaceholderPage } from '@/components/app/placeholder-page';
+import { redirect } from 'next/navigation';
 
+// Workspace settings live under /account; keep the old URL working.
 export default function SettingsPage() {
-  return (
-    <PlaceholderPage
-      title="Settings"
-      subtitle="Workspace, billing, security & integrations"
-      icon={Settings}
-    />
-  );
+  redirect('/account');
 }

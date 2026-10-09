@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { ASSISTANT } from '@/config/nav';
 import { ReplyCard, type CardType } from '@/components/command/reply-cards';
+import { useViewer } from '@/components/app/viewer-context';
 import { cn } from '@/lib/utils';
 
 type Role = 'user' | 'assistant';
@@ -104,6 +105,8 @@ export function SariConversation({
   showSidebar?: boolean;
   compact?: boolean;
 }) {
+  const viewer = useViewer();
+  const firstName = viewer.isDemo ? null : viewer.name.split(' ')[0];
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
@@ -194,7 +197,7 @@ export function SariConversation({
                     compact ? 'text-xl' : 'text-3xl',
                   )}
                 >
-                  How can I help, Saudara?
+                  {firstName ? `How can I help, ${firstName}?` : 'How can I help?'}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
                   I’m Tuah, powered by {ASSISTANT.name}
