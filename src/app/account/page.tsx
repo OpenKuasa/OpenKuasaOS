@@ -3,6 +3,7 @@ import { Search, Plus } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { getViewer } from '@/lib/auth/viewer';
 
 const STATS = [
   { value: 4, label: 'Team members' },
@@ -28,19 +29,22 @@ function initials(name: string) {
     .join('');
 }
 
-export default function AccountHomePage() {
+export default async function AccountHomePage() {
+  const viewer = await getViewer();
+  const role = viewer.role[0].toUpperCase() + viewer.role.slice(1);
+
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       {/* profile header */}
       <div className="flex flex-col items-center text-center">
         <Avatar className="size-20 border-4 border-background shadow-sm">
           <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
-            JD
+            {viewer.initials}
           </AvatarFallback>
         </Avatar>
-        <h1 className="mt-3 text-2xl font-bold tracking-tight">Saudara</h1>
+        <h1 className="mt-3 text-2xl font-bold tracking-tight">{viewer.name}</h1>
         <p className="text-sm text-muted-foreground">
-          jon@openkuasa.com · Administrator
+          {[viewer.email, viewer.orgName, role].filter(Boolean).join(' · ')}
         </p>
       </div>
 

@@ -165,7 +165,7 @@ export function AppTopbar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <UserMenu name="Saudara" />
+        <UserMenu />
       </div>
     </header>
   );

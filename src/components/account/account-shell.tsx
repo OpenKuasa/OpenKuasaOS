@@ -7,8 +7,9 @@ import { LayoutGrid, LogOut, Menu } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { AccountSidebar } from '@/components/account/account-sidebar';
 import { UserMenu } from '@/components/app/user-menu';
+import { SignOutButton } from '@/components/auth/sign-out-button';
 
-export default function AccountLayout({
+export function AccountShell({
   children,
 }: {
   children: React.ReactNode;
@@ -49,14 +50,13 @@ export default function AccountLayout({
           >
             <LayoutGrid className="size-5" />
           </Link>
-          <Link
-            href="/login"
+          <SignOutButton
             aria-label="Sign out"
             className="grid size-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             <LogOut className="size-5" />
-          </Link>
-          <UserMenu name="Saudara" />
+          </SignOutButton>
+          <UserMenu />
         </div>
       </header>
 

@@ -1,8 +1,8 @@
-import { AppShell } from '@/components/app/app-shell';
+import { AccountShell } from '@/components/account/account-shell';
 import { ViewerProvider } from '@/components/app/viewer-context';
 import { getViewer } from '@/lib/auth/viewer';
 
-export default async function AppLayout({
+export default async function AccountLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -11,7 +11,7 @@ export default async function AppLayout({
 
   return (
     <ViewerProvider viewer={viewer}>
-      <AppShell>{children}</AppShell>
+      <AccountShell>{children}</AccountShell>
     </ViewerProvider>
   );
 }

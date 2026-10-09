@@ -17,8 +17,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { getViewer } from '@/lib/auth/viewer';
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  const viewer = await getViewer();
+
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       <div className="mb-6">
@@ -35,7 +38,7 @@ export default function ProfilePage() {
             <div className="group relative size-16 shrink-0">
               <Avatar className="size-16">
                 <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">
-                  JD
+                  {viewer.initials}
                 </AvatarFallback>
               </Avatar>
               <div className="absolute inset-0 hidden items-center justify-center rounded-full bg-black/40 text-white group-hover:flex">
@@ -61,11 +64,11 @@ export default function ProfilePage() {
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="full-name">Full name</Label>
-              <Input id="full-name" defaultValue="Saudara" />
+              <Input id="full-name" defaultValue={viewer.name} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" defaultValue="jon@openkuasa.com" />
+              <Input id="email" type="email" defaultValue={viewer.email ?? ''} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>

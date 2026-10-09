@@ -21,6 +21,7 @@ import {
   LogOut,
   type LucideIcon,
 } from 'lucide-react';
+import { SignOutButton } from '@/components/auth/sign-out-button';
 import { cn } from '@/lib/utils';
 
 type Item = { label: string; href: string; icon: LucideIcon };
@@ -115,13 +116,10 @@ export function AccountSidebar() {
           <Home className="size-[18px] shrink-0" />
           OpenKuasa OS home
         </Link>
-        <Link
-          href="/login"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-        >
+        <SignOutButton className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
           <LogOut className="size-[18px] shrink-0" />
           Sign out
-        </Link>
+        </SignOutButton>
       </div>
     </aside>
   );

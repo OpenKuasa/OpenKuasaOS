@@ -10,6 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { SignOutButton } from '@/components/auth/sign-out-button';
+import { useViewer } from '@/components/app/viewer-context';
 
 const ITEMS = [
   { label: 'Pricing & Features', href: '/account/plan' },
@@ -22,16 +24,17 @@ const ITEMS = [
   { label: 'Features Request', href: '/account/feedback' },
 ];
 
-export function UserMenu({ name = 'Saudara' }: { name?: string }) {
+export function UserMenu() {
+  const { name, initials, email, orgName } = useViewer();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-full border bg-background py-1 pl-1 pr-2.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <Avatar className="size-7">
           <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-            {name[0]}
+            {initials[0]}
           </AvatarFallback>
         </Avatar>
-        <span className="hidden sm:inline">{name}</span>
+        <span className="hidden max-w-32 truncate sm:inline">{name}</span>
         <ChevronDown className="size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
 
@@ -43,11 +46,14 @@ export function UserMenu({ name = 'Saudara' }: { name?: string }) {
         >
           <Avatar className="size-11">
             <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
-              JD
+              {initials}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
-            <p className="truncate font-bold leading-tight">Saudara</p>
+            <p className="truncate font-bold leading-tight">{name}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {email ? `${email} · ${orgName}` : orgName}
+            </p>
             <p className="text-sm font-medium text-primary">
               Profile &amp; Preferences
             </p>
@@ -67,9 +73,9 @@ export function UserMenu({ name = 'Saudara' }: { name?: string }) {
         <DropdownMenuSeparator className="my-0" />
 
         <div className="flex items-center justify-between px-3 py-2.5 text-sm font-medium">
-          <Link href="/login" className="text-primary hover:underline">
+          <SignOutButton className="text-primary hover:underline">
             Sign out
-          </Link>
+          </SignOutButton>
           <Link
             href="/privacy"
             className="text-muted-foreground hover:text-foreground hover:underline"
