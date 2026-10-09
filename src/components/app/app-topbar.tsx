@@ -5,6 +5,7 @@ import { Search, Bell, CircleHelp, Coins, PanelLeftOpen, Menu } from 'lucide-rea
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/app/user-menu';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { GitHubIcon } from '@/components/brand/github-icon';
 import { REPO_URL } from '@/config/marketing';
 import { useIconHover } from '@animateicons/react';
@@ -86,6 +87,8 @@ export function AppTopbar({
           <span>27,240</span>
           <span className="text-muted-foreground">credits</span>
         </Link>
+
+        <ThemeToggle />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

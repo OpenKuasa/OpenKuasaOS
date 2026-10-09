@@ -7,6 +7,7 @@ import { LayoutGrid, LogOut, Menu } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { AccountSidebar } from '@/components/account/account-sidebar';
 import { UserMenu } from '@/components/app/user-menu';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 
 export default function AccountLayout({
   children,
@@ -56,6 +57,7 @@ export default function AccountLayout({
           >
             <LogOut className="size-5" />
           </Link>
+          <ThemeToggle className="rounded-full text-muted-foreground" />
           <UserMenu name="Saudara" />
         </div>
       </header>
