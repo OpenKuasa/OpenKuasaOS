@@ -47,4 +47,25 @@ testWithSupabase('writes are rejected this slice (no write grant)', async () => 
     .from('campaigns')
     .insert({ org_id: owner.orgId, name: 'x', channel: 'whatsapp' });
   expect(error, 'insert should be denied').not.toBeNull();
+  expect(error?.code).toBe('42501'); // permission denied, not a constraint failure
+});
+
+testWithSupabase('the demo org is seeded and a demo viewer can read it', async () => {
+  const d = await anonUser();
+  const { data: demoId, error } = await d.c.rpc('join_demo_org');
+  expect(error, error?.message).toBeNull();
+
+  const campaigns = await d.c.from('campaigns').select('id').eq('org_id', demoId);
+  expect(campaigns.data ?? []).toHaveLength(5);
+  const leads = await d.c.from('leads').select('id', { count: 'exact', head: true }).eq('org_id', demoId);
+  expect(leads.count).toBe(342);
+  const appts = await d.c.from('appointments').select('scheduled_at').eq('org_id', demoId);
+  expect(appts.data ?? []).toHaveLength(3);
+  expect((appts.data ?? []).every((a) => new Date(a.scheduled_at) > new Date())).toBe(true);
+
+  // Isolation: the fresh owner (not a demo member) sees none of the demo rows.
+  const ownerSees = await owner.c.from('campaigns').select('id');
+  expect(ownerSees.data ?? []).toHaveLength(0);
+
+  await d.c.auth.signOut();
 });
