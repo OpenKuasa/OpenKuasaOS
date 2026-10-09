@@ -14,8 +14,11 @@
 
 import type {
   Appointment,
+  Automation,
+  Broadcast,
   Campaign,
   Channel,
+  Form,
   Lead,
   LeadStage,
   ReachData,
@@ -160,6 +163,53 @@ export function seedAppointments(now: Date): Appointment[] {
   ].map((a) => ({ ...a, created_at: daysAgo(now, 2) }));
 }
 
+/** Four lead-capture forms; submissions loosely track the channel lead mix. */
+export function seedForms(now: Date): Form[] {
+  const rows: Array<Omit<Form, 'id' | 'created_at'> & { ageDays: number }> = [
+    { name: 'Tempahan Pakej Raya', channel: 'facebook', submissions_count: 84, status: 'active', ageDays: 38 },
+    { name: 'Muat Turun eBook Percuma', channel: 'whatsapp', submissions_count: 117, status: 'active', ageDays: 31 },
+    { name: 'Tempah Sesi Konsultasi', channel: 'instagram', submissions_count: 39, status: 'active', ageDays: 22 },
+    { name: 'Daftar Waitlist Produk Baharu', channel: 'tiktok', submissions_count: 52, status: 'paused', ageDays: 15 },
+  ];
+  return rows.map(({ ageDays, ...r }, i) => ({
+    id: `form_${i + 1}`,
+    ...r,
+    created_at: daysAgo(now, ageDays),
+  }));
+}
+
+/** Five past broadcasts (opened <= sent, clicked <= opened), newest sent last in the list. */
+export function seedBroadcasts(now: Date): Broadcast[] {
+  const rows: Array<Omit<Broadcast, 'id' | 'created_at' | 'sent_at'> & { sentDaysAgo: number }> = [
+    { name: 'Salam Ramadan — Tawaran Awal', channel: 'whatsapp', sent_count: 320, opened_count: 288, clicked_count: 96, sentDaysAgo: 38 },
+    { name: 'Newsletter Mingguan #12', channel: 'email', sent_count: 540, opened_count: 205, clicked_count: 41, sentDaysAgo: 27 },
+    { name: 'Promo Hari Raya 3 Hari', channel: 'whatsapp', sent_count: 410, opened_count: 369, clicked_count: 132, sentDaysAgo: 18 },
+    { name: 'Jemputan Webinar Pemasaran', channel: 'email', sent_count: 480, opened_count: 196, clicked_count: 58, sentDaysAgo: 9 },
+    { name: 'Peringatan Troli Tertinggal', channel: 'whatsapp', sent_count: 150, opened_count: 131, clicked_count: 47, sentDaysAgo: 3 },
+  ];
+  return rows.map(({ sentDaysAgo, ...r }, i) => ({
+    id: `bcast_${i + 1}`,
+    ...r,
+    sent_at: daysAgo(now, sentDaysAgo),
+    created_at: daysAgo(now, sentDaysAgo + 1),
+  }));
+}
+
+/** Four automation workflows. */
+export function seedAutomations(now: Date): Automation[] {
+  const rows: Array<Omit<Automation, 'id' | 'created_at'> & { ageDays: number }> = [
+    { name: 'Sapaan Lead Baharu', trigger: 'Lead baharu masuk dari borang', status: 'active', runs_count: 342, ageDays: 40 },
+    { name: 'Follow Up 24 Jam', trigger: 'Lead tiada balasan selepas 24 jam', status: 'active', runs_count: 198, ageDays: 33 },
+    { name: 'Peringatan Temujanji', trigger: '24 jam sebelum temujanji', status: 'active', runs_count: 74, ageDays: 21 },
+    { name: 'Menang Semula Pelanggan Lama', trigger: 'Pelanggan tidak aktif 60 hari', status: 'draft', runs_count: 0, ageDays: 6 },
+  ];
+  return rows.map(({ ageDays, ...r }, i) => ({
+    id: `auto_${i + 1}`,
+    ...r,
+    created_at: daysAgo(now, ageDays),
+  }));
+}
+
 /**
  * Build a seed-backed {@link ReachData} provider anchored to `now`. Called per
  * request (not memoized) so appointment "upcoming" windows stay correct on a
@@ -169,9 +219,15 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
   const campaigns = seedCampaigns(now);
   const leads = seedLeads(now);
   const appointments = seedAppointments(now);
+  const forms = seedForms(now);
+  const broadcasts = seedBroadcasts(now);
+  const automations = seedAutomations(now);
   return {
     listCampaigns: async () => campaigns,
     listLeads: async () => leads,
     listAppointments: async () => appointments,
+    listForms: async () => forms,
+    listBroadcasts: async () => broadcasts,
+    listAutomations: async () => automations,
   };
 }

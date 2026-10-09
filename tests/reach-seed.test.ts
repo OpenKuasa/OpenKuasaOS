@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   createSeedReachData,
   seedAppointments,
+  seedAutomations,
+  seedBroadcasts,
   seedCampaigns,
+  seedForms,
   seedLeads,
   TOTAL_SEED_LEADS,
 } from '@/lib/reach/seed';
@@ -65,5 +68,21 @@ describe('Rimba seed data', () => {
     expect(await data.listCampaigns()).toHaveLength(5);
     expect(await data.listLeads()).toHaveLength(342);
     expect(await data.listAppointments()).toHaveLength(3);
+    expect(await data.listForms()).toHaveLength(4);
+    expect(await data.listBroadcasts()).toHaveLength(5);
+    expect(await data.listAutomations()).toHaveLength(4);
+  });
+
+  it('seeds consistent forms, broadcasts and automations', () => {
+    expect(seedForms(NOW)).toHaveLength(4);
+    for (const b of seedBroadcasts(NOW)) {
+      expect(b.opened_count).toBeLessThanOrEqual(b.sent_count);
+      expect(b.clicked_count).toBeLessThanOrEqual(b.opened_count);
+      expect(new Date(b.sent_at).getTime()).toBeLessThan(NOW.getTime());
+    }
+    const autos = seedAutomations(NOW);
+    expect(autos).toHaveLength(4);
+    expect(autos.filter((a) => a.status === 'draft').every((a) => a.runs_count === 0)).toBe(true);
+    expect(seedForms(NOW)).toEqual(seedForms(NOW));
   });
 });

@@ -13,8 +13,11 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import {
   type Appointment,
+  type Automation,
+  type Broadcast,
   type Campaign,
   type Channel,
+  type Form,
   type Lead,
   LEAD_STAGES,
   type LeadStage,
@@ -160,11 +163,101 @@ export function filterUpcomingAppointments(
     }));
 }
 
+export type AdsOverview = {
+  total_spend_cents: number;
+  total_spend: string;
+  total_leads: number;
+  blended_cpl_cents: number;
+  blended_cpl: string;
+  active_campaigns: number;
+  paused_campaigns: number;
+};
+
+/** Account-wide ad totals; blended CPL = total spend ÷ total platform-reported leads. */
+export function deriveAdsOverview(campaigns: Campaign[]): AdsOverview {
+  const total_spend_cents = campaigns.reduce((a, c) => a + c.spend_cents, 0);
+  const total_leads = campaigns.reduce((a, c) => a + c.leads_count, 0);
+  const blended_cpl_cents = total_leads === 0 ? 0 : Math.round(total_spend_cents / total_leads);
+  return {
+    total_spend_cents,
+    total_spend: rm(total_spend_cents),
+    total_leads,
+    blended_cpl_cents,
+    blended_cpl: rm(blended_cpl_cents),
+    active_campaigns: campaigns.filter((c) => c.status === 'active').length,
+    paused_campaigns: campaigns.filter((c) => c.status === 'paused').length,
+  };
+}
+
+/** CRM contacts derived from leads, newest first, optionally filtered. */
+export function deriveContacts(
+  leads: Lead[],
+  opts: { stage?: LeadStage; channel?: Channel; limit?: number } = {},
+) {
+  const { stage, channel, limit = 10 } = opts;
+  return leads
+    .filter((l) => (stage ? l.stage === stage : true))
+    .filter((l) => (channel ? l.channel === channel : true))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, limit)
+    .map((l) => ({
+      name: l.name,
+      channel: l.channel,
+      stage: l.stage,
+      source: l.source,
+      created_at: l.created_at,
+    }));
+}
+
+export function summarizeForms(forms: Form[], limit = 10) {
+  return [...forms]
+    .sort((a, b) => b.submissions_count - a.submissions_count)
+    .slice(0, limit)
+    .map((f) => ({
+      name: f.name,
+      channel: f.channel,
+      submissions: f.submissions_count,
+      status: f.status,
+    }));
+}
+
+/** Broadcasts newest first. */
+export function summarizeBroadcasts(broadcasts: Broadcast[], limit = 10) {
+  return [...broadcasts]
+    .sort((a, b) => new Date(b.sent_at).getTime() - new Date(a.sent_at).getTime())
+    .slice(0, limit)
+    .map((b) => ({
+      name: b.name,
+      channel: b.channel,
+      sent: b.sent_count,
+      opened: b.opened_count,
+      clicked: b.clicked_count,
+      open_rate_pct: b.sent_count === 0 ? 0 : Math.round((b.opened_count / b.sent_count) * 1000) / 10,
+      sent_at: b.sent_at,
+    }));
+}
+
+export function summarizeAutomations(automations: Automation[], limit = 10) {
+  return [...automations]
+    .sort((a, b) => b.runs_count - a.runs_count)
+    .slice(0, limit)
+    .map((a) => ({
+      name: a.name,
+      trigger: a.trigger,
+      status: a.status,
+      runs: a.runs_count,
+    }));
+}
+
+const limitSchema = (describe: string) =>
+  z.number().int().positive().max(50).optional().describe(describe);
+
 /**
- * Build the four Jebat data tools over a {@link ReachData} provider. `now` is
- * injectable for tests; the route passes the real clock.
+ * Build all Jebat read-only data tools over a {@link ReachData} provider. `now`
+ * (a Date or a clock function) is injectable for tests; the route uses the real clock.
  */
-export function createReachTools(data: ReachData, now: () => Date = () => new Date()) {
+export function createReachTools(data: ReachData, nowArg: Date | (() => Date) = () => new Date()) {
+  const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
   return {
     getCampaigns: tool({
       description:
@@ -208,6 +301,43 @@ export function createReachTools(data: ReachData, now: () => Date = () => new Da
       }),
       execute: async ({ limit }) =>
         filterUpcomingAppointments(await data.listAppointments(), now(), limit ?? 5),
+    }),
+
+    getAdsOverview: tool({
+      description:
+        'Overall ad performance: total spend (RM), total leads, blended cost-per-lead and the count of active vs paused campaigns.',
+      inputSchema: z.object({}),
+      execute: async () => deriveAdsOverview(await data.listCampaigns()),
+    }),
+
+    listContacts: tool({
+      description:
+        'Recent CRM contacts (derived from leads), newest first: name, channel, stage, source, created_at. Optionally filter by stage or channel.',
+      inputSchema: z.object({
+        stage: z.enum(LEAD_STAGES as [LeadStage, ...LeadStage[]]).optional().describe('Only contacts at this stage.'),
+        channel: z.enum(['whatsapp', 'facebook', 'instagram', 'tiktok']).optional().describe('Only contacts from this channel.'),
+        limit: limitSchema('Max contacts to return (default 10).'),
+      }),
+      execute: async ({ stage, channel, limit }) =>
+        deriveContacts(await data.listLeads(), { stage, channel, limit }),
+    }),
+
+    listForms: tool({
+      description: 'Lead-capture forms with channel, submissions count and status, most submissions first.',
+      inputSchema: z.object({ limit: limitSchema('Max forms to return (default 10).') }),
+      execute: async ({ limit }) => summarizeForms(await data.listForms(), limit),
+    }),
+
+    listBroadcasts: tool({
+      description: 'Email / WhatsApp broadcasts with sent, opened, clicked counts and sent date, newest first.',
+      inputSchema: z.object({ limit: limitSchema('Max broadcasts to return (default 10).') }),
+      execute: async ({ limit }) => summarizeBroadcasts(await data.listBroadcasts(), limit),
+    }),
+
+    listAutomations: tool({
+      description: 'Automation workflows with trigger, status and number of runs, most runs first.',
+      inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10).') }),
+      execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), limit),
     }),
   };
 }

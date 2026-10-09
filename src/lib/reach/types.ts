@@ -54,6 +54,42 @@ export type Appointment = {
   created_at: string;
 };
 
+export type FormStatus = 'active' | 'paused';
+export type BroadcastChannel = 'whatsapp' | 'email';
+export type AutomationStatus = 'active' | 'paused' | 'draft';
+
+/** A lead-capture form. */
+export type Form = {
+  id: string;
+  name: string;
+  channel: Channel;
+  submissions_count: number;
+  status: FormStatus;
+  created_at: string;
+};
+
+/** A one-to-many email / WhatsApp message blast. */
+export type Broadcast = {
+  id: string;
+  name: string;
+  channel: BroadcastChannel;
+  sent_count: number;
+  opened_count: number;
+  clicked_count: number;
+  sent_at: string;
+  created_at: string;
+};
+
+/** An automation workflow (trigger → actions). */
+export type Automation = {
+  id: string;
+  name: string;
+  trigger: string;
+  status: AutomationStatus;
+  runs_count: number;
+  created_at: string;
+};
+
 /**
  * The data seam the AI tools read through. The seed provider returns in-memory
  * fixtures today; the data slice adds a Supabase provider whose methods query
@@ -63,4 +99,7 @@ export interface ReachData {
   listCampaigns(): Promise<Campaign[]>;
   listLeads(): Promise<Lead[]>;
   listAppointments(): Promise<Appointment[]>;
+  listForms(): Promise<Form[]>;
+  listBroadcasts(): Promise<Broadcast[]>;
+  listAutomations(): Promise<Automation[]>;
 }

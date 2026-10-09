@@ -1,12 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createReachTools,
+  deriveAdsOverview,
+  deriveContacts,
   deriveLeadSummary,
   deriveSpendByChannel,
   filterUpcomingAppointments,
   rm,
+  summarizeAutomations,
+  summarizeBroadcasts,
   summarizeCampaigns,
+  summarizeForms,
 } from '@/lib/ai/tools';
-import { seedAppointments, seedCampaigns, seedLeads } from '@/lib/reach/seed';
+import {
+  createSeedReachData,
+  seedAppointments,
+  seedAutomations,
+  seedBroadcasts,
+  seedCampaigns,
+  seedForms,
+  seedLeads,
+} from '@/lib/reach/seed';
 import type { Appointment } from '@/lib/reach/types';
 
 const NOW = new Date('2026-10-09T00:00:00.000Z');
@@ -110,5 +124,84 @@ describe('filterUpcomingAppointments', () => {
     const upcoming = filterUpcomingAppointments([past, ...seedAppointments(NOW)], NOW);
     expect(upcoming.some((a) => a.contact_name === 'Ghani Omar')).toBe(false);
     expect(upcoming).toHaveLength(3);
+  });
+});
+
+describe('deriveAdsOverview', () => {
+  const o = deriveAdsOverview(seedCampaigns(NOW));
+
+  it('totals spend, leads and blended CPL', () => {
+    expect(o.total_spend_cents).toBe(500758);
+    expect(o.total_spend).toBe('RM 5,007.58');
+    expect(o.total_leads).toBe(299);
+    expect(o.blended_cpl_cents).toBe(Math.round(500758 / 299));
+  });
+
+  it('counts active vs paused campaigns', () => {
+    expect(o.active_campaigns).toBe(3);
+    expect(o.paused_campaigns).toBe(2);
+  });
+
+  it('handles no campaigns', () => {
+    expect(deriveAdsOverview([]).blended_cpl_cents).toBe(0);
+  });
+});
+
+describe('deriveContacts', () => {
+  const leads = seedLeads(NOW);
+
+  it('sorts newest first and respects the limit', () => {
+    const rows = deriveContacts(leads, { limit: 5 });
+    expect(rows).toHaveLength(5);
+    const times = rows.map((r) => new Date(r.created_at).getTime());
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+  });
+
+  it('filters by stage and channel', () => {
+    const won = deriveContacts(leads, { stage: 'won', limit: 50 });
+    expect(won).toHaveLength(48);
+    expect(won.every((r) => r.stage === 'won')).toBe(true);
+    const tt = deriveContacts(leads, { channel: 'tiktok', limit: 50 });
+    expect(tt).toHaveLength(36);
+    expect(tt.every((r) => r.channel === 'tiktok')).toBe(true);
+  });
+});
+
+describe('forms / broadcasts / automations summaries', () => {
+  it('lists forms most-submitted first', () => {
+    const rows = summarizeForms(seedForms(NOW));
+    expect(rows).toHaveLength(4);
+    expect(rows[0].submissions).toBe(117);
+    expect(summarizeForms(seedForms(NOW), 2)).toHaveLength(2);
+  });
+
+  it('lists broadcasts newest first with open rate', () => {
+    const rows = summarizeBroadcasts(seedBroadcasts(NOW));
+    expect(rows).toHaveLength(5);
+    expect(rows[0].name).toBe('Peringatan Troli Tertinggal');
+    expect(rows[0].open_rate_pct).toBe(87.3);
+  });
+
+  it('lists automations most-run first', () => {
+    const rows = summarizeAutomations(seedAutomations(NOW));
+    expect(rows).toHaveLength(4);
+    expect(rows[0].runs).toBe(342);
+  });
+});
+
+describe('createReachTools', () => {
+  it('exposes the full read-only tool set', () => {
+    const tools = createReachTools(createSeedReachData(NOW), NOW);
+    expect(Object.keys(tools).sort()).toEqual([
+      'getAdsOverview',
+      'getCampaigns',
+      'getLeadSummary',
+      'getSpendByChannel',
+      'getUpcomingAppointments',
+      'listAutomations',
+      'listBroadcasts',
+      'listContacts',
+      'listForms',
+    ]);
   });
 });
