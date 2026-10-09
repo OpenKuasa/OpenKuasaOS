@@ -7,17 +7,8 @@ import { ArrowUpRight } from 'lucide-react';
 import { animate, createScope, onScroll, stagger, svg } from 'animejs';
 import { PRODUCT_CARDS } from '@/config/marketing';
 import { cn } from '@/lib/utils';
+import { LEGEND } from './legend';
 import { ScrollWords } from './scroll-words';
-
-/** Who each product is named after, in the legends of the Melaka court. */
-const LEGEND: Record<string, string> = {
-  command: 'Hang Tuah',
-  reach: 'Hang Jebat',
-  crm: 'Hang Kasturi',
-  people: 'Hang Lekiu',
-  hire: 'Hang Lekir',
-  finance: 'The Bendahara',
-};
 
 // Diagram space is 1200 × 700. Three products flank the keris on each side;
 // each connector runs from a point on the blade out to its card's inner edge.
@@ -209,7 +200,7 @@ export function Connected() {
                           {p.name}
                         </p>
                         <p className="truncate font-mono text-[11px] text-white/45">
-                          {LEGEND[p.key]} · {p.category}
+                          {LEGEND[p.key].name} · {p.category}
                         </p>
                       </div>
                       <ArrowUpRight className="ml-auto size-4 shrink-0 text-white/30 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-emerald-400" />

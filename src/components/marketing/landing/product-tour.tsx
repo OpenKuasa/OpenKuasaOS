@@ -8,6 +8,7 @@ import { animate, createScope, onScroll } from 'animejs';
 import { PRODUCT_CARDS } from '@/config/marketing';
 import { cn } from '@/lib/utils';
 import { BrowserFrame } from './browser-frame';
+import { LEGEND } from './legend';
 
 const SHOT_ALT: Record<string, string> = {
   command: 'Tuah, the AI command center, ready for a question',
@@ -64,7 +65,7 @@ export function ProductTour() {
         <div className="mx-auto grid w-full max-w-[1500px] items-center gap-8 lg:grid-cols-[0.55fr_1.45fr] lg:gap-12">
           <div>
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
-              six products · one login
+              the court of Melaka · six products
             </p>
 
             {/* Product names: the active one lights up as you scroll. */}
@@ -84,13 +85,19 @@ export function ProductTour() {
               ))}
             </ol>
 
-            <div className="mt-6 min-h-[9.5rem] lg:mt-10">
+            <div className="mt-6 min-h-[12rem] lg:mt-10">
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-white/40">
                 {String(active + 1).padStart(2, '0')} / {String(count).padStart(2, '0')} ·{' '}
                 {current.category}
               </p>
               <p className="mt-2 text-xl font-semibold">{current.tagline}</p>
               <p className="mt-2 max-w-md text-white/60">{current.blurb}</p>
+              <p className="mt-3 flex items-center gap-2 text-sm text-emerald-400/80">
+                <svg viewBox="0 0 24 24" aria-hidden className="size-3.5 shrink-0" fill="currentColor">
+                  <path d="M12 2.5 16.5 12 12 21.5 7.5 12Z" />
+                </svg>
+                {LEGEND[current.key].note}
+              </p>
               <Link
                 href={current.href}
                 className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-400 hover:underline"

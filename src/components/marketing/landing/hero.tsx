@@ -14,7 +14,7 @@ import {
 } from 'animejs';
 import { Button } from '@/components/ui/button';
 import { GitHubIcon } from '@/components/brand/github-icon';
-import { REPO_URL } from '@/config/marketing';
+import { PRODUCT_CARDS, REPO_URL } from '@/config/marketing';
 import { BrowserFrame } from './browser-frame';
 import { GridField } from './grid-field';
 
@@ -123,7 +123,7 @@ export function Hero() {
 
         <div
           data-hero-copy
-          className="relative mx-auto flex max-w-7xl flex-col items-center px-6 pt-24 text-center will-change-transform motion-safe:absolute motion-safe:inset-0 motion-safe:justify-center motion-safe:pb-[18vh] motion-safe:pt-16"
+          className="relative mx-auto flex max-w-7xl flex-col items-center px-6 pt-24 text-center will-change-transform motion-safe:absolute motion-safe:inset-0 motion-safe:justify-center motion-safe:pb-[10vh] motion-safe:pt-16"
         >
           <Link
             href="/pricing"
@@ -144,7 +144,7 @@ export function Hero() {
 
           <p data-hero-fade className="mt-7 max-w-xl text-lg text-white/70">
             Marketing, sales, people and finance — six products on one login,
-            powered by Taming Sari AI.
+            named for the court of Melaka and powered by Taming Sari AI.
           </p>
 
           <div data-hero-fade className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -166,6 +166,18 @@ export function Hero() {
               </a>
             </Button>
           </div>
+
+          <ul
+            data-hero-fade
+            aria-label="The six products"
+            className="mt-10 flex flex-wrap justify-center gap-x-5 gap-y-2 font-mono text-xs uppercase tracking-[0.2em] text-white/45"
+          >
+            {PRODUCT_CARDS.map((p) => (
+              <li key={p.key} className="flex items-center gap-5">
+                {p.name}
+              </li>
+            ))}
+          </ul>
         </div>
 
         <div className="pointer-events-none relative mx-auto mt-16 w-full max-w-6xl px-6 pb-24 [perspective:1600px] motion-safe:absolute motion-safe:inset-0 motion-safe:mt-0 motion-safe:grid motion-safe:max-w-none motion-safe:place-items-center motion-safe:pb-0 motion-safe:pt-16">
