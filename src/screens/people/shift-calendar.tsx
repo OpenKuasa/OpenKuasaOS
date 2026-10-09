@@ -31,7 +31,7 @@ type Shift = 'M' | 'N' | 'O';
 
 const SHIFTS: Record<Shift, { label: string; className: string }> = {
   M: { label: 'Morning (9–5)', className: 'bg-primary/10 text-primary' },
-  N: { label: 'Night (10–6)', className: 'bg-violet-500/10 text-violet-600' },
+  N: { label: 'Night (10–6)', className: 'bg-slate-500/10 text-slate-600' },
   O: { label: 'Off', className: 'bg-muted text-muted-foreground' },
 };
 

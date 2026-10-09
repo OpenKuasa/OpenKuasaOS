@@ -117,7 +117,7 @@ const STAGES: Stage[] = [
   },
   {
     name: 'Interview',
-    dot: 'bg-violet-500',
+    dot: 'bg-slate-500',
     candidates: [
       {
         id: 'c8',

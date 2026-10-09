@@ -1,14 +1,14 @@
 import { type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type StatTone = 'primary' | 'blue' | 'amber' | 'green' | 'violet';
+export type StatTone = 'primary' | 'blue' | 'amber' | 'green' | 'slate';
 
 const TONES: Record<StatTone, string> = {
   primary: 'bg-primary/10 text-primary',
   blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   green: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  violet: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+  slate: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
 };
 
 /** Compact KPI tile: label, value, optional note, and a tinted icon chip. */

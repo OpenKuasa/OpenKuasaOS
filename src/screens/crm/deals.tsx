@@ -87,7 +87,7 @@ const STAGES: Stage[] = [
   },
   {
     name: 'Proposal',
-    dot: 'bg-violet-500',
+    dot: 'bg-slate-500',
     deals: [
       {
         id: 'd5',
