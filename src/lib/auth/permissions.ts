@@ -1,0 +1,51 @@
+import type { OrgRole } from './current-org';
+
+export type Capability =
+  | 'view'
+  | 'edit-data'
+  | 'approve'
+  | 'manage-company'
+  | 'manage-billing'
+  | 'manage-members'
+  | 'manage-developers'
+  | 'delete-workspace';
+
+export const ROLES: OrgRole[] = ['owner', 'admin', 'member', 'viewer'];
+
+/** The single source for what each role may do; the Team page renders it. */
+export const PERMISSIONS: {
+  capability: Capability;
+  label: string;
+  allow: OrgRole[];
+}[] = [
+  { capability: 'view', label: 'View dashboards', allow: ['owner', 'admin', 'member', 'viewer'] },
+  { capability: 'edit-data', label: 'Manage contacts & deals', allow: ['owner', 'admin', 'member'] },
+  { capability: 'approve', label: 'Approve leave & claims', allow: ['owner', 'admin'] },
+  { capability: 'manage-company', label: 'Edit company details', allow: ['owner', 'admin'] },
+  { capability: 'manage-billing', label: 'Manage billing & plan', allow: ['owner', 'admin'] },
+  { capability: 'manage-members', label: 'Invite & manage members', allow: ['owner', 'admin'] },
+  { capability: 'manage-developers', label: 'Manage API keys & webhooks', allow: ['owner'] },
+  { capability: 'delete-workspace', label: 'Delete workspace', allow: ['owner'] },
+];
+
+export function can(role: OrgRole, capability: Capability): boolean {
+  const rule = PERMISSIONS.find((p) => p.capability === capability);
+  return rule ? rule.allow.includes(role) : false;
+}
+
+export function roleLabel(role: OrgRole): string {
+  return role[0].toUpperCase() + role.slice(1);
+}
+
+/**
+ * Whether a screen should be shown at all. Demo guests may look at everything
+ * (read-only) so the demo still tours the whole product; real members only see
+ * what their role covers.
+ */
+export function canSee(
+  viewer: { role: OrgRole; isDemo: boolean },
+  capability: Capability | undefined,
+): boolean {
+  if (!capability || viewer.isDemo) return true;
+  return can(viewer.role, capability);
+}
