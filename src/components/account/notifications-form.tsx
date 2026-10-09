@@ -67,8 +67,9 @@ export function NotificationsForm({
         </ReadOnlyNotice>
       ) : (
         <ReadOnlyNotice>
-          Your choices are saved now. Delivery starts as each product begins
-          sending notifications.
+          In-app notifications are live and follow these choices. Email and
+          push delivery are not connected yet, so those columns are saved for
+          later.
         </ReadOnlyNotice>
       )}
 
