@@ -2,12 +2,20 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { ArrowLeft } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { GitHubIcon } from '@/components/brand/github-icon';
+import { REPO_URL } from '@/config/marketing';
 
 export const metadata: Metadata = {
   title: 'Privacy · OpenKuasa OS',
 };
 
-const SECTIONS = [
+type Section = {
+  h: string;
+  p: string;
+  link?: { label: string; href: string };
+};
+
+const SECTIONS: Section[] = [
   {
     h: 'The short version',
     p: 'OpenKuasa OS is free, open-source software that you host yourself. When you self-host, the OpenKuasa project does not run your instance and does not collect, receive or store any of your data.',
@@ -43,6 +51,7 @@ const SECTIONS = [
   {
     h: 'Questions',
     p: 'For questions about the software, open an issue on the project\'s GitHub repository.',
+    link: { label: 'Open an issue on GitHub', href: `${REPO_URL}/issues` },
   },
 ];
 
@@ -75,6 +84,17 @@ export default function PrivacyPage() {
               <p className="mt-2 leading-relaxed text-muted-foreground">
                 {s.p}
               </p>
+              {s.link ? (
+                <a
+                  href={s.link.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  <GitHubIcon />
+                  {s.link.label}
+                </a>
+              ) : null}
             </section>
           ))}
         </div>
