@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { animate, createScope, onScroll, stagger, svg } from 'animejs';
 import { PRODUCT_CARDS } from '@/config/marketing';
+import { ScrollWords } from './scroll-words';
 
 const CENTER = { x: 400, y: 250 };
 const RX = 300;
@@ -56,6 +57,19 @@ export function Connected() {
         }),
       });
 
+      animate('[data-chip]', {
+        scale: [0.6, 1],
+        opacity: [0, 1],
+        ease: 'outBack(2)',
+        delay: stagger(70),
+        autoplay: onScroll({
+          target: '[data-stack]',
+          enter: 'bottom top+=10%',
+          leave: 'center center',
+          sync: 0.4,
+        }),
+      });
+
       // The core keeps a slow pulse.
       animate('[data-core-ring]', {
         scale: [1, 1.9],
@@ -77,13 +91,15 @@ export function Connected() {
           <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
             one shared core
           </p>
-          <h2 className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl">
+          <ScrollWords
+            as="h2"
+            className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl"
+          >
             Every product knows the rest.
-          </h2>
-          <p className="mt-5 text-lg text-white/60">
-            The same contacts, team and AI sit under all six. Work flows from
-            a lead to a hire to a paid invoice without leaving OpenKuasa.
-          </p>
+          </ScrollWords>
+          <ScrollWords className="mt-5 text-lg text-white/60">
+            The same contacts, team and AI sit under all six. Work flows from a lead to a hire to a paid invoice without leaving OpenKuasa.
+          </ScrollWords>
         </div>
 
         <svg
@@ -91,7 +107,7 @@ export function Connected() {
           viewBox="0 0 800 500"
           role="img"
           aria-label="Six products — Tuah, Jebat, Kasturi, Lekiu, Lekir and Bendahara — all connected to Taming Sari AI at the centre"
-          className="mx-auto mt-14 w-full max-w-4xl overflow-visible"
+          className="mx-auto mt-14 hidden w-full max-w-4xl overflow-visible sm:block"
         >
           <g fill="none" stroke="rgb(52 211 153)" strokeWidth="1.5" strokeLinecap="round">
             {NODES.map((n) => (
@@ -160,6 +176,32 @@ export function Connected() {
             </g>
           ))}
         </svg>
+
+        {/* Phones: the same idea as a stack — the core, then the six products. */}
+        <div data-stack className="mt-12 sm:hidden">
+          <div
+            data-chip
+            className="mx-auto w-fit rounded-full bg-emerald-600 px-6 py-3 text-center"
+          >
+            <p className="font-bold">Taming Sari</p>
+            <p className="font-mono text-[11px] text-white/75">AI</p>
+          </div>
+          <div aria-hidden className="mx-auto h-8 w-px bg-emerald-400/50" />
+          <ul className="grid grid-cols-2 gap-3">
+            {NODES.map((n) => (
+              <li
+                key={n.key}
+                data-chip
+                className="rounded-xl border border-white/15 bg-[#0d1412] px-4 py-3 text-center"
+              >
+                <p className="font-bold">{n.name}</p>
+                <p className="font-mono text-[11px] text-white/50">
+                  {n.category}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );

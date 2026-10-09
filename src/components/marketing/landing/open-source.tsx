@@ -7,6 +7,7 @@ import { animate, createScope, onScroll, splitText, stagger, utils } from 'anime
 import { Button } from '@/components/ui/button';
 import { GitHubIcon } from '@/components/brand/github-icon';
 import { REPO_URL } from '@/config/marketing';
+import { ScrollWords } from './scroll-words';
 
 const STATS = [
   { value: 6, suffix: '', label: 'products' },
@@ -64,6 +65,19 @@ export function OpenSource() {
         autoplay: onScroll({ target: '[data-terminal]', enter: 'bottom-=20% top' }),
       });
 
+      animate('[data-terminal]', {
+        x: [120, 0],
+        opacity: [0, 1],
+        rotateY: [-18, 0],
+        ease: 'linear',
+        autoplay: onScroll({
+          target: '[data-terminal]',
+          enter: 'bottom top',
+          leave: 'center+=10% center',
+          sync: 0.5,
+        }),
+      });
+
       animate('[data-point]', {
         y: [40, 0],
         opacity: [0, 1],
@@ -95,14 +109,17 @@ export function OpenSource() {
           ))}
         </div>
 
-        <div className="mt-24 grid items-center gap-12 lg:grid-cols-2">
+        <div className="mt-24 grid items-center gap-12 [perspective:1400px] lg:grid-cols-2">
           <div>
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
               open source · AGPL-3.0
             </p>
-            <h2 className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl">
+            <ScrollWords
+              as="h2"
+              className="mt-4 text-4xl font-bold tracking-tight sm:text-6xl"
+            >
               Free to self-host.
-            </h2>
+            </ScrollWords>
             <p className="mt-5 max-w-lg text-lg text-white/60">
               Every product and feature is included, and it runs on
               infrastructure you control.

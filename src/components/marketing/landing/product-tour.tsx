@@ -61,7 +61,7 @@ export function ProductTour() {
       className="relative bg-[#050807] text-white h-[520vh]"
     >
       <div className="flex flex-col justify-center sticky top-0 h-dvh overflow-hidden px-6">
-        <div className="mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
+        <div className="mx-auto grid w-full max-w-[1500px] items-center gap-8 lg:grid-cols-[0.55fr_1.45fr] lg:gap-12">
           <div>
             <p className="font-mono text-xs uppercase tracking-[0.2em] text-emerald-400">
               six products · one login
@@ -117,7 +117,7 @@ export function ProductTour() {
                   alt={SHOT_ALT[p.key] ?? p.name}
                   width={1440}
                   height={900}
-                  sizes="(min-width: 1024px) 60vw, 100vw"
+                  sizes="(min-width: 1024px) 70vw, 100vw"
                   className={cn(
                     'absolute inset-0 size-full object-cover object-top transition-all duration-700 ease-out motion-reduce:transition-none',
                     i === active
