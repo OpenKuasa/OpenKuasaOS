@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { Logo } from '@/components/brand/logo';
+import { GitHubIcon } from '@/components/brand/github-icon';
+import { REPO_URL } from '@/config/marketing';
 
-type Col = { title: string; links: { label: string; href: string }[] };
+type Col = {
+  title: string;
+  links: { label: string; href: string; external?: boolean }[];
+};
 
 const COLUMNS: Col[] = [
   {
@@ -32,6 +37,12 @@ const COLUMNS: Col[] = [
       { label: 'Help Center', href: '/account/docs' },
       { label: 'Changelog', href: '/account/changelog' },
       { label: 'Feature Requests', href: '/account/feedback' },
+      { label: 'GitHub', href: REPO_URL, external: true },
+      {
+        label: 'Contributing',
+        href: `${REPO_URL}/blob/main/CONTRIBUTING.md`,
+        external: true,
+      },
     ],
   },
   {
@@ -76,6 +87,15 @@ export function MarketingFooter() {
               The community-built, open-source operating system for growing businesses.
             </p>
             <div className="mt-5 flex gap-2.5">
+              <a
+                href={REPO_URL}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="GitHub"
+                className="grid size-9 place-items-center rounded-full bg-white/10 text-white/80 transition-colors hover:bg-white/20 hover:text-white"
+              >
+                <GitHubIcon className="size-[18px]" />
+              </a>
               {SOCIALS.map((s) => (
                 <Link
                   key={s.label}
@@ -109,12 +129,23 @@ export function MarketingFooter() {
               <ul className="mt-4 space-y-3 text-sm">
                 {col.links.map((l) => (
                   <li key={l.label}>
-                    <Link
-                      href={l.href}
-                      className="text-white/70 transition-colors hover:text-white"
-                    >
-                      {l.label}
-                    </Link>
+                    {l.external ? (
+                      <a
+                        href={l.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-white/70 transition-colors hover:text-white"
+                      >
+                        {l.label}
+                      </a>
+                    ) : (
+                      <Link
+                        href={l.href}
+                        className="text-white/70 transition-colors hover:text-white"
+                      >
+                        {l.label}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

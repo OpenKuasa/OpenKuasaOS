@@ -4,8 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, Menu, X, ArrowRight } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
+import { GitHubIcon } from '@/components/brand/github-icon';
 import { Button } from '@/components/ui/button';
-import { MEGA_MENU, NAV_LINKS } from '@/config/marketing';
+import { MEGA_MENU, NAV_LINKS, REPO_URL } from '@/config/marketing';
 import { cn } from '@/lib/utils';
 
 export function MarketingHeader() {
@@ -60,6 +61,15 @@ export function MarketingHeader() {
         </div>
 
         <div className="hidden items-center gap-4 lg:flex">
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 text-sm font-medium text-white/75 transition-colors hover:text-white"
+          >
+            <GitHubIcon />
+            GitHub
+          </a>
           <Link
             href="/login"
             className="text-sm font-medium text-white/75 transition-colors hover:text-white"
@@ -169,6 +179,16 @@ export function MarketingHeader() {
                 {l.label}
               </Link>
             ))}
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2 py-2"
+              onClick={() => setMobileOpen(false)}
+            >
+              <GitHubIcon />
+              GitHub
+            </a>
             <div className="mt-3 flex items-center gap-3">
               <Button
                 asChild

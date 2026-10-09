@@ -9,6 +9,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GitHubIcon } from '@/components/brand/github-icon';
 import { MarketingHeader } from '@/components/marketing/marketing-header';
 import { MarketingFooter } from '@/components/marketing/marketing-footer';
 import { PRODUCT_CARDS, REPO_URL } from '@/config/marketing';
@@ -93,6 +94,7 @@ export default function LandingPage() {
               className="rounded-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
             >
               <a href={REPO_URL} target="_blank" rel="noreferrer">
+                <GitHubIcon />
                 View on GitHub
               </a>
             </Button>
@@ -266,6 +268,7 @@ export default function LandingPage() {
               className="rounded-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
             >
               <a href={REPO_URL} target="_blank" rel="noreferrer">
+                <GitHubIcon />
                 View on GitHub
               </a>
             </Button>
