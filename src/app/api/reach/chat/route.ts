@@ -3,14 +3,13 @@
  *
  * `prepareChat` handles the gate (signed in, not a demo guest, workspace key or
  * a free weekly question) and validates the UI messages. Then the orchestrator
- * runs and streams a UI message response. Tools read a fresh seed provider per
- * request today; the data slice swaps in an RLS-scoped Supabase provider with
- * no change to the agent.
+ * runs and streams a UI message response. Tools read a request-scoped provider
+ * from `getReachData` (RLS-scoped Supabase in prod, seed in dev).
  */
 
 import { prepareChat } from '@/lib/ai/chat-request';
 import { runJebat } from '@/lib/ai/agents/orchestrator';
-import { createSeedReachData } from '@/lib/reach/seed';
+import { getReachData } from '@/lib/reach/supabase';
 
 export const dynamic = 'force-dynamic';
 // Hint for serverless hosts; a no-op on a persistent server (Railway), where the
@@ -23,7 +22,7 @@ export async function POST(request: Request) {
 
   const result = runJebat(
     chat.messages,
-    createSeedReachData(),
+    await getReachData(chat.supabase),
     request.signal,
     chat.apiKey,
   );

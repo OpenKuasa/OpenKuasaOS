@@ -9,6 +9,7 @@ import {
   safeValidateUIMessages,
   type ModelMessage,
 } from 'ai';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { resolveChatAccess } from '@/lib/ai/gate';
@@ -29,6 +30,7 @@ export type PreparedChat =
   | { ok: false; response: Response }
   | {
       ok: true;
+      supabase: SupabaseClient;
       messages: ModelMessage[];
       /** The workspace's own key, or undefined for a platform-paid free question. */
       apiKey: string | undefined;
@@ -81,6 +83,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
 
   return {
     ok: true,
+    supabase,
     messages,
     apiKey: access.kind === 'byok' ? access.apiKey : undefined,
     freeRemaining: access.kind === 'free' ? access.remaining : null,

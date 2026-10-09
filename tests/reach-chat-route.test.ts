@@ -29,6 +29,13 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+vi.mock('@/lib/reach/supabase', () => ({
+  getReachData: async () => {
+    const { createSeedReachData } = await import('@/lib/reach/seed');
+    return createSeedReachData();
+  },
+}));
+
 vi.mock('@/lib/ai/provider', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/ai/provider')>();
   const { MockLanguageModelV4, simulateReadableStream } = await import('ai/test');
