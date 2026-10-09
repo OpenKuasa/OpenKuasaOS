@@ -92,7 +92,7 @@ export function AppTopbar({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Help" {...helpTrigger}>
+            <Button variant="ghost" size="icon" aria-label="Help" className="max-[400px]:hidden" {...helpTrigger}>
               <AnimatedIcon ref={helpRef} name={(CircleHelp as unknown as { displayName?: string }).displayName} size={20} />
             </Button>
           </DropdownMenuTrigger>

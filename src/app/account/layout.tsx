@@ -36,7 +36,7 @@ export default function AccountLayout({
           >
             <Menu className="size-5" />
           </button>
-          <Logo wordmark="OpenKuasa OS" />
+          <Logo wordmark="OpenKuasa OS" wordmarkClassName="max-[400px]:hidden" />
           <span className="hidden text-muted-foreground sm:inline">·</span>
           <span className="hidden font-semibold text-muted-foreground sm:inline">
             Account
@@ -53,7 +53,7 @@ export default function AccountLayout({
           <Link
             href="/login"
             aria-label="Sign out"
-            className="grid size-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="hidden size-9 place-items-center sm:grid rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
           >
             <LogOut className="size-5" />
           </Link>

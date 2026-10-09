@@ -37,7 +37,8 @@ export function ThemeToggle({ className }: { className?: string }) {
       size="icon"
       onClick={toggle}
       aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-      className={cn(className)}
+      // 44px on touch-sized screens; the default 32px icon button is a small target.
+      className={cn('max-md:size-11', className)}
     >
       {dark ? <Sun className="size-5" /> : <Moon className="size-5" />}
     </Button>
