@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { REMEMBER_COOKIE } from '@/lib/supabase/remember';
 import { recordEvent } from '@/lib/events';
+import { MFA_VERIFY_PATH, getMfaStatus } from '@/lib/auth/mfa';
 
 // Persist the "remember me" choice so token refreshes (in the proxy) keep the
 // same cookie lifetime. A session cookie itself clears on browser close.
@@ -81,6 +82,12 @@ export async function signInAction(
     password: parsed.data.password,
   });
   if (error) return { error: 'Incorrect email or password.', values };
+
+  // With an authenticator enrolled the password is only half of signing in;
+  // 'Signed in' is recorded once the code is verified (see mfa/actions.ts).
+  const { challengeRequired } = await getMfaStatus(supabase);
+  if (challengeRequired) redirect(MFA_VERIFY_PATH);
+
   await recordEvent(supabase, { action: 'Signed in', category: 'auth' });
   redirect('/command');
 }
