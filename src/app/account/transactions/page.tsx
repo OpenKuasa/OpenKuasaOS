@@ -10,6 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { requireAccess } from '@/lib/auth/viewer';
 
 type Status = 'Paid' | 'Failed' | 'Pending';
 
@@ -45,7 +46,9 @@ const STATUS_STYLES: Record<Status, string> = {
   Failed: 'bg-red-500/15 text-red-600',
 };
 
-export default function TransactionsPage() {
+export default async function TransactionsPage() {
+  await requireAccess('manage-billing');
+
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <div className="mb-6 flex items-start justify-between gap-4">

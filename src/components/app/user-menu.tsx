@@ -12,10 +12,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SignOutButton } from '@/components/auth/sign-out-button';
 import { useViewer } from '@/components/app/viewer-context';
+import { canSee, type Capability } from '@/lib/auth/permissions';
 
-const ITEMS = [
-  { label: 'Pricing & Features', href: '/account/plan' },
-  { label: 'Account & Billing', href: '/account/subscriptions' },
+const ITEMS: { label: string; href: string; needs?: Capability }[] = [
+  { label: 'Pricing & Features', href: '/account/plan', needs: 'manage-billing' },
+  { label: 'Account & Billing', href: '/account/subscriptions', needs: 'manage-billing' },
   { label: 'Role Permission', href: '/account/team' },
   { label: 'Change Password', href: '/account/security' },
   { label: 'Product Changelog', href: '/account/changelog' },
@@ -25,7 +26,8 @@ const ITEMS = [
 ];
 
 export function UserMenu() {
-  const { name, initials, email, orgName } = useViewer();
+  const viewer = useViewer();
+  const { name, initials, email, orgName } = viewer;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-full border bg-background py-1 pl-1 pr-2.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -63,7 +65,7 @@ export function UserMenu() {
         <DropdownMenuSeparator className="my-0" />
 
         <div className="py-1">
-          {ITEMS.map((item) => (
+          {ITEMS.filter((item) => canSee(viewer, item.needs)).map((item) => (
             <DropdownMenuItem key={item.label} asChild className="px-3 py-2">
               <Link href={item.href}>{item.label}</Link>
             </DropdownMenuItem>

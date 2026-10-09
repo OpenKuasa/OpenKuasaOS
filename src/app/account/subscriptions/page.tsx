@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { requireAccess } from '@/lib/auth/viewer';
 
 type Row = {
   platform: string;
@@ -28,7 +29,9 @@ const ROWS: Row[] = [
   { platform: 'Command', plan: 'Included', seats: '—', price: 'RM 0', status: 'Active', next: '—' },
 ];
 
-export default function SubscriptionsPage() {
+export default async function SubscriptionsPage() {
+  await requireAccess('manage-billing');
+
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <div className="mb-6">
