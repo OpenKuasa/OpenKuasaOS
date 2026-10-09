@@ -44,12 +44,14 @@ export function LoginForm() {
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input
             type="checkbox"
+            name="remember"
+            defaultChecked
             className="size-4 rounded border-input accent-primary"
           />
           Remember me
         </label>
         <Link
-          href="#"
+          href="/forgot-password"
           className="text-sm font-medium text-primary hover:underline"
         >
           Forgot password?

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { REMEMBER_COOKIE, isPersistent, sessionize } from './remember';
 
 /**
  * Refreshes the Supabase auth session on every request and keeps the
@@ -17,6 +18,10 @@ export async function updateSession(request: NextRequest) {
 
   let response = supabaseResponse;
 
+  // Honour the user's "remember me" choice so a refreshed token keeps the same
+  // cookie lifetime instead of silently becoming persistent again.
+  const persist = isPersistent(request.cookies.get(REMEMBER_COOKIE)?.value);
+
   const supabase = createServerClient(url, anonKey, {
     cookies: {
       getAll() {
@@ -28,7 +33,7 @@ export async function updateSession(request: NextRequest) {
         );
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
+          response.cookies.set(name, value, sessionize(options, persist)),
         );
       },
     },

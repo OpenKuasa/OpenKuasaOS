@@ -9,7 +9,19 @@ export const metadata: Metadata = {
   title: 'Sign in · OpenKuasa OS',
 };
 
-export default function LoginPage() {
+const NOTICES: Record<string, string> = {
+  reset_expired: 'Your reset link has expired. Request a new one below.',
+  link_invalid: 'That link is invalid or has already been used.',
+};
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string }>;
+}) {
+  const { notice } = await searchParams;
+  const message = notice ? NOTICES[notice] : undefined;
+
   return (
     <div className="flex min-h-dvh w-full">
       {/* form pane */}
@@ -24,6 +36,15 @@ export default function LoginPage() {
                 Welcome back! Please sign in to continue.
               </p>
             </div>
+
+            {message ? (
+              <p
+                role="status"
+                className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-center text-sm text-muted-foreground"
+              >
+                {message}
+              </p>
+            ) : null}
 
             <GoogleNotEnabledButton>
               <GoogleMark />
