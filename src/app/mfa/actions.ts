@@ -7,6 +7,7 @@ import {
   getMfaStatus,
   hashRecoveryCode,
   isRecoveryCodeShape,
+  safeNextPath,
 } from '@/lib/auth/mfa';
 import { recordEvent } from '@/lib/events';
 
@@ -60,6 +61,7 @@ export async function verifyMfaAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
   }
+  const destination = safeNextPath(formData.get('next')) ?? '/command';
 
   const supabase = await createClient();
   const {
@@ -70,7 +72,7 @@ export async function verifyMfaAction(
   // The factor always comes from the server, never from the form.
   const status = await getMfaStatus(supabase);
   if (!status.challengeRequired || status.factors.length === 0) {
-    redirect('/command');
+    redirect(destination);
   }
 
   // Normally there is exactly one authenticator; if there are several, the
@@ -93,7 +95,7 @@ export async function verifyMfaAction(
   }
 
   await recordEvent(supabase, { action: 'Signed in', category: 'auth' });
-  redirect('/command');
+  redirect(destination);
 }
 
 // Escape hatch for a lost phone: a one-time recovery code removes the

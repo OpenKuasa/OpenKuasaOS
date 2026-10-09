@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { verifyMfaAction, type MfaState } from '@/app/mfa/actions';
 
-export function MfaVerifyForm() {
+export function MfaVerifyForm({ next }: { next: string | null }) {
   const [state, formAction, pending] = useActionState<MfaState, FormData>(
     verifyMfaAction,
     undefined,
@@ -14,6 +14,7 @@ export function MfaVerifyForm() {
 
   return (
     <form className="space-y-4" action={formAction}>
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <div className="space-y-2">
         <Label htmlFor="code">Authentication code</Label>
         <Input

@@ -5,6 +5,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export const MFA_VERIFY_PATH = '/mfa/verify';
 export const MFA_RECOVER_PATH = '/mfa/recover';
 
+/** Only same-site paths may be used as a post-verification destination. */
+export function safeNextPath(next: unknown): string | null {
+  if (typeof next !== 'string') return null;
+  if (!next.startsWith('/') || next.startsWith('//') || next.includes('\\')) {
+    return null;
+  }
+  return next;
+}
+
+/** The code prompt, returning to `next` once the code is accepted. */
+export function mfaVerifyHref(next?: string): string {
+  const safe = safeNextPath(next);
+  return safe
+    ? `${MFA_VERIFY_PATH}?next=${encodeURIComponent(safe)}`
+    : MFA_VERIFY_PATH;
+}
+
 export const RECOVERY_CODE_COUNT = 10;
 
 // No 0/O/1/I/L, so a code survives being read aloud or written down.

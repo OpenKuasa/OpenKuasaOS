@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { z } from 'zod';
 import { AuthShell } from '@/components/auth/auth-shell';
@@ -8,6 +9,7 @@ import {
   InviteJoinButton,
 } from '@/components/account/invite-accept-form';
 import { getInvite, inviteProblem } from '@/lib/account/invites';
+import { getMfaStatus, mfaVerifyHref } from '@/lib/auth/mfa';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { roleLabel } from '@/lib/auth/permissions';
 import { createClient } from '@/lib/supabase/server';
@@ -62,6 +64,11 @@ export default async function InvitePage({
   if (problem) return <Unusable message={problem} />;
 
   const user = auth.data.user;
+  // A signed-in user with two-factor on must enter their code before joining;
+  // the code prompt brings them back to this invite.
+  if (user && (await getMfaStatus(supabase)).challengeRequired) {
+    redirect(mfaVerifyHref(`/invite/${token.data}`));
+  }
   const isGuest = user?.is_anonymous === true;
   const signedInAs = user && !isGuest ? (user.email ?? null) : null;
   const matches = signedInAs?.toLowerCase() === invite.email.toLowerCase();

@@ -41,6 +41,8 @@ export const TEAM_ROLE_ERROR = 'Only owners and admins can manage members.';
 // Messages raised by the invite and member database functions.
 const RPC_MESSAGES: Record<string, string> = {
   'not authenticated': 'Please sign in and try again.',
+  'second factor required':
+    'Enter the code from your authenticator app first, then try again.',
   'not allowed': TEAM_ROLE_ERROR,
   'invalid role': 'Please choose a valid role.',
   'invalid email': 'Please enter a valid email address.',

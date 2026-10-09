@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { REMEMBER_COOKIE } from '@/lib/supabase/remember';
+import { getMfaStatus, mfaVerifyHref } from '@/lib/auth/mfa';
 import {
   friendlyRpcError,
   getInvite,
@@ -104,6 +105,12 @@ export async function signInAndAcceptAction(
       error:
         'Incorrect password, or there is no account for this email yet. If you are new, choose "Create my account".',
     };
+  }
+
+  // With two-factor on, the password is only the first step: finish it, then
+  // come back to this invite to join.
+  if ((await getMfaStatus(supabase)).challengeRequired) {
+    redirect(mfaVerifyHref(`/invite/${invite.token}`));
   }
 
   const failure = await accept(supabase, invite.token);

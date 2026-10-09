@@ -3,15 +3,21 @@ import type { Metadata } from 'next';
 import { AuthShell } from '@/components/auth/auth-shell';
 import { MfaVerifyForm } from '@/components/auth/mfa-verify-form';
 import { SignOutButton } from '@/components/auth/sign-out-button';
-import { MFA_RECOVER_PATH } from '@/lib/auth/mfa';
+import { MFA_RECOVER_PATH, safeNextPath } from '@/lib/auth/mfa';
 import { requireMfaChallenge } from '../guard';
 
 export const metadata: Metadata = {
   title: 'Two-factor authentication · OpenKuasa OS',
 };
 
-export default async function MfaVerifyPage() {
-  await requireMfaChallenge();
+export default async function MfaVerifyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  // Where to go once the code is accepted, e.g. back to an invite link.
+  const next = safeNextPath((await searchParams).next);
+  await requireMfaChallenge(next);
 
   return (
     <AuthShell>
@@ -23,7 +29,7 @@ export default async function MfaVerifyPage() {
         </p>
       </div>
 
-      <MfaVerifyForm />
+      <MfaVerifyForm next={next} />
 
       <div className="space-y-2 text-center text-sm text-muted-foreground">
         <p>

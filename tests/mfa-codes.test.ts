@@ -4,7 +4,9 @@ import {
   generateRecoveryCodes,
   hashRecoveryCode,
   isRecoveryCodeShape,
+  mfaVerifyHref,
   normalizeRecoveryCode,
+  safeNextPath,
 } from '@/lib/auth/mfa';
 import { totp } from './helpers/totp';
 
@@ -36,4 +38,14 @@ test('the test TOTP helper matches the RFC 6238 vector', () => {
   // RFC 6238 Appendix B, SHA-1, T = 59s: 94287082 → last six digits.
   const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
   expect(totp(secret, 59_000)).toBe('287082');
+});
+
+test('only same-site paths survive as a post-verification destination', () => {
+  expect(safeNextPath('/invite/abc')).toBe('/invite/abc');
+  expect(safeNextPath('//evil.example')).toBeNull();
+  expect(safeNextPath('https://evil.example')).toBeNull();
+  expect(safeNextPath('/\\evil.example')).toBeNull();
+  expect(safeNextPath(['/a', '/b'])).toBeNull();
+  expect(mfaVerifyHref('/invite/abc')).toBe('/mfa/verify?next=%2Finvite%2Fabc');
+  expect(mfaVerifyHref('https://evil.example')).toBe('/mfa/verify');
 });

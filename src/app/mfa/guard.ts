@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server';
  * session themselves: signed-out visitors go to /login, and anyone who does
  * not owe a code goes on to the app.
  */
-export async function requireMfaChallenge(): Promise<void> {
+export async function requireMfaChallenge(next?: string | null): Promise<void> {
   if (!hasSupabaseEnv()) redirect('/command');
 
   const supabase = await createClient();
@@ -20,6 +20,6 @@ export async function requireMfaChallenge(): Promise<void> {
 
   const status = await getMfaStatus(supabase);
   if (!status.challengeRequired || status.factors.length === 0) {
-    redirect('/command');
+    redirect(next ?? '/command');
   }
 }
