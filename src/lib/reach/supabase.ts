@@ -8,6 +8,9 @@ import type {
   Lead,
   ReachData,
 } from './types';
+import { hasSupabaseEnv } from '@/lib/auth/viewer';
+import { getCurrentOrg } from '@/lib/auth/current-org';
+import { createSeedReachData } from './seed';
 
 /**
  * RLS-scoped {@link ReachData} over Supabase. Reads are filtered to `orgId`
@@ -42,4 +45,15 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
     listBroadcasts: async (): Promise<Broadcast[]> => [],
     listAutomations: async (): Promise<Automation[]> => [],
   };
+}
+
+/**
+ * Request-scoped provider selection: RLS-scoped Supabase in prod, the seed
+ * fixtures when no project is configured (dev/preview/tests) or the caller has
+ * no org. One place, so the route and the Overview stay consistent.
+ */
+export async function getReachData(client: SupabaseClient): Promise<ReachData> {
+  if (!hasSupabaseEnv()) return createSeedReachData();
+  const org = await getCurrentOrg(client);
+  return org ? createSupabaseReachData(client, org.orgId) : createSeedReachData();
 }
