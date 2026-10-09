@@ -7,7 +7,6 @@ import {
   DonutStat,
   Sparkline,
   type Series,
-  type Slice,
 } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
 import { Button } from '@/components/ui/button';
@@ -29,19 +28,15 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
+import {
+  loadBillsView,
+  type Bill,
+  type BillStatus,
+  type BillsView,
+} from '@/lib/finance/purchases';
 
-type BillStatus = 'Paid' | 'Pending' | 'Overdue' | 'Draft';
-
-type Bill = {
-  id: string;
-  date: string;
-  supplier: string;
-  due: string;
-  total: string;
-  balance: string;
-  status: BillStatus;
-};
+/* ---- sample data (Rimba Ventures Sdn Bhd) -------------------------- */
+/* Shown when Supabase is not configured or nobody is signed in. */
 
 const COLUMNS = ['No.', 'Date', 'Supplier', 'Due', 'Total', 'Balance', 'Status'];
 
@@ -111,6 +106,32 @@ const BILLS: Bill[] = [
   },
 ];
 
+const SAMPLE: BillsView = {
+  stats: [
+    { label: 'Total payable', value: 'RM 12.7k', delta: '+RM 2.6k', deltaTone: 'up', spark: [9.8, 10.5, 11.2, 10.9, 11.8, 12.0, 12.4, 12.7] },
+    { label: 'Due this week', value: 'RM 2,600', delta: '1 bill', deltaTone: 'flat', spark: [1.2, 2.0, 1.6, 2.8, 2.2, 2.6, 2.4, 2.6] },
+    { label: 'Overdue', value: 'RM 1,800', delta: '1 bill', deltaTone: 'down', spark: [0.5, 0.8, 1.1, 0.9, 1.3, 1.5, 1.7, 1.8] },
+    { label: 'Paid (MTD)', value: 'RM 12.1k', delta: '+9%', deltaTone: 'up', spark: [8.0, 9.0, 10.0, 11.0, 11.5, 12.0, 12.1, 12.1] },
+  ],
+  /** Outstanding balance by supplier (RM). */
+  bySupplier: [
+    { label: 'Maju Jaya', value: 4300 },
+    { label: 'Lim Hardware', value: 3200 },
+    { label: 'Nusantara', value: 2600 },
+    { label: 'TNB', value: 1800 },
+    { label: 'Ah Seng', value: 780 },
+  ],
+  /** Bills by status — sums to 7. */
+  byStatus: [
+    { key: 'pending', label: 'Pending', value: 3, color: 'var(--chart-1)' },
+    { key: 'paid', label: 'Paid', value: 2, color: 'var(--chart-2)' },
+    { key: 'overdue', label: 'Overdue', value: 1, color: 'var(--chart-4)' },
+    { key: 'draft', label: 'Draft', value: 1, color: 'var(--chart-3)' },
+  ],
+  bills: BILLS,
+  billCount: 231,
+};
+
 const STATUS_STYLES: Record<BillStatus, string> = {
   Paid: 'bg-emerald-500/15 text-emerald-600',
   Pending: 'bg-amber-500/15 text-amber-600',
@@ -131,35 +152,18 @@ function StatusPill({ status }: { status: BillStatus }) {
   );
 }
 
-/* KPI sparkline trends (monthly, RM k) -------------------------------- */
-const SPARK_PAYABLE = [9.8, 10.5, 11.2, 10.9, 11.8, 12.0, 12.4, 12.7];
-const SPARK_WEEK = [1.2, 2.0, 1.6, 2.8, 2.2, 2.6, 2.4, 2.6];
-const SPARK_OVERDUE = [0.5, 0.8, 1.1, 0.9, 1.3, 1.5, 1.7, 1.8];
-const SPARK_PAID = [8.0, 9.0, 10.0, 11.0, 11.5, 12.0, 12.1, 12.1];
+const SPARK_COLORS = ['var(--primary-foreground)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-2)'];
 
-/** Outstanding balance by supplier (RM). */
-const BY_SUPPLIER = [
-  { label: 'Maju Jaya', value: 4300 },
-  { label: 'Lim Hardware', value: 3200 },
-  { label: 'Nusantara', value: 2600 },
-  { label: 'TNB', value: 1800 },
-  { label: 'Ah Seng', value: 780 },
-];
 const SUPPLIER_SERIES: Series[] = [
   { key: 'value', label: 'Outstanding (RM)', color: 'var(--chart-1)' },
 ];
 
-/** Bills by status — sums to 7. */
-const BY_STATUS: Slice[] = [
-  { key: 'pending', label: 'Pending', value: 3, color: 'var(--chart-1)' },
-  { key: 'paid', label: 'Paid', value: 2, color: 'var(--chart-2)' },
-  { key: 'overdue', label: 'Overdue', value: 1, color: 'var(--chart-4)' },
-  { key: 'draft', label: 'Draft', value: 1, color: 'var(--chart-3)' },
-];
-
 /* ------------------------------------------------------------------ */
 
-export default function SupplierBillsScreen() {
+export default async function SupplierBillsScreen() {
+  const view = (await loadBillsView()) ?? SAMPLE;
+  const billTotal = view.byStatus.reduce((n, s) => n + s.value, 0);
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -175,44 +179,24 @@ export default function SupplierBillsScreen() {
 
       <BentoGrid>
         {/* KPI row */}
-        <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Total payable"
-            value="RM 12.7k"
-            delta="+RM 2.6k"
-            onPrimary
-            chart={
-              <Sparkline data={SPARK_PAYABLE} color="var(--primary-foreground)" height={36} />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Due this week"
-            value="RM 2,600"
-            delta="1 bill"
-            deltaTone="flat"
-            chart={<Sparkline data={SPARK_WEEK} color="var(--chart-3)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Overdue"
-            value="RM 1,800"
-            delta="1 bill"
-            deltaTone="down"
-            chart={<Sparkline data={SPARK_OVERDUE} color="var(--chart-4)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Paid (MTD)"
-            value="RM 12.1k"
-            delta="+9%"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_PAID} color="var(--chart-2)" height={36} />}
-          />
-        </BentoCard>
+        {view.stats.map((s, i) => (
+          <BentoCard
+            key={s.label}
+            tone={i === 0 ? 'primary' : 'default'}
+            className="col-span-1 md:col-span-3"
+          >
+            <BentoStat
+              label={s.label}
+              value={s.value}
+              delta={s.delta}
+              deltaTone={s.deltaTone}
+              onPrimary={i === 0}
+              chart={
+                s.spark && <Sparkline data={s.spark} color={SPARK_COLORS[i]} height={36} />
+              }
+            />
+          </BentoCard>
+        ))}
 
         {/* Payable by supplier + status mix */}
         <BentoCard
@@ -222,7 +206,7 @@ export default function SupplierBillsScreen() {
           className="col-span-2 md:col-span-8"
         >
           <BarGroup
-            data={BY_SUPPLIER}
+            data={view.bySupplier}
             series={SUPPLIER_SERIES}
             horizontal
             height={220}
@@ -234,7 +218,12 @@ export default function SupplierBillsScreen() {
           icon={PieChart}
           className="col-span-2 md:col-span-4"
         >
-          <DonutStat data={BY_STATUS} height={220} centerValue="7" centerLabel="bills" />
+          <DonutStat
+            data={view.byStatus}
+            height={220}
+            centerValue={String(billTotal)}
+            centerLabel="bills"
+          />
         </BentoCard>
 
         {/* Bills table */}
@@ -280,7 +269,17 @@ export default function SupplierBillsScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {BILLS.map((b) => (
+                {view.bills.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={COLUMNS.length}
+                      className="py-8 text-center text-muted-foreground"
+                    >
+                      No supplier bills yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {view.bills.map((b) => (
                   <TableRow key={b.id}>
                     <TableCell className="font-medium">{b.id}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
@@ -308,7 +307,9 @@ export default function SupplierBillsScreen() {
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {BILLS.length} of 231 bills</span>
+            <span>
+              Showing {view.bills.length} of {view.billCount} bills
+            </span>
           </div>
         </BentoCard>
       </BentoGrid>

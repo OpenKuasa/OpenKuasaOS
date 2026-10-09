@@ -7,7 +7,6 @@ import {
   DonutStat,
   Sparkline,
   type Series,
-  type Slice,
 } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
 import { Badge } from '@/components/ui/badge';
@@ -22,20 +21,15 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
+import {
+  loadPaymentsView,
+  type Payment,
+  type PaymentStatus,
+  type PaymentsView,
+} from '@/lib/finance/purchases';
 
-type PaymentStatus = 'Paid' | 'Scheduled' | 'Pending';
-type PaymentMethod = 'Bank Transfer' | 'FPX' | 'Cash' | 'Cheque';
-
-type Payment = {
-  id: string;
-  date: string;
-  supplier: string;
-  bill: string;
-  method: PaymentMethod;
-  amount: string;
-  status: PaymentStatus;
-};
+/* ---- sample data (Rimba Ventures Sdn Bhd) -------------------------- */
+/* Shown when Supabase is not configured or nobody is signed in. */
 
 const COLUMNS = ['Date', 'Supplier', 'Bill', 'Method', 'Amount', 'Status'];
 
@@ -105,6 +99,35 @@ const PAYMENTS: Payment[] = [
   },
 ];
 
+const SAMPLE: PaymentsView = {
+  stats: [
+    { label: 'Paid (MTD)', value: 'RM 12.1k', delta: '+9%', deltaTone: 'up', spark: [8.0, 9.0, 10.0, 11.0, 11.5, 12.0, 12.1, 12.1] },
+    { label: 'Payments', value: '38', delta: '+6', deltaTone: 'up', spark: [24, 28, 26, 31, 33, 35, 37, 38] },
+    { label: 'Via bank / FPX', value: '86%', delta: '+4%', deltaTone: 'up', spark: [72, 76, 78, 80, 82, 84, 85, 86] },
+    { label: 'Scheduled', value: 'RM 1,800', delta: '1 payment', deltaTone: 'flat', spark: [2.2, 1.8, 2.4, 2.0, 1.6, 2.1, 1.9, 1.8] },
+  ],
+  /* Payments over time (last 8 months, RM k) */
+  trend: [
+    { label: 'Mar', electronic: 7.2, cash: 2.1 },
+    { label: 'Apr', electronic: 8.0, cash: 1.8 },
+    { label: 'May', electronic: 8.6, cash: 2.4 },
+    { label: 'Jun', electronic: 9.1, cash: 2.0 },
+    { label: 'Jul', electronic: 9.8, cash: 1.6 },
+    { label: 'Aug', electronic: 10.2, cash: 2.1 },
+    { label: 'Sep', electronic: 10.4, cash: 1.9 },
+    { label: 'Oct', electronic: 10.4, cash: 1.7 },
+  ],
+  /** Paid MTD by method (RM k) — sums to 12.1. */
+  byMethod: [
+    { key: 'bank', label: 'Bank Transfer', value: 6.6, color: 'var(--chart-1)' },
+    { key: 'fpx', label: 'FPX', value: 3.8, color: 'var(--chart-2)' },
+    { key: 'cash', label: 'Cash', value: 1.3, color: 'var(--chart-3)' },
+    { key: 'cheque', label: 'Cheque', value: 0.4, color: 'var(--chart-4)' },
+  ],
+  paidMtd: 'RM 12.1k',
+  payments: PAYMENTS,
+};
+
 const STATUS_STYLES: Record<PaymentStatus, string> = {
   Paid: 'bg-emerald-500/15 text-emerald-600',
   Pending: 'bg-amber-500/15 text-amber-600',
@@ -124,39 +147,18 @@ function StatusPill({ status }: { status: PaymentStatus }) {
   );
 }
 
-/* KPI sparkline trends ------------------------------------------------ */
-const SPARK_PAID = [8.0, 9.0, 10.0, 11.0, 11.5, 12.0, 12.1, 12.1];
-const SPARK_COUNT = [24, 28, 26, 31, 33, 35, 37, 38];
-const SPARK_ELECTRONIC = [72, 76, 78, 80, 82, 84, 85, 86];
-const SPARK_SCHEDULED = [2.2, 1.8, 2.4, 2.0, 1.6, 2.1, 1.9, 1.8];
+const SPARK_COLORS = ['var(--primary-foreground)', 'var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)'];
 
-/* Payments over time (last 8 months, RM k) ---------------------------- */
-const PAID_TREND = [
-  { label: 'Mar', electronic: 7.2, cash: 2.1 },
-  { label: 'Apr', electronic: 8.0, cash: 1.8 },
-  { label: 'May', electronic: 8.6, cash: 2.4 },
-  { label: 'Jun', electronic: 9.1, cash: 2.0 },
-  { label: 'Jul', electronic: 9.8, cash: 1.6 },
-  { label: 'Aug', electronic: 10.2, cash: 2.1 },
-  { label: 'Sep', electronic: 10.4, cash: 1.9 },
-  { label: 'Oct', electronic: 10.4, cash: 1.7 },
-];
 const PAID_SERIES: Series[] = [
   { key: 'electronic', label: 'Bank / FPX (RM k)', color: 'var(--chart-1)' },
   { key: 'cash', label: 'Cash / cheque (RM k)', color: 'var(--chart-2)' },
 ];
 
-/** Paid MTD by method (RM k) — sums to 12.1. */
-const BY_METHOD: Slice[] = [
-  { key: 'bank', label: 'Bank Transfer', value: 6.6, color: 'var(--chart-1)' },
-  { key: 'fpx', label: 'FPX', value: 3.8, color: 'var(--chart-2)' },
-  { key: 'cash', label: 'Cash', value: 1.3, color: 'var(--chart-3)' },
-  { key: 'cheque', label: 'Cheque', value: 0.4, color: 'var(--chart-4)' },
-];
-
 /* ------------------------------------------------------------------ */
 
-export default function PaymentsOutScreen() {
+export default async function PaymentsOutScreen() {
+  const view = (await loadPaymentsView()) ?? SAMPLE;
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -172,44 +174,24 @@ export default function PaymentsOutScreen() {
 
       <BentoGrid>
         {/* KPI row */}
-        <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Paid (MTD)"
-            value="RM 12.1k"
-            delta="+9%"
-            onPrimary
-            chart={
-              <Sparkline data={SPARK_PAID} color="var(--primary-foreground)" height={36} />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Payments"
-            value="38"
-            delta="+6"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_COUNT} color="var(--chart-1)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Via bank / FPX"
-            value="86%"
-            delta="+4%"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_ELECTRONIC} color="var(--chart-2)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Scheduled"
-            value="RM 1,800"
-            delta="1 payment"
-            deltaTone="flat"
-            chart={<Sparkline data={SPARK_SCHEDULED} color="var(--chart-3)" height={36} />}
-          />
-        </BentoCard>
+        {view.stats.map((s, i) => (
+          <BentoCard
+            key={s.label}
+            tone={i === 0 ? 'primary' : 'default'}
+            className="col-span-1 md:col-span-3"
+          >
+            <BentoStat
+              label={s.label}
+              value={s.value}
+              delta={s.delta}
+              deltaTone={s.deltaTone}
+              onPrimary={i === 0}
+              chart={
+                s.spark && <Sparkline data={s.spark} color={SPARK_COLORS[i]} height={36} />
+              }
+            />
+          </BentoCard>
+        ))}
 
         {/* Trend + method mix */}
         <BentoCard
@@ -218,7 +200,7 @@ export default function PaymentsOutScreen() {
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <AreaTrend data={PAID_TREND} series={PAID_SERIES} height={240} showLegend />
+          <AreaTrend data={view.trend} series={PAID_SERIES} height={240} showLegend />
         </BentoCard>
         <BentoCard
           title="Paid by method"
@@ -227,9 +209,9 @@ export default function PaymentsOutScreen() {
           className="col-span-2 md:col-span-4"
         >
           <DonutStat
-            data={BY_METHOD}
+            data={view.byMethod}
             height={240}
-            centerValue="RM 12.1k"
+            centerValue={view.paidMtd}
             centerLabel="paid"
           />
         </BentoCard>
@@ -258,7 +240,17 @@ export default function PaymentsOutScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {PAYMENTS.map((p) => (
+                {view.payments.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={COLUMNS.length}
+                      className="py-8 text-center text-muted-foreground"
+                    >
+                      No payments yet.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {view.payments.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {p.date}
