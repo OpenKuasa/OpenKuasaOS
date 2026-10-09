@@ -1,6 +1,5 @@
 'use client';
 
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,45 +14,19 @@ import { Switch } from '@/components/ui/switch';
 import { LANGUAGES, TIMEZONES } from '@/config/account';
 import { updateProfileAction } from '@/app/account/actions';
 import type { Profile } from '@/lib/account/data';
-import { ReadOnlyNotice, SaveBar, useSettingsForm } from './settings-form';
+import { SaveBar, useSettingsForm } from './settings-form';
 
 export function ProfileForm({
   profile,
-  initials,
   readOnly,
 }: {
   profile: Profile;
-  initials: string;
   readOnly: boolean;
 }) {
   const { state, onSubmit, pending } = useSettingsForm(updateProfileAction);
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
-      {readOnly ? (
-        <ReadOnlyNotice>
-          You&apos;re exploring the demo workspace, so this profile is
-          read-only.
-        </ReadOnlyNotice>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile photo</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-4">
-          <Avatar className="size-16">
-            <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-sm text-muted-foreground">
-            Your initials are shown for now. Photo uploads aren&apos;t
-            available yet.
-          </span>
-        </CardContent>
-      </Card>
-
       <fieldset disabled={readOnly} className="space-y-6">
         <Card>
           <CardHeader>
@@ -70,19 +43,6 @@ export function ProfileForm({
                 maxLength={120}
                 required
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={profile.email ?? ''}
-                readOnly
-                disabled
-              />
-              <p className="text-xs text-muted-foreground">
-                Your sign-in email can&apos;t be changed here yet.
-              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
