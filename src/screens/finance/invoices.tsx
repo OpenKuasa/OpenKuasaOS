@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import { Plus, Search, TrendingUp, PieChart, Receipt } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -135,6 +139,11 @@ function EInvoicePill({ value }: { value: EInvoice }) {
 }
 
 export default function InvoicesScreen() {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const [customer, setCustomer] = useState('all');
+  const rows = filterRows(INVOICES, query, (i) => `${i.no} ${i.customer}`, { status, customer });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -237,21 +246,28 @@ export default function InvoicesScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Doc no. / customer" className="pl-9" />
+              <Input
+                type="search"
+                aria-label="Doc no. / customer"
+                placeholder="Doc no. / customer"
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <Select defaultValue="all">
+            <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="Paid">Paid</SelectItem>
+                <SelectItem value="Sent">Sent</SelectItem>
+                <SelectItem value="Overdue">Overdue</SelectItem>
+                <SelectItem value="Draft">Draft</SelectItem>
               </SelectContent>
             </Select>
-            <Select defaultValue="all">
+            <Select value={customer} onValueChange={setCustomer}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Customer" />
               </SelectTrigger>
@@ -279,7 +295,8 @@ export default function InvoicesScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {INVOICES.map((i) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={7} />}
+                {rows.map((i) => (
                   <TableRow key={i.no}>
                     <TableCell className="whitespace-nowrap font-medium">{i.no}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{i.date}</TableCell>
@@ -302,7 +319,7 @@ export default function InvoicesScreen() {
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
             <span>
-              Showing {INVOICES.length} of {TOTAL_INVOICES} invoices
+              Showing {rows.length} of {TOTAL_INVOICES} invoices
             </span>
           </div>
         </BentoCard>

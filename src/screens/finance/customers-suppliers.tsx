@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import {
   BarChart3,
   ChevronDown,
@@ -8,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -97,6 +101,10 @@ const EXPOSURE: Slice[] = [
 /* ------------------------------------------------------------------ */
 
 export default function CustomersSuppliersScreen() {
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('all');
+  const rows = filterRows(CONTACTS, query, (c) => `${c.name} ${c.email} ${c.ssm}`, { type });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -194,20 +202,27 @@ export default function CustomersSuppliersScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search contacts…" className="pl-8" />
+              <Input
+                type="search"
+                aria-label="Search contacts…"
+                placeholder="Search contacts…"
+                className="pl-8"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
             <Button variant="outline" size="sm">
               <Filter className="size-4" />
               Filter
             </Button>
-            <Select defaultValue="all">
+            <Select value={type} onValueChange={setType}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="customers">Customers</SelectItem>
-                <SelectItem value="suppliers">Suppliers</SelectItem>
+                <SelectItem value="Customer">Customers</SelectItem>
+                <SelectItem value="Supplier">Suppliers</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" className="ml-auto">
@@ -229,7 +244,8 @@ export default function CustomersSuppliersScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {CONTACTS.map((c) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={7} />}
+                {rows.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -270,7 +286,7 @@ export default function CustomersSuppliersScreen() {
             </Table>
           </div>
           <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-            Showing {CONTACTS.length} of 121 contacts
+            Showing {rows.length} of 121 contacts
           </div>
         </BentoCard>
       </BentoGrid>
