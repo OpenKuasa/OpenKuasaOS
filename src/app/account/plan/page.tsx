@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { requireAccess } from '@/lib/auth/viewer';
 
 type Plan = {
   name: string;
@@ -58,7 +59,9 @@ const PLANS: Plan[] = [
   },
 ];
 
-export default function PlanPage() {
+export default async function PlanPage() {
+  await requireAccess('manage-billing');
+
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <div className="mb-6">

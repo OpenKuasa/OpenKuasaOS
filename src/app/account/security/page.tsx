@@ -1,31 +1,19 @@
-import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import {
+  PasswordForm,
+  SignOutOthersForm,
+} from '@/components/account/security-forms';
+import { ReadOnlyNotice } from '@/components/account/settings-form';
+import { getViewer } from '@/lib/auth/viewer';
 
-const SESSIONS = [
-  {
-    device: 'MacBook Pro',
-    location: 'Kuala Lumpur',
-    last: 'active now',
-    current: true,
-  },
-  {
-    device: 'iPhone 15',
-    location: 'Kuala Lumpur',
-    last: '2h ago',
-    current: false,
-  },
-  { device: 'Chrome', location: 'Singapore', last: '3d ago', current: false },
-];
+export default async function SecurityPage() {
+  const viewer = await getViewer();
 
-export default function SecurityPage() {
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       <div className="mb-6">
@@ -40,22 +28,15 @@ export default function SecurityPage() {
           <CardHeader>
             <CardTitle>Password</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="current-password">Current password</Label>
-                <Input id="current-password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New password</Label>
-                <Input id="new-password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm new password</Label>
-                <Input id="confirm-password" type="password" />
-              </div>
-            </div>
-            <Button>Update password</Button>
+          <CardContent>
+            {viewer.isDemo ? (
+              <ReadOnlyNotice>
+                Demo sessions have no password. Sign up to create your own
+                account.
+              </ReadOnlyNotice>
+            ) : (
+              <PasswordForm />
+            )}
           </CardContent>
         </Card>
 
@@ -70,42 +51,27 @@ export default function SecurityPage() {
                 Add a second step at sign-in
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <Switch defaultChecked aria-label="Authenticator app" />
-              <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-600">
-                Enabled
-              </span>
-            </div>
+            <span className="inline-flex shrink-0 items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+              Not available yet
+            </span>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Active sessions</CardTitle>
+            <CardTitle>Sessions</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {SESSIONS.map((s) => (
-              <div
-                key={s.device}
-                className="flex items-center justify-between gap-4"
-              >
-                <div>
-                  <p className="font-medium">{s.device}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {s.location} · {s.last}
-                  </p>
-                </div>
-                {s.current ? (
-                  <span className="text-sm text-muted-foreground">
-                    This device
-                  </span>
-                ) : (
-                  <Button variant="outline" size="sm">
-                    Revoke
-                  </Button>
-                )}
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-medium">This browser</p>
+                <p className="text-sm text-muted-foreground">
+                  Signed in as {viewer.email ?? 'a demo guest'}
+                </p>
               </div>
-            ))}
+              <span className="text-sm text-muted-foreground">Active now</span>
+            </div>
+            {viewer.isDemo ? null : <SignOutOthersForm />}
           </CardContent>
         </Card>
       </div>

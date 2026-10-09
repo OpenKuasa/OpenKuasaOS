@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useIconHover } from '@animateicons/react';
 import { AnimatedIcon } from '@/components/ui/animated-icon';
+import { SignOutButton } from '@/components/auth/sign-out-button';
 import { cn } from '@/lib/utils';
 
 function RailLink({
@@ -58,6 +59,30 @@ function RailLink({
   );
 }
 
+function RailSignOut() {
+  const { ref, triggerProps } = useIconHover();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <SignOutButton
+          aria-label="Sign out"
+          {...triggerProps}
+          className="grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <AnimatedIcon
+            ref={ref}
+            name={(LogOut as unknown as { displayName?: string }).displayName}
+            size={20}
+          />
+        </SignOutButton>
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={8}>
+        <span className="font-semibold">Sign out</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ProductRail({ activeKey }: { activeKey: string | null }) {
   return (
     <aside className="flex h-full w-16 shrink-0 flex-col items-center border-r bg-sidebar py-3">
@@ -85,7 +110,7 @@ export function ProductRail({ activeKey }: { activeKey: string | null }) {
           icon={Settings}
           active={activeKey === 'account'}
         />
-        <RailLink href="/login" label="Sign out" icon={LogOut} />
+        <RailSignOut />
       </div>
     </aside>
   );

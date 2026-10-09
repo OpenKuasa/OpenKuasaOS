@@ -145,7 +145,13 @@ export async function demoSignInAction(): Promise<AuthState> {
   redirect('/command');
 }
 
-const resetRequestSchema = z.object({ email: emailSchema });
+export async function signOutAction(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect('/login');
+}
+
+const resetRequestSchema =z.object({ email: emailSchema });
 const newPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters.'),
 });

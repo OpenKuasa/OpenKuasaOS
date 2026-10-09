@@ -8,6 +8,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { requireAccess } from '@/lib/auth/viewer';
 
 type AddOn = {
   name: string;
@@ -62,7 +63,9 @@ const ADD_ONS: AddOn[] = [
   },
 ];
 
-export default function AddOnsPage() {
+export default async function AddOnsPage() {
+  await requireAccess('manage-billing');
+
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <div className="mb-6">
