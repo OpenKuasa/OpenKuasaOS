@@ -234,7 +234,7 @@ export default async function OverviewScreen() {
         {/* Campaigns + best time */}
         <BentoCard
           title="Top campaigns"
-          subtitle="By leads"
+          subtitle="By cost per lead"
           icon={Megaphone}
           className="col-span-2 md:col-span-8"
         >

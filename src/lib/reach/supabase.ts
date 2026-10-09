@@ -47,13 +47,23 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
   };
 }
 
+const EMPTY_REACH_DATA: ReachData = {
+  listCampaigns: async () => [],
+  listLeads: async () => [],
+  listAppointments: async () => [],
+  listForms: async () => [],
+  listBroadcasts: async () => [],
+  listAutomations: async () => [],
+};
+
 /**
  * Request-scoped provider selection: RLS-scoped Supabase in prod, the seed
- * fixtures when no project is configured (dev/preview/tests) or the caller has
- * no org. One place, so the route and the Overview stay consistent.
+ * fixtures only when no project is configured (dev/preview/tests). One place,
+ * so the route and the Overview stay consistent.
  */
 export async function getReachData(client: SupabaseClient): Promise<ReachData> {
-  if (!hasSupabaseEnv()) return createSeedReachData();
+  if (!hasSupabaseEnv()) return createSeedReachData(); // dev / preview / tests only
   const org = await getCurrentOrg(client);
-  return org ? createSupabaseReachData(client, org.orgId) : createSeedReachData();
+  // Signed in but not yet in a workspace: show nothing, never the fictional seed.
+  return org ? createSupabaseReachData(client, org.orgId) : EMPTY_REACH_DATA;
 }

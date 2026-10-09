@@ -5,7 +5,6 @@ vi.mock('@/lib/auth/viewer', () => ({ hasSupabaseEnv: () => env.hasEnv }));
 vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => env.org }));
 
 import { getReachData } from '@/lib/reach/supabase';
-import { createSeedReachData } from '@/lib/reach/seed';
 
 const fakeClient = {
   from: () => ({ select: () => ({ eq: () => ({ order: async () => ({ data: [{ id: 'c1', name: 'X', channel: 'whatsapp', status: 'active', leads_count: 1, spend_cents: 1, cpl_cents: 1, created_at: 'now' }], error: null }) }) }) }),
@@ -27,9 +26,10 @@ describe('getReachData', () => {
     expect(await data.listCampaigns()).toHaveLength(5);
   });
 
-  it('falls back to seed when there is no current org', async () => {
+  it('returns empty data (never the seed) when there is no current org', async () => {
     env.org = null;
     const data = await getReachData(fakeClient);
-    expect(await data.listCampaigns()).toHaveLength((await createSeedReachData().listCampaigns()).length);
+    expect(await data.listCampaigns()).toHaveLength(0);
+    expect(await data.listLeads()).toHaveLength(0);
   });
 });

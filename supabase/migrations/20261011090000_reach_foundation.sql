@@ -1,5 +1,4 @@
 -- Jebat data foundation: campaigns, leads, appointments (READ-ONLY this slice)
--- + current_org_id() to resolve the caller's active workspace.
 -- Writes arrive in later CRUD slices (add grant + is_org_writer policy TOGETHER).
 
 create table public.campaigns (

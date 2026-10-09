@@ -59,12 +59,15 @@ testWithSupabase('the demo org is seeded and a demo viewer can read it', async (
   expect(campaigns.data ?? []).toHaveLength(5);
   const leads = await d.c.from('leads').select('id', { count: 'exact', head: true }).eq('org_id', demoId);
   expect(leads.count).toBe(342);
-  const appts = await d.c.from('appointments').select('contact_name').eq('org_id', demoId);
+  const appts = await d.c.from('appointments').select('contact_name,scheduled_at').eq('org_id', demoId);
   expect(appts.data ?? []).toHaveLength(3);
-  // Independent of seed age: the nightly reseed (or none) may have moved the dates.
+  // The hourly reseed keeps appointments >=4h in the future.
   expect((appts.data ?? []).map((a) => a.contact_name).sort()).toEqual(
     ['Aisyah Rahim', 'Faiz Hakim', 'Nurul Huda'],
   );
+  for (const a of appts.data ?? []) {
+    expect(new Date(a.scheduled_at) > new Date()).toBe(true);
+  }
 
   // Isolation: the fresh owner (not a demo member) sees none of the demo rows.
   const ownerSees = await owner.c.from('campaigns').select('id');
