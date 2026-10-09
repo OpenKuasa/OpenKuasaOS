@@ -98,6 +98,15 @@ liveTest('aal1 session of a 2FA user is locked out of the data API', async () =>
     .upload(`${uid}/x.png`, new Blob(['x'], { type: 'image/png' }));
   expect(upload.error).not.toBeNull();
   await b.rpc('log_event', { p_action: 'forged', p_category: 'auth' });
+  const badOrg = await b.rpc('create_org_for_current_user', {
+    org_name: 'Forged Sdn Bhd',
+  });
+  expect(badOrg.error?.message).toContain('second factor required');
+  const badDemo = await b.rpc('join_demo_org');
+  expect(badDemo.error?.message).toContain('second factor required');
+  // Ask-Jebat quota answers "denied" (-1), the same as having no session.
+  expect((await b.rpc('consume_ai_quota', { daily_limit: 50 })).data).toBe(-1);
+  expect((await a.rpc('consume_ai_quota', { daily_limit: 50 })).data).toBe(49);
 
   // Nothing leaked through: checked from the fully verified session.
   const log = await a.from('activity_log').select('action');
