@@ -6,6 +6,14 @@
 
 @theme inline {
   --color-brand: var(--brand);
+  --color-mk-bg: var(--mk-bg);
+  --color-mk-surface: var(--mk-surface);
+  --color-mk-surface-2: var(--mk-surface-2);
+  --color-mk-fg: var(--mk-fg);
+  --color-mk-muted: var(--mk-muted);
+  --color-mk-subtle: var(--mk-subtle);
+  --color-mk-border: var(--mk-border);
+  --color-mk-accent: var(--mk-accent);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -74,6 +82,27 @@
   --product-hire-bright: oklch(0.78 0.15 55);
   --product-finance: oklch(0.54 0.115 78);
   --product-finance-bright: oklch(0.83 0.14 85);
+
+  /*
+   * Marketing surfaces (landing, pricing): page, cards, text and accent. Light
+   * values here, dark values under .dark. Use the mk-* Tailwind colours
+   * (bg-mk-bg, text-mk-fg, text-mk-muted, border-mk-border, …).
+   */
+  --mk-bg: oklch(0.985 0.004 165);
+  --mk-surface: oklch(1 0 0);
+  --mk-surface-2: oklch(0.96 0.006 165);
+  --mk-fg: oklch(0.17 0.01 240);
+  --mk-muted: oklch(0.42 0.015 200);
+  --mk-subtle: oklch(0.55 0.015 200);
+  --mk-border: oklch(0.9 0.006 165);
+  --mk-accent: oklch(0.5 0.125 164);
+  /* Product accents as text or line colour on a marketing surface. */
+  --mk-product-command: var(--product-command);
+  --mk-product-reach: var(--product-reach);
+  --mk-product-crm: var(--product-crm);
+  --mk-product-people: var(--product-people);
+  --mk-product-hire: var(--product-hire);
+  --mk-product-finance: var(--product-finance);
 
   /* Active accent; a product scope (below) swaps these three. */
   --pc: var(--brand);
@@ -209,6 +238,20 @@
 /* Dark theme: products use their brighter accent, with dark text on it. */
 .dark {
   color-scheme: dark;
+  --mk-bg: #050807;
+  --mk-surface: #0d1412;
+  --mk-surface-2: #0b1210;
+  --mk-fg: oklch(1 0 0);
+  --mk-muted: oklch(1 0 0 / 62%);
+  --mk-subtle: oklch(1 0 0 / 42%);
+  --mk-border: oklch(1 0 0 / 10%);
+  --mk-accent: oklch(0.77 0.15 163);
+  --mk-product-command: var(--product-command-bright);
+  --mk-product-reach: var(--product-reach-bright);
+  --mk-product-crm: var(--product-crm-bright);
+  --mk-product-people: var(--product-people-bright);
+  --mk-product-hire: var(--product-hire-bright);
+  --mk-product-finance: var(--product-finance-bright);
 }
 .dark[data-product='command'],
 .dark [data-product='command'],
