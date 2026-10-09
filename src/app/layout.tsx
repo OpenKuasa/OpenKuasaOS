@@ -13,9 +13,26 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const title = 'OpenKuasa OS';
+const description = 'The community-built, open-source operating system for your business.';
+
+// The share image comes from the opengraph-image file convention, so no `images` here.
 export const metadata: Metadata = {
-  title: "OpenKuasa OS",
-  description: "The community-built, open-source operating system for your business.",
+  metadataBase: new URL('https://openkuasa.com'),
+  title,
+  description,
+  openGraph: {
+    title,
+    description,
+    siteName: 'OpenKuasa',
+    type: 'website',
+    url: '/',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title,
+    description,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
