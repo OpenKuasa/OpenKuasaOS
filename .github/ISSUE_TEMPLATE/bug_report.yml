@@ -1,0 +1,71 @@
+name: Bug report
+description: Something is broken or does not behave the way it should.
+labels: ['bug', 'needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. Please search the open issues first in case it is already known.
+        Security problems must not be reported here. See the security policy instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe what you saw. Screenshots and error messages help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of OpenKuasa OS is this in?
+      options:
+        - Tuah (command centre)
+        - Jebat (reach and marketing)
+        - Kasturi (CRM)
+        - Lekiu (people)
+        - Lekir (hiring)
+        - Bendahara (finance)
+        - Taming Sari (AI assistant)
+        - Landing and marketing pages
+        - Platform (sign-in, accounts, database, deployment)
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did you see it?
+      options:
+        - openkuasa.com
+        - My own self-hosted install
+        - Local development
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and device
+      placeholder: Safari on iPhone 17, Chrome 141 on Windows 11, ...
+  - type: checkboxes
+    id: fix
+    attributes:
+      label: Would you like to fix it?
+      options:
+        - label: I would like to open a pull request for this

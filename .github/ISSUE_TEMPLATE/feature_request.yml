@@ -1,0 +1,51 @@
+name: Feature request or proposal
+description: Suggest something new, or agree the scope of work you want to build.
+labels: ['enhancement', 'needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. If you plan to build it yourself, opening this first lets us agree the scope before you write code.
+        Please describe the problem in your own words. Do not paste text, screenshots or designs from another product.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Who needs it, and what can they not do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What do you propose?
+      description: Describe the behaviour you have in mind. Rough is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything else you considered?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of OpenKuasa OS is this for?
+      options:
+        - Tuah (command centre)
+        - Jebat (reach and marketing)
+        - Kasturi (CRM)
+        - Lekiu (people)
+        - Lekir (hiring)
+        - Bendahara (finance)
+        - Taming Sari (AI assistant)
+        - Landing and marketing pages
+        - Platform (sign-in, accounts, database, deployment)
+        - Not sure
+    validations:
+      required: true
+  - type: checkboxes
+    id: build
+    attributes:
+      label: Would you like to build it?
+      options:
+        - label: I would like to work on this myself
