@@ -5,6 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-brand: var(--brand);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -54,6 +55,31 @@
  * Neutrals kept near-grayscale for the clean dashboard surfaces.
  */
 :root {
+  /* Brand emerald: the logo and Taming Sari stay this colour everywhere. */
+  --brand: oklch(0.52 0.125 164);
+
+  /*
+   * One accent per product. The plain value is for light surfaces (white text
+   * sits on it); the -bright value is for dark surfaces such as the landing page.
+   */
+  --product-command: oklch(0.52 0.125 164);
+  --product-command-bright: oklch(0.77 0.15 163);
+  --product-reach: oklch(0.54 0.2 352);
+  --product-reach-bright: oklch(0.76 0.16 352);
+  --product-crm: oklch(0.53 0.095 210);
+  --product-crm-bright: oklch(0.79 0.12 205);
+  --product-people: oklch(0.52 0.16 257);
+  --product-people-bright: oklch(0.75 0.13 250);
+  --product-hire: oklch(0.57 0.17 48);
+  --product-hire-bright: oklch(0.78 0.15 55);
+  --product-finance: oklch(0.54 0.115 78);
+  --product-finance-bright: oklch(0.83 0.14 85);
+
+  /* Active accent; a product scope (below) swaps these three. */
+  --pc: var(--brand);
+  --pc-soft: oklch(0.96 0.02 164);
+  --pc-ink: oklch(0.42 0.12 164);
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.17 0.01 240);
   --card: oklch(1 0 0);
@@ -120,6 +146,62 @@
   --sidebar-accent-foreground: oklch(0.9 0.05 164);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.64 0.13 164);
+}
+
+/*
+ * Product scopes. Inside the app, [data-product] re-points the accent tokens at
+ * the active product's colour, so buttons, active nav, focus rings and the first
+ * chart series follow it. .brand-scope pins an element back to brand emerald.
+ */
+[data-product='command'] {
+  --pc: var(--product-command);
+  --pc-soft: oklch(0.96 0.02 164);
+  --pc-ink: oklch(0.42 0.12 164);
+}
+[data-product='reach'] {
+  --pc: var(--product-reach);
+  --pc-soft: oklch(0.96 0.02 352);
+  --pc-ink: oklch(0.44 0.17 352);
+}
+[data-product='crm'] {
+  --pc: var(--product-crm);
+  --pc-soft: oklch(0.96 0.02 210);
+  --pc-ink: oklch(0.42 0.085 210);
+  /* The default second series is teal too; hand it the freed-up emerald. */
+  --chart-2: var(--brand);
+}
+[data-product='people'] {
+  --pc: var(--product-people);
+  --pc-soft: oklch(0.96 0.02 257);
+  --pc-ink: oklch(0.42 0.15 257);
+}
+[data-product='hire'] {
+  --pc: var(--product-hire);
+  --pc-soft: oklch(0.96 0.025 55);
+  --pc-ink: oklch(0.45 0.14 45);
+}
+[data-product='finance'] {
+  --pc: var(--product-finance);
+  --pc-soft: oklch(0.96 0.03 85);
+  --pc-ink: oklch(0.43 0.095 75);
+  --chart-3: var(--brand);
+}
+.brand-scope {
+  --pc: var(--brand);
+  --pc-soft: oklch(0.96 0.02 164);
+  --pc-ink: oklch(0.42 0.12 164);
+}
+[data-product],
+.brand-scope {
+  --primary: var(--pc);
+  --ring: var(--pc);
+  --accent: var(--pc-soft);
+  --accent-foreground: var(--pc-ink);
+  --chart-1: var(--pc);
+  --sidebar-primary: var(--pc);
+  --sidebar-accent: var(--pc-soft);
+  --sidebar-accent-foreground: var(--pc-ink);
+  --sidebar-ring: var(--pc);
 }
 
 @layer base {

@@ -24,7 +24,7 @@ export function Logo({
     <span className={cn('inline-flex items-center gap-2.5', className)}>
       <span
         className={cn(
-          'grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground',
+          'grid size-8 shrink-0 place-items-center rounded-lg bg-brand text-white',
           markClassName,
         )}
         aria-hidden
