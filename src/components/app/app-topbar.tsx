@@ -5,6 +5,8 @@ import { Search, Bell, CircleHelp, Coins, PanelLeftOpen, Menu } from 'lucide-rea
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserMenu } from '@/components/app/user-menu';
+import { GitHubIcon } from '@/components/brand/github-icon';
+import { REPO_URL } from '@/config/marketing';
 import { useIconHover } from '@animateicons/react';
 import { AnimatedIcon } from '@/components/ui/animated-icon';
 import {
@@ -99,6 +101,13 @@ export function AppTopbar({
                 <Link href={l.href}>{l.label}</Link>
               </DropdownMenuItem>
             ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <a href={REPO_URL} target="_blank" rel="noreferrer">
+                <GitHubIcon />
+                View on GitHub
+              </a>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
