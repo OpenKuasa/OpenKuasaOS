@@ -178,6 +178,24 @@ issue gets one type label and, where it applies, an area label.
 
 Always use pnpm, not npm or yarn.
 
+### Adding a screen
+
+Each screen has its own route, so a page loads only the scripts its own screen
+needs. To add one:
+
+1. Write the screen in `src/screens/<module>/<name>.tsx` with a default export.
+2. Make sure its menu item exists in `src/config/nav.ts`.
+3. Import it in `src/screens/registry.ts` and add its key, such as
+   `'crm/plugins'`.
+4. Run `pnpm gen:routes` and commit the `page.tsx` it writes under
+   `src/app/(app)/<module>/<name>/` together with your change.
+
+`pnpm dev` and `pnpm build` run step 4 for you, and `pnpm test` fails if a
+route file is missing or out of date. Do not edit the generated `page.tsx`
+files, and do not import `src/screens/registry.ts` from app code: that puts
+every screen back on every page. A menu item with no screen yet shows a
+placeholder.
+
 ### Branch names
 
 Name your branch `type-description`, in lower case with hyphens, where the type
