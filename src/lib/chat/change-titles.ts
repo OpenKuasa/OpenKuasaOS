@@ -41,7 +41,9 @@ export type ItemKind =
   | 'stage'
   | 'follow-up'
   | 'schedule'
-  | 'job';
+  | 'job'
+  | 'employee'
+  | 'department';
 const KIND_OF_TOOL: Record<string, ItemKind> = {
   getCampaigns: 'campaign',
   createCampaign: 'campaign',
@@ -80,6 +82,17 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   updateJob: 'job',
   setJobStatus: 'job',
   deleteJob: 'job',
+  listEmployees: 'employee',
+  getEmployee: 'employee',
+  createEmployee: 'employee',
+  updateEmployee: 'employee',
+  setEmployeeStatus: 'employee',
+  deleteEmployee: 'employee',
+  linkEmployeeToMember: 'employee',
+  listDepartments: 'department',
+  createDepartment: 'department',
+  updateDepartment: 'department',
+  deleteDepartment: 'department',
 };
 
 /** Names by `kind:id`, so a later turn can still say what an id refers to. */
@@ -229,6 +242,20 @@ export function approvalTitle(
           ? `Pause ${the('job', 'job')}?`
           : `Close ${the('job', 'job')}?`;
     case 'deleteJob': return `Delete ${the('job', 'job')}?`;
+    case 'createEmployee': return `Add employee “${i.name ?? ''}”?`;
+    case 'updateEmployee': return `Save changes to ${the('employee', 'employee')}?`;
+    case 'setEmployeeStatus':
+      return i.status === 'inactive'
+        ? `Deactivate ${the('employee', 'employee')}?`
+        : `Reactivate ${the('employee', 'employee')}?`;
+    case 'deleteEmployee': return `Delete ${the('employee', 'employee')}?`;
+    case 'linkEmployeeToMember':
+      return typeof i.memberEmail === 'string' && i.memberEmail.trim()
+        ? `Link ${the('employee', 'employee')} to the account ${i.memberEmail.trim()}?`
+        : `Unlink ${the('employee', 'employee')} from their account?`;
+    case 'createDepartment': return `Add department “${i.name ?? ''}”?`;
+    case 'updateDepartment': return `Rename ${the('department', 'department')} to “${i.name ?? ''}”?`;
+    case 'deleteDepartment': return `Delete ${the('department', 'department')}?`;
     default: return 'Approve this change?';
   }
 }
@@ -283,6 +310,9 @@ const text = (value: unknown): string | null => (typeof value === 'string' && va
  */
 export function approvalDetail(toolName: string, input?: unknown): string | null {
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  if (toolName === 'deleteEmployee') {
+    return 'Their leave, claims, payslips and every other HR record are deleted too. This cannot be undone.';
+  }
   if (toolName === 'createJob') {
     const salary = salaryText(sen(i.salary_min_cents), sen(i.salary_max_cents));
     const closes = dateText(i.closes_on);
@@ -317,7 +347,8 @@ export function approvalDetail(toolName: string, input?: unknown): string | null
     toolName === 'deleteDeal' ||
     toolName === 'deleteLead' ||
     toolName === 'deleteAppointment' ||
-    toolName === 'deleteJob'
+    toolName === 'deleteJob' ||
+    toolName === 'deleteDepartment'
   ) {
     return 'This cannot be undone.';
   }

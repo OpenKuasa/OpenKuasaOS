@@ -4,11 +4,33 @@
  * number on the screen. `org_id` is never taken from the model, and nothing
  * here decides who may see a row: the provider returns what the caller's
  * session is allowed to read, and each personal lookup says which that is in
- * `scope`. There are no change tools yet.
+ * `scope`. An owner or admin also gets the change tools at the bottom, which call
+ * the same functions the Employees screen does and each wait for approval.
  */
 
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
+import {
+  type CapResult,
+  type PeopleWriteContext,
+  WRITE_FAILED,
+  createDepartment as capCreateDepartment,
+  createDepartmentInput,
+  createEmployee as capCreateEmployee,
+  createEmployeeInput,
+  deleteDepartment as capDeleteDepartment,
+  deleteDepartmentInput,
+  deleteEmployee as capDeleteEmployee,
+  deleteEmployeeInput,
+  linkEmployeeToMember as capLinkEmployeeToMember,
+  setEmployeeStatus as capSetEmployeeStatus,
+  setEmployeeStatusInput,
+  updateDepartment as capUpdateDepartment,
+  updateDepartmentInput,
+  updateEmployee as capUpdateEmployee,
+  updateEmployeeInput,
+} from '@/lib/people/capabilities';
+import { listWorkspaceMembers } from '@/lib/people/members';
 import { LOOKUP_MAX, limitSchema, rowLimit } from '@/lib/ai/limits';
 import { matchesText } from '@/lib/hire/applications-view';
 import { addDays, monthStart, todayInMalaysia, weekStart } from '@/lib/people/dates';
@@ -36,6 +58,7 @@ export const PEOPLE_TOOL_NAMES = [
   'getPeopleOverview',
   'listEmployees',
   'getEmployee',
+  'listDepartments',
   'getHeadcountByDepartment',
   'listWhoIsOnLeave',
   'listLeaveRequests',
@@ -53,6 +76,9 @@ export const PEOPLE_TOOL_NAMES = [
   'listTrainings',
   'listAnnouncements',
 ] as const;
+
+/** Write access for one request: present only for an owner or admin. */
+export type PeopleWrite = { ctx: PeopleWriteContext; canWrite: boolean };
 
 const READ_ERROR = { ok: false as const, error: 'Could not read HR data.' };
 
@@ -96,6 +122,8 @@ const matchedNames = (filter: string | undefined, names: string[]) =>
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const directoryRow = (e: Employee) => ({
+  // The id is what a change tool is given; the card names the person from this row.
+  id: e.id,
   name: e.name,
   employee_no: e.employee_no,
   department: e.department_name,
@@ -105,12 +133,14 @@ const directoryRow = (e: Employee) => ({
   join_date: e.join_date,
   status: e.status,
   work_email: e.work_email,
+  account_linked: e.user_id !== null,
 });
 
 export function createPeopleTools(
   data: PeopleData,
   viewer: PeopleViewer,
   nowArg: Date | (() => Date) = () => new Date(),
+  write?: PeopleWrite,
 ): ToolSet {
   const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
   const today = () => todayInMalaysia(now());
@@ -122,10 +152,12 @@ export function createPeopleTools(
    * Spread into every result that carries `scope` (and the trainings list) so no tool can forget it.
    */
   const notLinked = ownOnly && viewer.employeeId === null ? { not_linked: NOT_LINKED } : {};
+  /** Whose question this is, when their account is linked: lets "cuti saya" be answered for an HR admin too. */
+  const askedBy = viewer.employeeName ? { asked_by: viewer.employeeName } : {};
   /** The first day of a window of `requested` days ending today. */
   const windowStart = (requested: number | undefined) => addDays(today(), -(rowLimit(requested, 7, 31) - 1));
 
-  return {
+  const read: ToolSet = {
     getPeopleOverview: tool({
       description:
         'The team at a glance today: headcount, number of departments, how many are on leave today, how many came in ' +
@@ -150,7 +182,7 @@ export function createPeopleTools(
               departments: headcountByDepartment(employees).length,
               your_pending_requests: counts,
               scope,
-              ...notLinked,
+              ...notLinked, ...askedBy,
               team_figures: 'On-leave, attendance and approval figures for the whole team are visible to HR admins only.',
             };
           }
@@ -163,7 +195,7 @@ export function createPeopleTools(
             attendance_rate_pct: at.rate_pct,
             pending_approvals: counts,
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -205,10 +237,14 @@ export function createPeopleTools(
           if (!name.trim()) return { found: false as const };
           const matches = (await data.listEmployees()).filter((e) => matchesText(e.name, name));
           if (matches.length === 0) return { found: false as const };
-          if (matches.length > 1) {
-            return { found: false as const, several_match: matches.slice(0, 10).map((e) => e.name) };
+          // "Siti" matches Siti Aminah and Siti Lestari; a person named exactly "Siti" is the one meant.
+          const wanted = name.trim().toLowerCase();
+          const exact = matches.filter((e) => e.name.trim().toLowerCase() === wanted);
+          const chosen = matches.length > 1 && exact.length === 1 ? exact : matches;
+          if (chosen.length > 1) {
+            return { found: false as const, several_match: chosen.slice(0, 10).map((e) => e.name) };
           }
-          const [match] = matches;
+          const [match] = chosen;
           const found = { found: true as const, employee: directoryRow(match) };
           if (!includePrivate) return found;
           const priv = await data.getEmployeePrivate(match.id);
@@ -237,6 +273,25 @@ export function createPeopleTools(
               emergency_contact_name: priv.emergency_contact_name,
               emergency_contact_phone: priv.emergency_contact_phone,
             },
+          };
+        }),
+    }),
+
+    listDepartments: tool({
+      description:
+        'The departments: id, name and how many active staff are in each. Use the id when adding or moving an ' +
+        'employee, or renaming or deleting a department.',
+      inputSchema: z.object({}),
+      execute: async () =>
+        safe('listDepartments', async () => {
+          const [departments, employees] = await Promise.all([data.listDepartments(), data.listEmployees()]);
+          return {
+            total: departments.length,
+            departments: departments.map((d) => ({
+              id: d.id,
+              name: d.name,
+              headcount: employees.filter((e) => e.department_id === d.id && e.status === 'active').length,
+            })),
           };
         }),
     }),
@@ -271,7 +326,7 @@ export function createPeopleTools(
               days: r.days,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
             ...(ownOnly ? { covers: 'Only your own leave. Who else is on leave is visible to HR admins only.' } : {}),
           };
         }),
@@ -310,7 +365,7 @@ export function createPeopleTools(
               status: r.status,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -331,7 +386,7 @@ export function createPeopleTools(
             ...matchedNames(name, rows.map((b) => b.employee)),
             balances: rows.slice(0, LOOKUP_MAX),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -357,7 +412,7 @@ export function createPeopleTools(
               detail: r.detail,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -392,7 +447,7 @@ export function createPeopleTools(
               status: c.status,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -421,7 +476,7 @@ export function createPeopleTools(
               status: o.status,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -443,7 +498,7 @@ export function createPeopleTools(
             ...attendanceCounts(rows),
             late_most_often: lateByEmployee(rows, employees).slice(0, 5),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -467,7 +522,7 @@ export function createPeopleTools(
             ...matchedNames(name, rows.map((r) => r.employee)),
             by_employee: rows.slice(0, LOOKUP_MAX),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -495,7 +550,7 @@ export function createPeopleTools(
               shift: s.shift,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -545,7 +600,7 @@ export function createPeopleTools(
                 net: rm(r.net_cents),
               })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -581,7 +636,7 @@ export function createPeopleTools(
               status: p.status,
             })),
             scope,
-            ...notLinked,
+            ...notLinked, ...askedBy,
           };
         }),
     }),
@@ -597,7 +652,7 @@ export function createPeopleTools(
           const [goals, scorecards, reviews] = await Promise.all([
             data.listGoals(), data.listScorecards(), data.listReviews(),
           ]);
-          return { ...performanceSummary(goals, scorecards, reviews), scope, ...notLinked };
+          return { ...performanceSummary(goals, scorecards, reviews), scope, ...notLinked, ...askedBy };
         }),
     }),
 
@@ -613,7 +668,7 @@ export function createPeopleTools(
         safe('listTrainings', async () => {
           const [trainings, enrolments] = await Promise.all([data.listTrainings(), data.listTrainingEnrolments()]);
           return {
-            ...notLinked,
+            ...notLinked, ...askedBy,
             trainings: trainings
               .filter((t) => !status || t.status === status)
               .slice(0, LOOKUP_MAX)
@@ -649,6 +704,103 @@ export function createPeopleTools(
             })),
           };
         }),
+    }),
+  };
+
+  // Someone who may not change HR records gets no change tools at all (not merely gated ones).
+  if (!write?.canWrite) return read;
+  const { ctx } = write;
+
+  /** Runs one change. A crash becomes a plain refusal; its text is never logged, since an input can hold pay or identity details. */
+  const change = async <T>(name: string, run: () => Promise<CapResult<T>>): Promise<CapResult<T>> => {
+    try {
+      return await run();
+    } catch (error) {
+      console.error(`[lekiu] ${name} failed:`, error instanceof Error ? error.name : 'error');
+      return { ok: false, error: WRITE_FAILED };
+    }
+  };
+
+  return {
+    ...read,
+
+    createEmployee: tool({
+      description:
+        'Add an employee. Only the name is required. Put pay and identity details in "private", and only those the ' +
+        'person stated. Needs approval before it is saved.',
+      inputSchema: createEmployeeInput,
+      execute: async (input) => change('createEmployee', () => capCreateEmployee(ctx, input)),
+    }),
+
+    updateEmployee: tool({
+      description:
+        'Edit an employee by id. Give only the fields that change; the rest stay as they are. Send null to clear a ' +
+        'field. Needs approval.',
+      inputSchema: updateEmployeeInput,
+      execute: async (input) => change('updateEmployee', () => capUpdateEmployee(ctx, input)),
+    }),
+
+    setEmployeeStatus: tool({
+      description:
+        'Deactivate an employee who has left (status inactive), or reactivate them (status active). Their records ' +
+        'are kept. Needs approval.',
+      inputSchema: setEmployeeStatusInput,
+      execute: async (input) => change('setEmployeeStatus', () => capSetEmployeeStatus(ctx, input)),
+    }),
+
+    deleteEmployee: tool({
+      description:
+        'Delete an employee by id. Their leave, claims, payslips and every other HR record are deleted too, and it ' +
+        'cannot be undone. To keep the records of someone who left, use setEmployeeStatus instead. Needs approval.',
+      inputSchema: deleteEmployeeInput,
+      execute: async (input) => change('deleteEmployee', () => capDeleteEmployee(ctx, input)),
+    }),
+
+    linkEmployeeToMember: tool({
+      description:
+        'Link an employee record to a workspace member\'s account, so that member sees their own leave, claims and ' +
+        'payslips. The member must already have joined the workspace. Give null as the email to unlink. Needs approval.',
+      inputSchema: z.object({
+        id: z.guid().describe('The employee, by their id from listEmployees or getEmployee.'),
+        memberEmail: z
+          .string()
+          .nullable()
+          .describe('The email the member signs in with, as the person gave it. null unlinks the employee.'),
+      }),
+      execute: async ({ id, memberEmail }) =>
+        change('linkEmployeeToMember', async () => {
+          if (memberEmail === null) return capLinkEmployeeToMember(ctx, { id, user_id: null });
+          const wanted = memberEmail.trim().toLowerCase();
+          const member = wanted
+            ? (await listWorkspaceMembers(ctx.client, ctx.orgId)).find((m) => m.email.toLowerCase() === wanted)
+            : undefined;
+          if (!member) {
+            return {
+              ok: false,
+              error: 'No member of this workspace signs in with that email. They need to join the workspace first.',
+            };
+          }
+          return capLinkEmployeeToMember(ctx, { id, user_id: member.userId });
+        }),
+    }),
+
+    createDepartment: tool({
+      description: 'Add a department. Needs approval.',
+      inputSchema: createDepartmentInput,
+      execute: async (input) => change('createDepartment', () => capCreateDepartment(ctx, input)),
+    }),
+
+    updateDepartment: tool({
+      description: 'Rename a department by id. Needs approval.',
+      inputSchema: updateDepartmentInput,
+      execute: async (input) => change('updateDepartment', () => capUpdateDepartment(ctx, input)),
+    }),
+
+    deleteDepartment: tool({
+      description:
+        'Delete a department by id. It is refused while employees are still in it: move them first. Needs approval.',
+      inputSchema: deleteDepartmentInput,
+      execute: async (input) => change('deleteDepartment', () => capDeleteDepartment(ctx, input)),
     }),
   };
 }

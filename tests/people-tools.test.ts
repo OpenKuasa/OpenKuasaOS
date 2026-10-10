@@ -7,6 +7,7 @@ import { createReachTools } from '@/lib/ai/tools';
 import { toolMeta } from '@/components/chat/tool-parts';
 import { buildPeopleOverviewModel } from '@/lib/people/overview';
 import { createSeedPeopleData } from '@/lib/people/seed';
+import { asMember } from './setup/people-member-view';
 import { createSeedReachData } from '@/lib/reach/seed';
 import type { PeopleData, PeopleViewer } from '@/lib/people/types';
 
@@ -39,13 +40,13 @@ const EMPTY: PeopleData = {
 };
 
 describe('people tools', () => {
-  it('is exactly the nineteen lookups, none sharing a name with another product', () => {
+  it('is exactly the twenty lookups, none sharing a name with another product', () => {
     expect(Object.keys(createPeopleTools(data, HR, NOW))).toEqual([...PEOPLE_TOOL_NAMES]);
     expect(PEOPLE_TOOL_NAMES).toEqual([
-      'getPeopleOverview', 'listEmployees', 'getEmployee', 'getHeadcountByDepartment', 'listWhoIsOnLeave',
-      'listLeaveRequests', 'getLeaveBalances', 'listPendingApprovals', 'listClaims', 'listOvertime',
-      'getAttendanceSummary', 'getTimesheet', 'listShifts', 'listPublicHolidays', 'getPayrollSummary',
-      'listPayslips', 'getPerformanceSummary', 'listTrainings', 'listAnnouncements',
+      'getPeopleOverview', 'listEmployees', 'getEmployee', 'listDepartments', 'getHeadcountByDepartment',
+      'listWhoIsOnLeave', 'listLeaveRequests', 'getLeaveBalances', 'listPendingApprovals', 'listClaims',
+      'listOvertime', 'getAttendanceSummary', 'getTimesheet', 'listShifts', 'listPublicHolidays',
+      'getPayrollSummary', 'listPayslips', 'getPerformanceSummary', 'listTrainings', 'listAnnouncements',
     ]);
     const others = new Set<string>([
       ...Object.keys(createReachTools(createSeedReachData())),
@@ -386,5 +387,66 @@ describe('people tools', () => {
     const description = (createPeopleTools(data, HR, NOW).getPeopleOverview as unknown as { description: string }).description;
     expect(description).toContain('A null attendance rate means nobody was expected at work today');
     expect(description.endsWith('their own records only, so never present it as the whole team.')).toBe(true);
+  });
+
+  it('gives each employee an id, and says whether an account is linked, but never the account itself', async () => {
+    const { employees } = await run('listEmployees')({ limit: 3 });
+    for (const row of employees) {
+      expect(typeof row.id).toBe('string');
+      expect(row.account_linked).toBe(false);
+      expect(row).not.toHaveProperty('user_id');
+    }
+    // Aisyah is the sample company's fixed "me".
+    const one = await run('getEmployee')({ employee: 'Aisyah Rahim' });
+    expect(one.employee.id).toBe('dea97d89-a5b6-f264-bd42-c6df73f664a7');
+  });
+
+  it('lists departments with an id and their active headcount', async () => {
+    const result = await run('listDepartments')({});
+    expect(result.total).toBe(5);
+    const sales = result.departments.find((d: Loose) => d.name === 'Sales');
+    expect(typeof sales.id).toBe('string');
+    expect(sales.headcount).toBe(6);
+    expect(await runner(EMPTY)('listDepartments')({})).toEqual({ total: 0, departments: [] });
+  });
+
+  it('prefers the one exact name when a fragment matches several people', async () => {
+    const twoSitis = await run('getEmployee')({ employee: 'Siti' });
+    expect(twoSitis.found).toBe(false);
+    expect(twoSitis.several_match).toEqual(expect.arrayContaining(['Siti Aminah', 'Siti Lestari']));
+
+    const all = await data.listEmployees();
+    const shadowed: PeopleData = {
+      ...data,
+      listEmployees: async () => [...all, { ...all[0], id: 'seed-emp-99', name: 'Siti', employee_no: 'EMP-099' }],
+    };
+    const exact = await runner(shadowed)('getEmployee')({ employee: 'siti' });
+    expect(exact.found).toBe(true);
+    expect(exact.employee.name).toBe('Siti');
+  });
+
+  it('says which employee is asking when their account is linked', async () => {
+    const linkedHr: PeopleViewer = { employeeId: 'seed-emp-2', isHr: true, isDemo: false, employeeName: 'Faiz Hakim' };
+    expect((await runner(data, linkedHr)('listLeaveRequests')({})).asked_by).toBe('Faiz Hakim');
+    expect((await runner(data, linkedHr)('getPeopleOverview')({})).asked_by).toBe('Faiz Hakim');
+    expect(await run('listLeaveRequests')({})).not.toHaveProperty('asked_by');
+  });
+
+  it('behaves for a member whose data looks the way the database returns it', async () => {
+    const asFaiz = runner(asMember(data, 'seed-emp-2'), MEMBER);
+    const leave = await asFaiz('listLeaveRequests')({});
+    for (const row of leave.requests) expect(row.employee).toBe('Faiz Hakim');
+    expect(leave.scope).toBe('your own records only');
+    expect((await asFaiz('getPayrollSummary')({})).visible_to).toBe('HR admins only');
+    const colleague = await asFaiz('getEmployee')({ employee: 'Ahmad Zaki', includePrivate: true });
+    expect(colleague.private_access).toBe(false);
+    expect(colleague.private).toBeNull();
+  });
+
+  it('holds no change tool without write access', () => {
+    const none = Object.keys(createPeopleTools(data, HR, NOW));
+    const refused = Object.keys(createPeopleTools(data, HR, NOW, { ctx: { client: {} as never, orgId: 'o' }, canWrite: false }));
+    expect(none).toEqual([...PEOPLE_TOOL_NAMES]);
+    expect(refused).toEqual([...PEOPLE_TOOL_NAMES]);
   });
 });

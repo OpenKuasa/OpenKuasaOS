@@ -259,6 +259,8 @@ export type PeopleData = {
 export type PeopleViewer = {
   /** The employee record linked to this user, if any. */
   employeeId: string | null;
+  /** The linked employee's name, when there is a linked record. For wording only. */
+  employeeName?: string;
   /** Owner or admin of the workspace. */
   isHr: boolean;
   /** The current workspace is the demo workspace. */
