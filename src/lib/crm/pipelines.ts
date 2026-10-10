@@ -73,6 +73,7 @@ const STAGE_ADDED_OUT_OF_PLACE =
   'The stage was added, but the order may not be right. Check it and move the stage if needed.';
 export const MIN_STAGES_MESSAGE = 'A pipeline needs at least two stages.';
 export const MAX_STAGES_MESSAGE = `A pipeline can have at most ${MAX_PIPELINE_STAGES} stages.`;
+export const STAGE_PROBABILITY_MESSAGE = 'Enter the win chance as a whole number from 0 to 100.';
 
 const STAGE_DOTS: Record<string, string> = {
   lead: 'bg-primary',
@@ -263,8 +264,8 @@ export function parseStageList(value: string): string[] {
 }
 
 /**
- * The chance of closing for each of `count` stages: spread evenly, ending at
- * 100. Five stages get 20, 40, 60, 80 and 100.
+ * The chance of closing for each of the `count` stages of a new pipeline:
+ * spread evenly, ending at 100. Five stages get 20, 40, 60, 80 and 100.
  */
 export function stageProbabilities(count: number): number[] {
   return Array.from({ length: count }, (_, index) => Math.round(((index + 1) / count) * 100));
@@ -488,6 +489,26 @@ export function parseStageName(value: string): string {
   return name;
 }
 
+/** A stage's win chance as typed: a whole number from 0 to 100. */
+export function parseStageProbability(value: string): number {
+  const typed = value.trim();
+  // Digits only: no sign, no decimal point, and not blank.
+  if (!/^\d{1,3}$/.test(typed)) throw new CrmContactFormError(STAGE_PROBABILITY_MESSAGE);
+  const probability = Number(typed);
+  if (probability > 100) throw new CrmContactFormError(STAGE_PROBABILITY_MESSAGE);
+  return probability;
+}
+
+/**
+ * The win chance a new stage starts with: halfway between the stage before it
+ * and the stage after it. With none after it, halfway to 100; with none
+ * before it, half of the next one's.
+ */
+export function newStageProbability(before?: number, after?: number): number {
+  const midpoint = Math.round(((before ?? 0) + (after ?? 100)) / 2);
+  return Math.min(100, Math.max(0, midpoint));
+}
+
 export type CrmStageDirection = 'up' | 'down';
 
 /** Which way a Move up or Move down form is asking for. */
@@ -548,9 +569,9 @@ async function patchStage(
 }
 
 /**
- * Puts a pipeline's stages in the order given: positions 1, 2, 3… and each
- * stage's probability from its place (`stageProbabilities`). `ordered` holds
- * the rows as they are stored now, in the order wanted.
+ * Puts a pipeline's stages in the order given: positions 1, 2, 3… and nothing
+ * else. A stage's probability belongs to the stage and is never written
+ * here. `ordered` holds the rows as they are stored now, in the order wanted.
  *
  * Each write is its own statement with no transaction around them, and the
  * table allows one stage per position, checked row by row. Writing final
@@ -562,12 +583,12 @@ async function patchStage(
  *    position is above every one in use, so nothing collides, and at each
  *    step the stages still sort in the old order: the parked ones are the
  *    last ones, still in their order.
- * 2. Settle. Each is moved to its final position, with its probability,
- *    taking the first stage first. Those positions are free: only parked
+ * 2. Settle. Each is moved to its final position, taking the first stage
+ *    first. Those positions are free: only parked
  *    stages are left above the ones already in place.
  *
- * Stages at the front that already hold their final position are left where
- * they are, and get only their probability if it has changed.
+ * Stages at the front that already hold their final position are not written
+ * at all, so stages already numbered 1, 2, 3… in the order wanted cost nothing.
  *
  * If a write fails part-way the stages are still a valid list, read as
  * always by sorting on position. Stopped while parking, they show in the old
@@ -580,36 +601,27 @@ async function patchStage(
  * them 1, 2, 3… again.
  */
 async function renumberStages(scope: StageScope, ordered: StageOrderRow[]): Promise<void> {
-  const probabilities = stageProbabilities(ordered.length);
   let inPlace = 0;
   while (inPlace < ordered.length && ordered[inPlace].position === inPlace + 1) inPlace += 1;
 
   const moving = ordered.slice(inPlace);
-  if (moving.length > 0) {
-    const highest = Math.max(...ordered.map((row) => row.position));
-    const asStored = [...moving].sort((a, b) => a.position - b.position);
-    for (let index = asStored.length - 1; index >= 0; index -= 1) {
-      await patchStage(scope, asStored[index].id, { position: highest + index + 1 });
-    }
-    for (let index = inPlace; index < ordered.length; index += 1) {
-      await patchStage(scope, ordered[index].id, {
-        position: index + 1,
-        probability_percent: probabilities[index],
-      });
-    }
-  }
+  if (moving.length === 0) return;
 
-  for (let index = 0; index < inPlace; index += 1) {
-    if (ordered[index].probability_percent !== probabilities[index]) {
-      await patchStage(scope, ordered[index].id, { probability_percent: probabilities[index] });
-    }
+  const highest = Math.max(...ordered.map((row) => row.position));
+  const asStored = [...moving].sort((a, b) => a.position - b.position);
+  for (let index = asStored.length - 1; index >= 0; index -= 1) {
+    await patchStage(scope, asStored[index].id, { position: highest + index + 1 });
+  }
+  for (let index = inPlace; index < ordered.length; index += 1) {
+    await patchStage(scope, ordered[index].id, { position: index + 1 });
   }
 }
 
 /**
  * Adds a stage to a pipeline and returns its id. It goes just before the
  * stage named "Won" when there is one, so Won stays the end of the pipeline,
- * and last otherwise. Every stage's probability is then set from its place.
+ * and last otherwise. It starts with a probability halfway between its
+ * neighbours there (`newStageProbability`); the other stages keep theirs.
  *
  * The stage is inserted after the last one first, where no position can
  * collide, and the stages are renumbered second. If the renumbering fails the
@@ -634,7 +646,10 @@ export async function addCrmPipelineStage(
   const wonIndex = rows.findIndex((row) => isWonStage(row.name));
   const index = wonIndex === -1 ? rows.length : wonIndex;
   const position = Math.max(0, ...rows.map((row) => row.position)) + 1;
-  const probability = stageProbabilities(rows.length + 1)[index];
+  const probability = newStageProbability(
+    rows[index - 1]?.probability_percent,
+    rows[index]?.probability_percent,
+  );
 
   const created = await client
     .from('crm_pipeline_stages')
@@ -667,24 +682,33 @@ export async function addCrmPipelineStage(
     await renumberStages(scope, [...rows.slice(0, index), stage, ...rows.slice(index)]);
   } catch (error) {
     console.error('[crm/pipelines] could not renumber the stages after adding one', error);
-    // With no Won stage the end is where it belongs; only probabilities are stale.
+    // With no Won stage the end is where it belongs; only the numbering has gaps.
     if (wonIndex !== -1) throw new CrmContactFormError(STAGE_ADDED_OUT_OF_PLACE);
   }
   return id;
 }
 
+export type CrmStageFields = {
+  name: string;
+  /** How likely a deal in the stage is to close, 0 to 100. */
+  probability: number;
+};
+
 /**
- * Gives a stage another name. Names are unique in a pipeline whatever their
- * capitals; the database only refuses an exact match, so the others are
- * checked here first. "Won" is recognised by name (`isWonStage`), so this is
- * also how a pipeline gains or loses its Won stage; deals are not touched.
+ * Saves a stage's name and probability, writing whichever of the two has
+ * changed and nothing when neither has. Names are unique in a pipeline
+ * whatever their capitals; the database only refuses an exact match, so the
+ * others are checked here first. "Won" is recognised by name (`isWonStage`),
+ * so this is also how a pipeline gains or loses its Won stage; deals are not
+ * touched. Probabilities are not compared across stages: they may be in any
+ * order.
  */
-export async function renameCrmPipelineStage(
+export async function updateCrmPipelineStage(
   client: SupabaseClient,
   orgId: string,
   pipelineId: string,
   stageId: string,
-  name: string,
+  fields: CrmStageFields,
   now: Date = new Date(),
 ): Promise<void> {
   const scope: StageScope = { client, orgId, pipelineId, stamp: now.toISOString() };
@@ -692,13 +716,21 @@ export async function renameCrmPipelineStage(
 
   const stage = rows.find((row) => row.id === stageId);
   if (!stage) throw new CrmContactFormError(STAGE_GONE);
-  if (stage.name === name) return;
-  if (rows.some((row) => row.id !== stageId && sameStageName(row.name, name))) {
-    throw new CrmContactFormError(STAGE_NAME_TAKEN);
+
+  const patch: { name?: string; probability_percent?: number } = {};
+  if (stage.name !== fields.name) {
+    if (rows.some((row) => row.id !== stageId && sameStageName(row.name, fields.name))) {
+      throw new CrmContactFormError(STAGE_NAME_TAKEN);
+    }
+    patch.name = fields.name;
   }
+  if (stage.probability_percent !== fields.probability) {
+    patch.probability_percent = fields.probability;
+  }
+  if (Object.keys(patch).length === 0) return;
 
   try {
-    await patchStage(scope, stageId, { name });
+    await patchStage(scope, stageId, patch);
   } catch (error) {
     if (errorCode(error) === UNIQUE_VIOLATION) throw new CrmContactFormError(STAGE_NAME_TAKEN);
     throw error;
@@ -706,8 +738,8 @@ export async function renameCrmPipelineStage(
 }
 
 /**
- * Moves a stage one place earlier ('up') or later ('down') on the board, and
- * sets every stage's probability from its new place. Moving the first stage
+ * Moves a stage one place earlier ('up') or later ('down') on the board. Only
+ * positions change: every stage keeps its probability. Moving the first stage
  * up or the last one down changes nothing. See `renumberStages` for how the
  * positions are written and what a failure part-way leaves.
  */
@@ -736,7 +768,7 @@ export async function moveCrmPipelineStage(
  * Removes a stage. Refused when the pipeline would be left with fewer than
  * two, and when deals are still in the stage: they are counted first for the
  * message, and the database refuses too (a deal added after the count). The
- * stages left are then closed up and given their probabilities; if that part
+ * stages left are then closed up, each keeping its probability; if that part
  * fails the stage is still gone, the stages still sort correctly, and the
  * next change to them finishes the job, so it is logged and not reported as
  * a failure to remove.

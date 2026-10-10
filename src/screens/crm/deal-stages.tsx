@@ -13,27 +13,30 @@ import {
   MIN_PIPELINE_STAGES,
   MIN_STAGES_MESSAGE,
   isWonStage,
+  parseStageName,
+  parseStageProbability,
   stageHasDealsMessage,
   type CrmPipeline,
   type CrmPipelineStage,
 } from '@/lib/crm/pipelines';
 import { useCrmForm } from './crm-form';
 
-type StageControl = 'up' | 'down' | 'rename' | 'remove';
+type StageControl = 'up' | 'down' | 'edit' | 'remove';
 
-const GAINS_WON =
-  'A stage named Won marks deals as won. Deals moved into this stage from now on will count as won; deals already in it keep their status.';
-const LOSES_WON =
-  'Deals count as won when they are moved into a stage named Won. With another name, deals moved into this stage will no longer count as won. Deals already won keep their status.';
+const GAINS_WON = 'Deals moved to this stage will count as won.';
+const LOSES_WON = 'Deals moved to this stage will no longer count as won.';
 const REMOVES_WON =
-  'Deals count as won when they are moved into a stage named Won. Without it, moving a deal in this pipeline will no longer mark it as won. Deals already won keep their status.';
+  'Without a Won stage, deals in this pipeline can no longer be marked won by moving them.';
 
 function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** A stage's name in a field, with what the new name does to "Won" said under it. */
-function RenameStageForm({
+/**
+ * A stage's name and win chance in fields, with what the new name does to
+ * "Won" said under it.
+ */
+function EditStageForm({
   pipeline,
   stage,
   action,
@@ -44,14 +47,19 @@ function RenameStageForm({
   action: CrmFormAction;
   onClose: () => void;
 }) {
-  // Held here, so the line about Won follows what is typed and a refused
-  // name stays in the field.
+  // Held here, so the line about Won follows what is typed and what was
+  // refused stays in the fields.
   const [name, setName] = useState(stage.name);
+  const [chance, setChance] = useState(String(stage.probability));
+  // What this form found wrong before sending anything.
+  const [refused, setRefused] = useState<string | null>(null);
   const { formAction, pending, error, values } = useCrmForm(action, onClose);
-  const inputId = useId();
+  const nameId = useId();
+  const chanceId = useId();
   const noteId = useId();
-  // A refusal is about the name that was sent, so it goes once that changes.
-  const shownError = error && values?.name === name ? error : null;
+  // A refusal is about what was sent, so it goes once that changes.
+  const sentError = error && values?.name === name && values?.probability === chance ? error : null;
+  const shownError = refused ?? sentError;
 
   const typed = name.trim();
   const otherWon = pipeline.stages.some((s) => s.id !== stage.id && isWonStage(s.name));
@@ -66,33 +74,70 @@ function RenameStageForm({
   return (
     <form
       action={formAction}
-      // The button stays enabled so focus stays on it; a second press waits.
+      aria-label={`Edit ${stage.name}`}
+      // The checks below say what is wrong in the page's own words; the
+      // browser's would stop the form before they ran.
+      noValidate
       onSubmit={(event) => {
-        if (pending) event.preventDefault();
+        // The button stays enabled so focus stays on it; a second press waits.
+        if (pending) {
+          event.preventDefault();
+          return;
+        }
+        // The same checks the write makes, made here first to save the trip.
+        try {
+          parseStageName(name);
+          parseStageProbability(chance);
+        } catch (problem) {
+          event.preventDefault();
+          setRefused(problem instanceof Error ? problem.message : 'Check the stage and try again.');
+        }
       }}
       className="w-full space-y-2"
     >
       <input type="hidden" name="pipelineId" value={pipeline.id} />
       <input type="hidden" name="stageId" value={stage.id} />
-      <div className="space-y-1.5">
-        <Label htmlFor={inputId}>New name for {stage.name}</Label>
-        <Input
-          id={inputId}
-          name="name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          maxLength={MAX_STAGE_NAME_LENGTH}
-          aria-describedby={note ? noteId : undefined}
-          className="sm:max-w-sm"
-          required
-          autoFocus
-        />
-        {note ? (
-          <p id={noteId} className="text-xs text-muted-foreground">
-            {note}
-          </p>
-        ) : null}
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-1 basis-48 space-y-1.5 sm:max-w-sm">
+          <Label htmlFor={nameId}>Stage name</Label>
+          <Input
+            id={nameId}
+            name="name"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              setRefused(null);
+            }}
+            maxLength={MAX_STAGE_NAME_LENGTH}
+            aria-describedby={note ? noteId : undefined}
+            required
+            autoFocus
+          />
+        </div>
+        <div className="w-32 space-y-1.5">
+          <Label htmlFor={chanceId}>Win chance (%)</Label>
+          <Input
+            id={chanceId}
+            name="probability"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={100}
+            step={1}
+            value={chance}
+            onChange={(event) => {
+              setChance(event.target.value);
+              setRefused(null);
+            }}
+            required
+          />
+        </div>
       </div>
+      {note ? (
+        <p id={noteId} className="text-xs text-muted-foreground">
+          {note}
+        </p>
+      ) : null}
       {shownError ? (
         <p role="alert" className="text-sm text-destructive">
           {shownError}
@@ -101,7 +146,7 @@ function RenameStageForm({
       <div className="flex flex-wrap gap-2">
         <Button type="submit" size="sm">
           <Check />
-          {pending ? 'Saving…' : 'Save name'}
+          {pending ? 'Saving…' : 'Save'}
         </Button>
         <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={pending}>
           Cancel
@@ -206,9 +251,9 @@ function AddStageForm({ pipeline, action }: { pipeline: CrmPipeline; action: Crm
 
   const hasWon = pipeline.stages.some((stage) => isWonStage(stage.name));
   const hint = hasWon
-    ? 'It goes just before Won, so Won stays the end of the pipeline.'
+    ? 'It goes just before Won.'
     : isWonStage(name)
-      ? `It goes last. ${GAINS_WON}`
+      ? 'It goes last, and deals moved to it will count as won.'
       : 'It goes last.';
 
   return (
@@ -252,7 +297,8 @@ function AddStageForm({ pipeline, action }: { pipeline: CrmPipeline; action: Crm
 
 /**
  * Opened by a pipeline's Edit stages: its stages in board order, each with
- * Move up, Move down, Rename and Remove, and a field to add another.
+ * Move up, Move down, Edit (its name and win chance) and Remove, and a field
+ * to add another.
  */
 export function PipelineStagesEditor({
   pipeline,
@@ -266,8 +312,8 @@ export function PipelineStagesEditor({
   actions: CrmDealActions;
   onClose: () => void;
 }) {
-  // One stage at a time is being renamed or asked about.
-  const [open, setOpen] = useState<{ kind: 'rename' | 'remove'; stageId: string } | null>(null);
+  // One stage at a time is being edited or asked about.
+  const [open, setOpen] = useState<{ kind: 'edit' | 'remove'; stageId: string } | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const doneRef = useRef<HTMLButtonElement>(null);
   // The control to put focus on once the page has caught up.
@@ -282,7 +328,7 @@ export function PipelineStagesEditor({
   // A moved stage's row is put elsewhere in the list, which can drop focus,
   // and the button that was pressed is disabled once the stage reaches an
   // end. Focus goes back to it, or to its opposite. Likewise the button that
-  // opened a rename or a confirmation gets focus back when that closes.
+  // opened an edit or a confirmation gets focus back when that closes.
   useEffect(() => {
     const target = focusNext.current;
     if (!target || open) return;
@@ -329,8 +375,8 @@ export function PipelineStagesEditor({
         <div className="min-w-0 space-y-0.5">
           <h4 className="text-sm font-semibold">Stages of {pipeline.name}</h4>
           <p className="text-xs text-muted-foreground">
-            In board order. Each stage&apos;s chance of closing is set from its place in the order,
-            ending at 100%.
+            In board order. A stage keeps its win chance when it moves, and a new stage starts
+            halfway between its neighbours.
           </p>
         </div>
         <Button ref={doneRef} type="button" variant="outline" size="sm" onClick={onClose}>
@@ -353,12 +399,12 @@ export function PipelineStagesEditor({
                     : 'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border bg-muted/30 p-2.5'
                 }
               >
-                {mode === 'rename' ? (
-                  <RenameStageForm
+                {mode === 'edit' ? (
+                  <EditStageForm
                     pipeline={pipeline}
                     stage={stage}
-                    action={actions.renameStage}
-                    onClose={() => close(stage.id, 'rename')}
+                    action={actions.updateStage}
+                    onClose={() => close(stage.id, 'edit')}
                   />
                 ) : mode === 'remove' ? (
                   <RemoveStageConfirm
@@ -412,12 +458,12 @@ export function PipelineStagesEditor({
                         type="button"
                         variant="outline"
                         size="sm"
-                        data-control="rename"
-                        aria-label={`Rename ${stage.name}`}
-                        onClick={() => setOpen({ kind: 'rename', stageId: stage.id })}
+                        data-control="edit"
+                        aria-label={`Edit ${stage.name}`}
+                        onClick={() => setOpen({ kind: 'edit', stageId: stage.id })}
                       >
                         <Pencil />
-                        <span className="hidden sm:inline">Rename</span>
+                        <span className="hidden sm:inline">Edit</span>
                       </Button>
                       <Button
                         type="button"

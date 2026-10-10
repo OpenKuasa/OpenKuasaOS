@@ -45,8 +45,8 @@ export type CrmDealActions = {
   removePipeline: CrmFormAction;
   /** Takes `pipelineId` and `name`. The stage goes before Won, or last. */
   addStage: CrmFormAction;
-  /** Takes `pipelineId`, `stageId` and `name`. */
-  renameStage: CrmFormAction;
+  /** Takes `pipelineId`, `stageId`, `name` and `probability` (a whole number, 0 to 100). */
+  updateStage: CrmFormAction;
   /** Takes `pipelineId`, `stageId` and `direction` ('up' or 'down'). */
   moveStage: CrmFormAction;
   /** Takes `pipelineId` and `stageId`. */

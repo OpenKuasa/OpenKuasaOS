@@ -14,19 +14,21 @@ import {
   listCrmPipelines,
   moveCrmPipelineStage,
   needsDefaultPipeline,
+  newStageProbability,
   parseCrmPipelineForm,
   parsePipelineName,
   parseStageList,
   parseStageName,
+  parseStageProbability,
   pipelineHasDealsMessage,
   readPipelineId,
   readStageDirection,
   renameCrmPipeline,
-  renameCrmPipelineStage,
   setDefaultCrmPipeline,
   stageDot,
   stageHasDealsMessage,
   stageProbabilities,
+  updateCrmPipelineStage,
   type CrmPipeline,
 } from '@/lib/crm/pipelines';
 
@@ -863,6 +865,40 @@ describe('the stage forms', () => {
     );
   });
 
+  test('a win chance is a whole number from 0 to 100', () => {
+    expect(parseStageProbability('0')).toBe(0);
+    expect(parseStageProbability('7')).toBe(7);
+    expect(parseStageProbability(' 50 ')).toBe(50);
+    expect(parseStageProbability('100')).toBe(100);
+    expect(parseStageProbability('007')).toBe(7);
+
+    for (const typed of ['', '  ', '101', '-1', '2.5', '50.0', '1e1', '+5', '5%', 'half', '1000']) {
+      expect(formError(() => parseStageProbability(typed))).toBe(
+        'Enter the win chance as a whole number from 0 to 100.',
+      );
+    }
+  });
+
+  test('a new stage starts halfway between its neighbours', () => {
+    expect(newStageProbability(70, 100)).toBe(85);
+    expect(newStageProbability(10, 30)).toBe(20);
+    // A half rounds up.
+    expect(newStageProbability(30, 55)).toBe(43);
+    // The neighbours need not be in order.
+    expect(newStageProbability(50, 30)).toBe(40);
+    // Nothing after it: halfway to 100.
+    expect(newStageProbability(70)).toBe(85);
+    expect(newStageProbability(100)).toBe(100);
+    // Nothing before it: half of the next one's.
+    expect(newStageProbability(undefined, 100)).toBe(50);
+    expect(newStageProbability(undefined, 25)).toBe(13);
+    // Neither, in a pipeline with no stages.
+    expect(newStageProbability()).toBe(50);
+    // Never outside 0 to 100, whatever is stored.
+    expect(newStageProbability(140, 100)).toBe(100);
+    expect(newStageProbability(-40, 10)).toBe(0);
+  });
+
   test('a move is up or down and nothing else', () => {
     expect(readStageDirection(form({ direction: 'up' }))).toBe('up');
     expect(readStageDirection(form({ direction: 'down' }))).toBe('down');
@@ -897,7 +933,7 @@ function storedStages(names: string[], probabilities = stageProbabilities(names.
 }
 
 const STAGE_NAMES = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won'];
-/** The starting five with the rule's 20 to 100, so only what a test changes shows up. */
+/** The starting five with a new pipeline's even 20 to 100. */
 const FIVE = storedStages(STAGE_NAMES);
 const [LEAD, QUALIFIED, PROPOSAL, NEGOTIATION, WON] = FIVE.map((stage) => stage.id);
 
@@ -925,8 +961,14 @@ function stagePatch(id: string, values: Record<string, unknown>): Call {
   };
 }
 
-const settle = (id: string, position: number, probability_percent: number) =>
-  stagePatch(id, { position, probability_percent });
+/** As `ensureDefaultPipeline` makes them: 10, 30, 50, 70 and 100. */
+const STARTING = storedStages(
+  STAGE_NAMES,
+  DEFAULT_STAGES.map((stage) => stage.probability),
+);
+
+/** A stage put on its final position. Nothing else about it is written. */
+const settle = (id: string, position: number) => stagePatch(id, { position });
 
 function insertStage(name: string, position: number, probability_percent: number): Call {
   return {
@@ -947,7 +989,8 @@ const done = (count: number) => Array.from({ length: count }, () => DONE);
  * A pipeline's stages held in memory behind the same chainable calls, with
  * no deals in them. It refuses a position already taken, as the table does,
  * and after every change of a stage notes the order the stages would be
- * shown in. `failAt` makes that update (counting from 1) fail and change
+ * shown in. `positionsOnly` says whether any update so far set a probability.
+ * `failAt` makes that update (counting from 1) fail and change
  * nothing.
  */
 function createStageStore(initial: StoredStage[], { failAt = 0 }: { failAt?: number } = {}) {
@@ -956,6 +999,7 @@ function createStageStore(initial: StoredStage[], { failAt = 0 }: { failAt?: num
   const taken = (position: number, except?: StoredStage) =>
     rows.some((row) => row !== except && row.position === position);
   const orders: string[][] = [];
+  const writes: Partial<StoredStage>[] = [];
   let updates = 0;
 
   const from = vi.fn((table: string) => {
@@ -988,11 +1032,13 @@ function createStageStore(initial: StoredStage[], { failAt = 0 }: { failAt?: num
 
       updates += 1;
       if (updates === failAt) return { error: { code: '08006' } };
+      writes.push(values);
       if (!row) return { data: [] };
       if (values.position !== undefined && taken(values.position, row)) {
         return { error: { code: '23505', message: 'position' } };
       }
       if (values.position !== undefined) row.position = values.position;
+      if (values.name !== undefined) row.name = values.name;
       if (values.probability_percent !== undefined) {
         row.probability_percent = values.probability_percent;
       }
@@ -1029,15 +1075,17 @@ function createStageStore(initial: StoredStage[], { failAt = 0 }: { failAt?: num
   });
 
   const shown = () => sorted().map((row) => [row.name, row.position, row.probability_percent]);
-  return { client: { from } as unknown as SupabaseClient, sorted, shown, orders };
+  /** True when no update so far has set a probability. */
+  const positionsOnly = () => writes.every((patch) => !('probability_percent' in patch));
+  return { client: { from } as unknown as SupabaseClient, sorted, shown, orders, positionsOnly };
 }
 
 describe('addCrmPipelineStage', () => {
-  test('puts the stage before Won and sets every probability from its place', async () => {
+  test('puts the stage before Won, halfway between its neighbours, and moves only positions', async () => {
     const { client, calls } = createScriptedClient([
-      { data: FIVE },
+      { data: STARTING },
       { data: { id: NEW_STAGE_ID } },
-      ...done(8),
+      ...done(4),
     ]);
 
     await expect(
@@ -1046,38 +1094,62 @@ describe('addCrmPipelineStage', () => {
 
     expect(calls).toEqual([
       READ_STAGES,
-      // After the last stage, where nothing can be in the way.
-      insertStage('Site visit', 6, 83),
+      // After the last stage, where nothing can be in the way. Between
+      // Negotiation's 70 and Won's 100: 85.
+      insertStage('Site visit', 6, 85),
       // Parked above every position in use, the last stage first.
       stagePatch(NEW_STAGE_ID, { position: 8 }),
       stagePatch(WON, { position: 7 }),
-      settle(NEW_STAGE_ID, 5, 83),
-      settle(WON, 6, 100),
-      // The stages that did not move get the six-stage spread.
-      stagePatch(LEAD, { probability_percent: 17 }),
-      stagePatch(QUALIFIED, { probability_percent: 33 }),
-      stagePatch(PROPOSAL, { probability_percent: 50 }),
-      stagePatch(NEGOTIATION, { probability_percent: 67 }),
+      settle(NEW_STAGE_ID, 5),
+      settle(WON, 6),
+      // The four before it are where they belong: no write.
     ]);
   });
 
-  test('ends numbered 1 to 6 with Won last, and never shows Won before the others', async () => {
-    const store = createStageStore(FIVE);
+  test('ends numbered 1 to 6 with Won last, every other percentage as it was', async () => {
+    const store = createStageStore(STARTING);
 
     await addCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, 'Site visit', NOW);
 
     expect(store.shown()).toEqual([
-      ['Lead', 1, 17],
-      ['Qualified', 2, 33],
+      ['Lead', 1, 10],
+      ['Qualified', 2, 30],
       ['Proposal', 3, 50],
-      ['Negotiation', 4, 67],
-      ['Site visit', 5, 83],
+      ['Negotiation', 4, 70],
+      ['Site visit', 5, 85],
       ['Won', 6, 100],
     ]);
+    expect(store.positionsOnly()).toBe(true);
     // On the way it is at the end, where it was inserted, or in its place.
     const atEnd = [...STAGE_NAMES, 'Site visit'];
     const inPlace = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Site visit', 'Won'];
     for (const order of store.orders) expect([atEnd, inPlace]).toContainEqual(order);
+  });
+
+  test('takes the midpoint of whatever its neighbours hold, rounding a half up', async () => {
+    // The even spread: between 80 and 100.
+    const even = createStageStore(FIVE);
+    await addCrmPipelineStage(even.client, ORG_ID, PIPELINE_ID, 'Site visit', NOW);
+    expect(even.shown()[4]).toEqual(['Site visit', 5, 90]);
+
+    // Between 25 and 100 is 62.5.
+    const half = createStageStore(storedStages(['Lead', 'Won'], [25, 100]));
+    await addCrmPipelineStage(half.client, ORG_ID, PIPELINE_ID, 'Quote', NOW);
+    expect(half.shown()).toEqual([
+      ['Lead', 1, 25],
+      ['Quote', 2, 63],
+      ['Won', 3, 100],
+    ]);
+
+    // Percentages out of order are taken as they are.
+    const mixed = createStageStore(storedStages(['Lead', 'Qualified', 'Won'], [50, 30, 20]));
+    await addCrmPipelineStage(mixed.client, ORG_ID, PIPELINE_ID, 'Quote', NOW);
+    expect(mixed.shown()).toEqual([
+      ['Lead', 1, 50],
+      ['Qualified', 2, 30],
+      ['Quote', 3, 25],
+      ['Won', 4, 20],
+    ]);
   });
 
   test('finds the Won stage whatever its capitals', async () => {
@@ -1086,28 +1158,46 @@ describe('addCrmPipelineStage', () => {
     await addCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, 'Quote', NOW);
 
     expect(store.shown()).toEqual([
-      ['Lead', 1, 33],
-      ['Quote', 2, 67],
+      ['Lead', 1, 50],
+      ['Quote', 2, 75],
       ['WON', 3, 100],
     ]);
   });
 
-  test('goes last when the pipeline has no Won stage', async () => {
+  test('goes last, halfway to 100, when the pipeline has no Won stage', async () => {
     const { client, calls } = createScriptedClient([
-      { data: storedStages(['Intro', 'Quote']) },
+      { data: storedStages(['Intro', 'Quote'], [20, 60]) },
       { data: { id: NEW_STAGE_ID } },
-      ...done(2),
     ]);
 
     await addCrmPipelineStage(client, ORG_ID, PIPELINE_ID, 'Signed', NOW);
 
-    expect(calls).toEqual([
-      READ_STAGES,
-      insertStage('Signed', 3, 100),
-      // Nothing has to move; the other two get the three-stage spread.
-      stagePatch(stageId(1), { probability_percent: 33 }),
-      stagePatch(stageId(2), { probability_percent: 67 }),
+    // Nothing has to move, so the insert is the only write.
+    expect(calls).toEqual([READ_STAGES, insertStage('Signed', 3, 80)]);
+  });
+
+  test('stays at 100 after a last stage that is already there', async () => {
+    const { client, calls } = createScriptedClient([
+      { data: storedStages(['Intro', 'Signed']) },
+      { data: { id: NEW_STAGE_ID } },
     ]);
+
+    await addCrmPipelineStage(client, ORG_ID, PIPELINE_ID, 'Paid', NOW);
+
+    expect(calls[1]).toEqual(insertStage('Paid', 3, 100));
+  });
+
+  test('gets half of Won when Won has been moved to the front', async () => {
+    const store = createStageStore(storedStages(['Won', 'Lead'], [90, 10]));
+
+    await addCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, 'Intro', NOW);
+
+    expect(store.shown()).toEqual([
+      ['Intro', 1, 45],
+      ['Won', 2, 90],
+      ['Lead', 3, 10],
+    ]);
+    expect(store.positionsOnly()).toBe(true);
   });
 
   test('is the first stage of a pipeline that has none', async () => {
@@ -1115,7 +1205,8 @@ describe('addCrmPipelineStage', () => {
 
     await addCrmPipelineStage(client, ORG_ID, PIPELINE_ID, 'Lead', NOW);
 
-    expect(calls).toEqual([READ_STAGES, insertStage('Lead', 1, 100)]);
+    // No neighbour on either side: halfway between 0 and 100.
+    expect(calls).toEqual([READ_STAGES, insertStage('Lead', 1, 50)]);
   });
 
   test('numbers the stages 1, 2, 3 again after an earlier change stopped part-way', async () => {
@@ -1127,21 +1218,21 @@ describe('addCrmPipelineStage', () => {
     const { client, calls } = createScriptedClient([
       { data: left },
       { data: { id: NEW_STAGE_ID } },
-      ...done(7),
+      ...done(6),
     ]);
 
     await addCrmPipelineStage(client, ORG_ID, PIPELINE_ID, 'Visit', NOW);
 
     expect(calls).toEqual([
       READ_STAGES,
-      insertStage('Visit', 9, 75),
+      // Between Quote's 67 and Won's 100 is 83.5.
+      insertStage('Visit', 9, 84),
       stagePatch(NEW_STAGE_ID, { position: 12 }),
       stagePatch(stageId(3), { position: 11 }),
       stagePatch(stageId(2), { position: 10 }),
-      settle(stageId(2), 2, 50),
-      settle(NEW_STAGE_ID, 3, 75),
-      settle(stageId(3), 4, 100),
-      stagePatch(stageId(1), { probability_percent: 25 }),
+      settle(stageId(2), 2),
+      settle(NEW_STAGE_ID, 3),
+      settle(stageId(3), 4),
     ]);
   });
 
@@ -1234,18 +1325,28 @@ describe('addCrmPipelineStage', () => {
     log.mockRestore();
   });
 
-  test('counts as added when only the probabilities could not be rewritten', async () => {
+  test('counts as added when only the numbering could not be closed up', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { client } = createScriptedClient([
-      { data: storedStages(['Intro', 'Quote']) },
+    // A gap left by an earlier change, so there is numbering to do.
+    const gapped = [
+      { id: stageId(1), name: 'Intro', position: 1, probability_percent: 50 },
+      { id: stageId(2), name: 'Quote', position: 4, probability_percent: 100 },
+    ];
+    const { client, calls } = createScriptedClient([
+      { data: gapped },
       { data: { id: NEW_STAGE_ID } },
       { error: { code: '08006' } },
     ]);
 
     // With no Won stage the end is where it was meant to go.
-    await expect(addCrmPipelineStage(client, ORG_ID, PIPELINE_ID, 'Signed')).resolves.toBe(
+    await expect(addCrmPipelineStage(client, ORG_ID, PIPELINE_ID, 'Signed', NOW)).resolves.toBe(
       NEW_STAGE_ID,
     );
+    expect(calls).toEqual([
+      READ_STAGES,
+      insertStage('Signed', 5, 100),
+      stagePatch(NEW_STAGE_ID, { position: 7 }),
+    ]);
     expect(log).toHaveBeenCalledTimes(1);
     log.mockRestore();
   });
@@ -1259,51 +1360,156 @@ describe('addCrmPipelineStage', () => {
   });
 });
 
-describe('renameCrmPipelineStage', () => {
-  test('renames one stage of one pipeline in one org, and nothing else about it', async () => {
+describe('updateCrmPipelineStage', () => {
+  // Proposal as FIVE stores it.
+  const PROPOSAL_NOW = { name: 'Proposal', probability: 60 };
+
+  test('writes only the name when only the name changed', async () => {
     const { client, calls } = createScriptedClient([{ data: FIVE }, DONE]);
 
     await expect(
-      renameCrmPipelineStage(client, ORG_ID, PIPELINE_ID, PROPOSAL, 'Quote sent', NOW),
+      updateCrmPipelineStage(
+        client,
+        ORG_ID,
+        PIPELINE_ID,
+        PROPOSAL,
+        { name: 'Quote sent', probability: 60 },
+        NOW,
+      ),
     ).resolves.toBeUndefined();
 
+    // One stage of one pipeline in one org, and nothing else about it.
     expect(calls).toEqual([READ_STAGES, stagePatch(PROPOSAL, { name: 'Quote sent' })]);
+  });
+
+  test('writes only the percentage when only the percentage changed', async () => {
+    const { client, calls } = createScriptedClient([{ data: FIVE }, DONE]);
+
+    await updateCrmPipelineStage(
+      client,
+      ORG_ID,
+      PIPELINE_ID,
+      PROPOSAL,
+      { name: 'Proposal', probability: 45 },
+      NOW,
+    );
+
+    expect(calls).toEqual([READ_STAGES, stagePatch(PROPOSAL, { probability_percent: 45 })]);
+  });
+
+  test('writes both in one statement when both changed', async () => {
+    const { client, calls } = createScriptedClient([{ data: FIVE }, DONE]);
+
+    await updateCrmPipelineStage(
+      client,
+      ORG_ID,
+      PIPELINE_ID,
+      PROPOSAL,
+      { name: 'Quote sent', probability: 0 },
+      NOW,
+    );
+
+    expect(calls).toEqual([
+      READ_STAGES,
+      stagePatch(PROPOSAL, { name: 'Quote sent', probability_percent: 0 }),
+    ]);
+  });
+
+  test('writes nothing when neither changed', async () => {
+    const { client, calls } = createScriptedClient([{ data: FIVE }]);
+
+    await expect(
+      updateCrmPipelineStage(client, ORG_ID, PIPELINE_ID, PROPOSAL, PROPOSAL_NOW),
+    ).resolves.toBeUndefined();
+    expect(calls).toEqual([READ_STAGES]);
+  });
+
+  test('takes any percentage from 0 to 100, in order with its neighbours or not', async () => {
+    // Above the stage after it, below the stage before it, and both ends.
+    for (const probability of [0, 10, 95, 100]) {
+      const { client, calls } = createScriptedClient([{ data: FIVE }, DONE]);
+
+      await updateCrmPipelineStage(
+        client,
+        ORG_ID,
+        PIPELINE_ID,
+        PROPOSAL,
+        { name: 'Proposal', probability },
+        NOW,
+      );
+
+      expect(calls[1]).toEqual(stagePatch(PROPOSAL, { probability_percent: probability }));
+    }
+  });
+
+  test('leaves every other stage as it was', async () => {
+    const store = createStageStore(STARTING);
+
+    await updateCrmPipelineStage(
+      store.client,
+      ORG_ID,
+      PIPELINE_ID,
+      QUALIFIED,
+      { name: 'Vetted', probability: 35 },
+      NOW,
+    );
+
+    expect(store.shown()).toEqual([
+      ['Lead', 1, 10],
+      ['Vetted', 2, 35],
+      ['Proposal', 3, 50],
+      ['Negotiation', 4, 70],
+      ['Won', 5, 100],
+    ]);
   });
 
   test('lets the Won stage be renamed, and another stage take the name once it is free', async () => {
     const renamed = createScriptedClient([{ data: FIVE }, DONE]);
-    await renameCrmPipelineStage(renamed.client, ORG_ID, PIPELINE_ID, WON, 'Signed', NOW);
+    await updateCrmPipelineStage(
+      renamed.client,
+      ORG_ID,
+      PIPELINE_ID,
+      WON,
+      { name: 'Signed', probability: 100 },
+      NOW,
+    );
     expect(renamed.calls[1]).toEqual(stagePatch(WON, { name: 'Signed' }));
 
     const noWon = FIVE.map((stage) => (stage.id === WON ? { ...stage, name: 'Signed' } : stage));
     const taken = createScriptedClient([{ data: noWon }, DONE]);
-    await renameCrmPipelineStage(taken.client, ORG_ID, PIPELINE_ID, PROPOSAL, 'Won', NOW);
+    await updateCrmPipelineStage(
+      taken.client,
+      ORG_ID,
+      PIPELINE_ID,
+      PROPOSAL,
+      { name: 'Won', probability: 60 },
+      NOW,
+    );
     expect(taken.calls[1]).toEqual(stagePatch(PROPOSAL, { name: 'Won' }));
   });
 
   test('changes only the capitals of a stage name', async () => {
     const { client, calls } = createScriptedClient([{ data: FIVE }, DONE]);
 
-    await renameCrmPipelineStage(client, ORG_ID, PIPELINE_ID, PROPOSAL, 'PROPOSAL', NOW);
+    await updateCrmPipelineStage(
+      client,
+      ORG_ID,
+      PIPELINE_ID,
+      PROPOSAL,
+      { name: 'PROPOSAL', probability: 60 },
+      NOW,
+    );
 
     expect(calls[1]).toEqual(stagePatch(PROPOSAL, { name: 'PROPOSAL' }));
-  });
-
-  test('writes nothing when the name is the one it has', async () => {
-    const { client, calls } = createScriptedClient([{ data: FIVE }]);
-
-    await expect(
-      renameCrmPipelineStage(client, ORG_ID, PIPELINE_ID, PROPOSAL, 'Proposal'),
-    ).resolves.toBeUndefined();
-    expect(calls).toEqual([READ_STAGES]);
   });
 
   test("refuses another stage's name whatever its capitals, so never two called Won", async () => {
     for (const name of ['Lead', 'lead', 'won', 'WON']) {
       const { client, calls } = createScriptedClient([{ data: FIVE }]);
 
+      // A changed percentage sent with it is not written either.
       await expectFormError(
-        renameCrmPipelineStage(client, ORG_ID, PIPELINE_ID, PROPOSAL, name),
+        updateCrmPipelineStage(client, ORG_ID, PIPELINE_ID, PROPOSAL, { name, probability: 45 }),
         'Another stage in this pipeline already uses that name.',
       );
       expect(calls).toHaveLength(1);
@@ -1311,44 +1517,38 @@ describe('renameCrmPipelineStage', () => {
   });
 
   test('says so when the database finds the name taken, or the stage gone', async () => {
-    const rename = (steps: Step[], id = PROPOSAL) =>
-      renameCrmPipelineStage(createScriptedClient(steps).client, ORG_ID, PIPELINE_ID, id, 'Quote');
+    const update = (steps: Step[], id = PROPOSAL) =>
+      updateCrmPipelineStage(createScriptedClient(steps).client, ORG_ID, PIPELINE_ID, id, {
+        name: 'Quote',
+        probability: 45,
+      });
 
     await expectFormError(
-      rename([{ data: FIVE }, { error: { code: '23505' } }]),
+      update([{ data: FIVE }, { error: { code: '23505' } }]),
       'Another stage in this pipeline already uses that name.',
     );
     // Not among the pipeline's stages.
-    await expectFormError(rename([{ data: FIVE }], stageId(42)), 'That stage no longer exists.');
+    await expectFormError(update([{ data: FIVE }], stageId(42)), 'That stage no longer exists.');
     // Deleted between the read and the write.
-    await expectFormError(rename([{ data: FIVE }, { data: [] }]), 'That stage no longer exists.');
+    await expectFormError(update([{ data: FIVE }, { data: [] }]), 'That stage no longer exists.');
   });
 
   test('rethrows any other database error', async () => {
     const denied = { code: '42501' };
-    const rename = (steps: Step[]) =>
-      renameCrmPipelineStage(
-        createScriptedClient(steps).client,
-        ORG_ID,
-        PIPELINE_ID,
-        PROPOSAL,
-        'Quote',
-      );
+    const update = (steps: Step[]) =>
+      updateCrmPipelineStage(createScriptedClient(steps).client, ORG_ID, PIPELINE_ID, PROPOSAL, {
+        name: 'Quote',
+        probability: 60,
+      });
 
-    await expect(rename([{ data: FIVE }, { error: denied }])).rejects.toBe(denied);
-    await expect(rename([{ error: denied }])).rejects.toBe(denied);
+    await expect(update([{ data: FIVE }, { error: denied }])).rejects.toBe(denied);
+    await expect(update([{ error: denied }])).rejects.toBe(denied);
   });
 });
 
 describe('moveCrmPipelineStage', () => {
-  // As `ensureDefaultPipeline` makes it: 10, 30, 50, 70 and 100.
-  const STARTING = storedStages(
-    STAGE_NAMES,
-    DEFAULT_STAGES.map((stage) => stage.probability),
-  );
-
   test('parks the stages from the moved pair on, then settles them, in that order', async () => {
-    const { client, calls } = createScriptedClient([{ data: FIVE }, ...done(8)]);
+    const { client, calls } = createScriptedClient([{ data: STARTING }, ...done(8)]);
 
     await expect(
       moveCrmPipelineStage(client, ORG_ID, PIPELINE_ID, QUALIFIED, 'down', NOW),
@@ -1361,12 +1561,12 @@ describe('moveCrmPipelineStage', () => {
       stagePatch(NEGOTIATION, { position: 8 }),
       stagePatch(PROPOSAL, { position: 7 }),
       stagePatch(QUALIFIED, { position: 6 }),
-      // Settle: final positions, the first stage first, each with its probability.
-      settle(PROPOSAL, 2, 40),
-      settle(QUALIFIED, 3, 60),
-      settle(NEGOTIATION, 4, 80),
-      settle(WON, 5, 100),
-      // Lead stays at 1 with the 20 it has: no write.
+      // Settle: final positions only, the first stage first.
+      settle(PROPOSAL, 2),
+      settle(QUALIFIED, 3),
+      settle(NEGOTIATION, 4),
+      settle(WON, 5),
+      // Lead stays at 1: no write. No probability is written anywhere.
     ]);
   });
 
@@ -1388,13 +1588,13 @@ describe('moveCrmPipelineStage', () => {
       READ_STAGES,
       stagePatch(WON, { position: 7 }),
       stagePatch(NEGOTIATION, { position: 6 }),
-      settle(WON, 4, 80),
-      settle(NEGOTIATION, 5, 100),
+      settle(WON, 4),
+      settle(NEGOTIATION, 5),
     ]);
   });
 
-  test("replaces the starting pipeline's 10 to 100 with the even spread", async () => {
-    const { client, calls } = createScriptedClient([{ data: STARTING }, ...done(8)]);
+  test("keeps the starting pipeline's 10 to 100 attached to their stages", async () => {
+    const { client, calls } = createScriptedClient([{ data: STARTING }, ...done(6)]);
 
     await moveCrmPipelineStage(client, ORG_ID, PIPELINE_ID, NEGOTIATION, 'up', NOW);
 
@@ -1403,13 +1603,43 @@ describe('moveCrmPipelineStage', () => {
       stagePatch(WON, { position: 8 }),
       stagePatch(NEGOTIATION, { position: 7 }),
       stagePatch(PROPOSAL, { position: 6 }),
-      settle(NEGOTIATION, 3, 60),
-      settle(PROPOSAL, 4, 80),
-      settle(WON, 5, 100),
-      // The two that kept their place: 10 becomes 20 and 30 becomes 40.
-      stagePatch(LEAD, { probability_percent: 20 }),
-      stagePatch(QUALIFIED, { probability_percent: 40 }),
+      settle(NEGOTIATION, 3),
+      settle(PROPOSAL, 4),
+      settle(WON, 5),
+      // The two that kept their place are not written at all.
     ]);
+
+    const store = createStageStore(STARTING);
+    await moveCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, NEGOTIATION, 'up', NOW);
+    expect(store.shown()).toEqual([
+      ['Lead', 1, 10],
+      ['Qualified', 2, 30],
+      ['Negotiation', 3, 70],
+      ['Proposal', 4, 50],
+      ['Won', 5, 100],
+    ]);
+    expect(store.positionsOnly()).toBe(true);
+  });
+
+  test('a stage moved all the way down and back keeps its percentage throughout', async () => {
+    const store = createStageStore(STARTING);
+
+    for (let step = 0; step < 4; step += 1) {
+      await moveCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, LEAD, 'down', NOW);
+    }
+    expect(store.shown()).toEqual([
+      ['Qualified', 1, 30],
+      ['Proposal', 2, 50],
+      ['Negotiation', 3, 70],
+      ['Won', 4, 100],
+      ['Lead', 5, 10],
+    ]);
+
+    for (let step = 0; step < 4; step += 1) {
+      await moveCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, LEAD, 'up', NOW);
+    }
+    expect(store.shown()).toEqual(STARTING.map((s) => [s.name, s.position, s.probability_percent]));
+    expect(store.positionsOnly()).toBe(true);
   });
 
   test('moving the first stage up or the last one down writes nothing', async () => {
@@ -1460,20 +1690,26 @@ describe('moveCrmPipelineStage', () => {
   });
 
   test('never asks for a position that is taken, and never shows a third order', async () => {
+    // Each stage's percentage, which it must still have wherever it ends up.
+    const percentOf = Object.fromEntries(
+      STARTING.map((stage) => [stage.name, stage.probability_percent]),
+    );
+
     for (let from = 0; from < STAGE_NAMES.length - 1; from += 1) {
       const wanted = [...STAGE_NAMES];
       [wanted[from], wanted[from + 1]] = [wanted[from + 1], wanted[from]];
       const moved = stageId(from + 1);
 
       // Run to the end. The store refuses a taken position, which would fail this.
-      const whole = createStageStore(FIVE);
+      const whole = createStageStore(STARTING);
       await moveCrmPipelineStage(whole.client, ORG_ID, PIPELINE_ID, moved, 'down', NOW);
-      expect(whole.shown()).toEqual(wanted.map((name, i) => [name, i + 1, (i + 1) * 20]));
+      expect(whole.shown()).toEqual(wanted.map((name, i) => [name, i + 1, percentOf[name]]));
+      expect(whole.positionsOnly()).toBe(true);
       for (const order of whole.orders) expect([STAGE_NAMES, wanted]).toContainEqual(order);
 
       // Then again, stopping at each write in turn.
       for (let failAt = 1; failAt <= whole.orders.length; failAt += 1) {
-        const store = createStageStore(FIVE, { failAt });
+        const store = createStageStore(STARTING, { failAt });
         await expect(
           moveCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, moved, 'down', NOW),
         ).rejects.toEqual({ code: '08006' });
@@ -1483,6 +1719,8 @@ describe('moveCrmPipelineStage', () => {
         const leftNames = left.map((row) => row.name);
         expect([STAGE_NAMES, wanted]).toContainEqual(leftNames);
         expect(new Set(left.map((row) => row.position)).size).toBe(STAGE_NAMES.length);
+        // Stopping part-way has not cost any stage its percentage.
+        for (const row of left) expect(row.probability_percent).toBe(percentOf[row.name]);
 
         // The next move works from what was left and ends with 1 to 5 again.
         const next = createStageStore(left);
@@ -1490,7 +1728,7 @@ describe('moveCrmPipelineStage', () => {
         const wonAt = leftNames.indexOf('Won');
         const after = [...leftNames];
         [after[wonAt - 1], after[wonAt]] = [after[wonAt], after[wonAt - 1]];
-        expect(next.shown()).toEqual(after.map((name, i) => [name, i + 1, (i + 1) * 20]));
+        expect(next.shown()).toEqual(after.map((name, i) => [name, i + 1, percentOf[name]]));
       }
     }
   });
@@ -1518,10 +1756,10 @@ describe('deleteCrmPipelineStage', () => {
 
   test('checks the stages and the deals, deletes within the pipeline, then closes up', async () => {
     const { client, calls } = createScriptedClient([
-      { data: FIVE },
+      { data: STARTING },
       { count: 0 },
       DONE,
-      ...done(6),
+      ...done(4),
     ]);
 
     await expect(
@@ -1535,43 +1773,42 @@ describe('deleteCrmPipelineStage', () => {
       // The two after the gap are parked, then settled one place earlier.
       stagePatch(WON, { position: 7 }),
       stagePatch(NEGOTIATION, { position: 6 }),
-      settle(NEGOTIATION, 3, 75),
-      settle(WON, 4, 100),
-      // The two before it get the four-stage spread.
-      stagePatch(LEAD, { probability_percent: 25 }),
-      stagePatch(QUALIFIED, { probability_percent: 50 }),
+      settle(NEGOTIATION, 3),
+      settle(WON, 4),
+      // The two before it are not written, and no probability is.
     ]);
   });
 
-  test('moves nothing when the last stage goes, and the new last stage reaches 100', async () => {
-    const { client, calls } = createScriptedClient([
-      { data: FIVE },
-      { count: 0 },
-      DONE,
-      ...done(4),
-    ]);
+  test('writes nothing more when the last stage goes, and the new last stage keeps its percentage', async () => {
+    const { client, calls } = createScriptedClient([{ data: STARTING }, { count: 0 }, DONE]);
 
     await deleteCrmPipelineStage(client, ORG_ID, PIPELINE_ID, WON, NOW);
 
-    expect(calls.slice(3)).toEqual([
-      stagePatch(LEAD, { probability_percent: 25 }),
-      stagePatch(QUALIFIED, { probability_percent: 50 }),
-      stagePatch(PROPOSAL, { probability_percent: 75 }),
-      stagePatch(NEGOTIATION, { probability_percent: 100 }),
+    expect(calls).toEqual([READ_STAGES, countDeals(WON), deleteStage(WON)]);
+
+    const store = createStageStore(STARTING);
+    await deleteCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, WON, NOW);
+    // Negotiation is last now and still 70, not 100.
+    expect(store.shown()).toEqual([
+      ['Lead', 1, 10],
+      ['Qualified', 2, 30],
+      ['Proposal', 3, 50],
+      ['Negotiation', 4, 70],
     ]);
   });
 
-  test('leaves the stages numbered 1 to 4 with no gap, in the order they had', async () => {
-    const store = createStageStore(FIVE);
+  test('leaves the stages numbered 1 to 4 with no gap, in the order and with the percentages they had', async () => {
+    const store = createStageStore(STARTING);
 
     await deleteCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, QUALIFIED, NOW);
 
     expect(store.shown()).toEqual([
-      ['Lead', 1, 25],
+      ['Lead', 1, 10],
       ['Proposal', 2, 50],
-      ['Negotiation', 3, 75],
+      ['Negotiation', 3, 70],
       ['Won', 4, 100],
     ]);
+    expect(store.positionsOnly()).toBe(true);
     for (const order of store.orders) {
       expect(order).toEqual(['Lead', 'Proposal', 'Negotiation', 'Won']);
     }
@@ -1596,7 +1833,7 @@ describe('deleteCrmPipelineStage', () => {
     await deleteCrmPipelineStage(store.client, ORG_ID, PIPELINE_ID, stageId(1), NOW);
 
     expect(store.shown()).toEqual([
-      ['Quote', 1, 50],
+      ['Quote', 1, 67],
       ['Won', 2, 100],
     ]);
   });

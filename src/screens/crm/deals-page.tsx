@@ -27,11 +27,12 @@ import {
   parseCrmPipelineForm,
   parsePipelineName,
   parseStageName,
+  parseStageProbability,
   readPipelineId,
   readStageDirection,
   renameCrmPipeline,
-  renameCrmPipelineStage,
   setDefaultCrmPipeline,
+  updateCrmPipelineStage,
 } from '@/lib/crm/pipelines';
 import { runCrmWrite } from '@/lib/crm/run-write';
 import { createClient } from '@/lib/supabase/server';
@@ -182,19 +183,16 @@ async function addStageAction(_prev: CrmFormState, formData: FormData) {
   });
 }
 
-async function renameStageAction(_prev: CrmFormState, formData: FormData) {
+async function updateStageAction(_prev: CrmFormState, formData: FormData) {
   'use server';
   const { orgId } = await getViewer();
   const supabase = await createClient();
 
-  return runStageWrite(formData, 'Could not rename the stage.', () =>
-    renameCrmPipelineStage(
-      supabase,
-      orgId,
-      readPipelineId(formData),
-      readStageId(formData),
-      parseStageName(String(formData.get('name') ?? '')),
-    ),
+  return runStageWrite(formData, 'Could not save the stage.', () =>
+    updateCrmPipelineStage(supabase, orgId, readPipelineId(formData), readStageId(formData), {
+      name: parseStageName(String(formData.get('name') ?? '')),
+      probability: parseStageProbability(String(formData.get('probability') ?? '')),
+    }),
   );
 }
 
@@ -235,7 +233,7 @@ const ACTIONS: CrmDealActions = {
   makeDefaultPipeline: makeDefaultPipelineAction,
   removePipeline: deletePipelineAction,
   addStage: addStageAction,
-  renameStage: renameStageAction,
+  updateStage: updateStageAction,
   moveStage: moveStageAction,
   removeStage: removeStageAction,
 };
