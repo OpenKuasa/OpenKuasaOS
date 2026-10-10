@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
-import { convertFileListToFileUIParts, type FileUIPart } from 'ai';
+import { convertFileListToFileUIParts, type FileUIPart, type UIMessage } from 'ai';
 import {
   Sparkles,
   Plus,
@@ -61,6 +61,7 @@ import {
 import { screenFromPath, screenLabel } from '@/lib/chat/screen';
 import { ApprovalCard, ToolStepCard } from '@/components/chat/tool-cards';
 import {
+  approvalSubject,
   hasVisibleContent,
   isText,
   toPendingApproval,
@@ -785,7 +786,7 @@ function ChatPane({
       if (!current) return;
       const last = loaded?.ok ? loaded.messages[loaded.messages.length - 1] : null;
       if (loaded?.ok && last?.role === 'assistant') {
-        setMessages(loaded.messages);
+        setMessages(loaded.messages as UIMessage[]);
         setAwaiting('settled');
       } else if (tries >= ANSWER_POLL_TRIES) {
         setAwaiting('lost');
@@ -1025,6 +1026,7 @@ function ChatPane({
                                 <ApprovalCard
                                   key={pending.approvalId}
                                   approval={pending}
+                                  subject={approvalSubject(pending.input, chat.messages)}
                                   onDecide={(approved) => {
                                     setAttachNote(null);
                                     void chat.addToolApprovalResponse({

@@ -11,6 +11,7 @@
  * refused one leaves no trace.
  */
 
+import { readUIMessageStream, type UIMessage } from 'ai';
 import { prepareChat } from '@/lib/ai/chat-request';
 import { runTuah } from '@/lib/ai/agents/orchestrator';
 import { getCurrentOrg } from '@/lib/auth/current-org';
@@ -59,14 +60,20 @@ export async function POST(request: Request) {
 
   if (threadId) {
     void (async () => {
-      if (!(await questionSaved)) return;
-      // Everything Tuah said this turn, including the line before a lookup.
-      const steps = await result.steps;
-      const text = steps
-        .map((step) => step.text.trim())
-        .filter(Boolean)
-        .join('\n\n');
-      await saveAnswer(supabase, threadId, [{ type: 'text', text }]);
+      // The answer as the chat shows it: words, lookups and changes to
+      // approve. A turn resuming after an approval continues the message it
+      // paused in, so what is saved is that whole message.
+      const paused =
+        lastMessage.role === 'assistant' ? structuredClone(lastMessage) : undefined;
+      let answer: UIMessage | undefined;
+      for await (const message of readUIMessageStream({
+        message: paused,
+        stream: result.toUIMessageStream(),
+      })) {
+        answer = message;
+      }
+      if (!answer || !(await questionSaved)) return;
+      await saveAnswer(supabase, threadId, answer.parts);
     })().catch((error) => {
       console.error(
         '[tuah] answer not saved:',

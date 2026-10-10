@@ -4,6 +4,7 @@
  */
 
 import { attachmentNote } from '@/lib/chat/attachments';
+import type { StoredTextPart, StoredToolPart } from '@/lib/chat/stored-parts';
 
 export type ChatThread = {
   id: string;
@@ -12,12 +13,16 @@ export type ChatThread = {
   updatedAt: string;
 };
 
-export type StoredTextPart = { type: 'text'; text: string };
+export type { StoredTextPart } from '@/lib/chat/stored-parts';
 
+/** A stored file as the browser gets it: a short-lived link in place of its path. */
+export type ShownFilePart = { type: 'file'; mediaType: string; filename?: string; url: string };
+
+/** A saved message as it is handed to the chat UI. */
 export type StoredMessage = {
   id: string;
   role: 'user' | 'assistant';
-  parts: StoredTextPart[];
+  parts: (StoredTextPart | StoredToolPart | ShownFilePart)[];
 };
 
 export const THREAD_TITLE_MAX = 60;

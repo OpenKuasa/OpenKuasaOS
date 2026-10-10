@@ -4,11 +4,9 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { listThreads } from '@/lib/chat/store';
-import {
-  textParts,
-  type ChatThread,
-  type StoredMessage,
-} from '@/lib/chat/threads';
+import { removeThreadFiles, signStoredFiles } from '@/lib/chat/attachment-store';
+import { collapseResumes, storedParts } from '@/lib/chat/stored-parts';
+import type { ChatThread, StoredMessage } from '@/lib/chat/threads';
 
 /**
  * Chat history for the signed-in user. Every query runs as that user, so row
@@ -67,6 +65,29 @@ export async function loadChatThreadAction(id: string): Promise<LoadedThread> {
   }
   if (!thread.data) return { ok: false, reason: 'missing' };
 
+  const rows = collapseResumes(
+    (messages.data ?? []).map((row) => ({
+      id: row.id as string,
+      role: row.role === 'user' ? ('user' as const) : ('assistant' as const),
+      parts: storedParts(row.parts),
+    })),
+  );
+  // Stored files reach the browser as links that stop working after an hour.
+  const links = await signStoredFiles(
+    supabase,
+    rows.flatMap((row) => row.parts.flatMap((p) => (p.type === 'file' ? [p.path] : []))),
+  );
+  const shown: StoredMessage[] = rows.map((row) => ({
+    ...row,
+    parts: row.parts.map((part) => {
+      if (part.type !== 'file') return part;
+      const url = links.get(part.path);
+      return url
+        ? { type: 'file' as const, mediaType: part.mediaType, filename: part.filename, url }
+        : { type: 'text' as const, text: `[Attached: ${part.filename ?? 'a file'}]` };
+    }),
+  }));
+
   return {
     ok: true,
     thread: {
@@ -74,13 +95,7 @@ export async function loadChatThreadAction(id: string): Promise<LoadedThread> {
       title: thread.data.title as string,
       updatedAt: thread.data.updated_at as string,
     },
-    messages: (messages.data ?? [])
-      .map((row) => ({
-        id: row.id as string,
-        role: row.role === 'user' ? ('user' as const) : ('assistant' as const),
-        parts: textParts(row.parts),
-      }))
-      .filter((message) => message.parts.length > 0),
+    messages: shown.filter((message) => message.parts.length > 0),
   };
 }
 
@@ -113,6 +128,10 @@ export async function deleteChatThreadAction(id: string): Promise<boolean> {
   if (!parsed.success) return false;
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) await removeThreadFiles(supabase, user.id, parsed.data);
   const { error } = await supabase
     .from('chat_threads')
     .delete()

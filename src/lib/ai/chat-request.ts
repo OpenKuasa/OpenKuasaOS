@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { resolveChatAccess } from '@/lib/ai/gate';
+import { resolveStoredFiles } from '@/lib/chat/attachment-store';
 import { inlineTextFiles } from '@/lib/chat/attachments';
 import { screenFromPath, type Screen } from '@/lib/chat/screen';
 import { isThreadId } from '@/lib/chat/threads';
@@ -88,7 +89,9 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
   try {
     const parsed = bodySchema.parse(JSON.parse(raw));
     const recent = parsed.messages.slice(-MAX_MESSAGES);
-    const validated = await safeValidateUIMessages({ messages: recent });
+    // A chat opened again sends its stored files as links; the model gets the files.
+    const withFiles = await resolveStoredFiles(supabase, user.id, recent);
+    const validated = await safeValidateUIMessages({ messages: withFiles });
     if (!validated.success) return fail(400, { error: 'Invalid request.' });
     messages = await convertToModelMessages(inlineTextFiles(validated.data));
     threadId = isThreadId(parsed.id) ? parsed.id : null;

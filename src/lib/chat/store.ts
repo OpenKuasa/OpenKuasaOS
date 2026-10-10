@@ -6,13 +6,9 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCurrentOrg } from '@/lib/auth/current-org';
-import {
-  questionParts,
-  questionTitle,
-  textParts,
-  type ChatThread,
-  type StoredTextPart,
-} from '@/lib/chat/threads';
+import { storeQuestionFiles } from '@/lib/chat/attachment-store';
+import { storedParts, type StoredPart } from '@/lib/chat/stored-parts';
+import { questionTitle, textParts, type ChatThread } from '@/lib/chat/threads';
 
 type Role = 'user' | 'assistant';
 
@@ -44,7 +40,7 @@ async function insertMessage(
   supabase: SupabaseClient,
   threadId: string,
   role: Role,
-  parts: StoredTextPart[],
+  parts: StoredPart[],
 ): Promise<boolean> {
   const { error } = await supabase
     .from('chat_messages')
@@ -64,7 +60,15 @@ export async function saveQuestion(
   parts: unknown,
 ): Promise<boolean> {
   try {
-    const question = questionParts(parts);
+    // Files go to storage and are saved as pointers; one that could not be
+    // kept is remembered by name, as all of them were before files were stored.
+    const words = textParts(parts);
+    const { kept, lost } = await storeQuestionFiles(supabase, userId, threadId, parts);
+    const question: StoredPart[] = [...kept, ...words];
+    if (lost.length > 0) {
+      const note = `[Attached: ${lost.join(', ')}]`;
+      question.push({ type: 'text', text: question.length > 0 ? `\n\n${note}` : note });
+    }
     if (question.length === 0) return false;
 
     const { data: existing, error: readErr } = await supabase
@@ -103,13 +107,17 @@ export async function saveQuestion(
   }
 }
 
-/** Saves the assistant's reply, including a partial one the user stopped. */
+/**
+ * Saves the assistant's reply: its words, and the lookups and changes it went
+ * through, so a chat opened again shows the same cards. A change still
+ * waiting for approval is saved as waiting, and can be answered later.
+ */
 export async function saveAnswer(
   supabase: SupabaseClient,
   threadId: string,
   parts: unknown,
 ): Promise<void> {
-  const answer = textParts(parts);
+  const answer = storedParts(parts).filter((part) => part.type !== 'file');
   if (answer.length === 0) return;
   await insertMessage(supabase, threadId, 'assistant', answer);
 }

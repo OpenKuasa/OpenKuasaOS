@@ -29,7 +29,8 @@ const isBusy = (chat: LiveChat) =>
 export function createChat(threadId: string, messages: StoredMessage[] = []): LiveChat {
   return new Chat<UIMessage>({
     id: threadId,
-    messages,
+    // Saved parts are kept in the chat UI's own shapes (see `storedParts`).
+    messages: messages as UIMessage[],
     transport,
     // Approving or rejecting a change sends the turn back so Tuah can finish it.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
