@@ -59,7 +59,13 @@ export async function runWeeklyStudio(
     .insert({ org_id: orgId, agent_key: WEEKLY_STUDIO, status: 'running', trigger })
     .select()
     .single();
-  if (insertErr || !run) throw new Error('Could not start the agent run.');
+  if (insertErr || !run) {
+    // The insert is a DB write (no API key involved), so its SQLSTATE and message
+    // are safe to log and are the only trace of why a run never started -- e.g. a
+    // missing service_role grant surfaces here as code '42501' / "permission denied".
+    console.error('[weekly-studio] agent_runs insert failed:', insertErr?.code, insertErr?.message);
+    throw new Error('Could not start the agent run.');
+  }
   const runId = run.id as string;
 
   const finish = async (
