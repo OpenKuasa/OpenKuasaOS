@@ -23,6 +23,8 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   'crm/deals',
   'crm/lead-forms',
   'crm/appointments',
+  // Shared with People (registry 'people/calendar'), which still shows the sample.
+  'crm/calendar',
   // Shared with Jebat's analytics (registry 'reach/reports'); /reach/reports
   // is not a nav item, so the screen is served at /crm/reports.
   'crm/reports',
