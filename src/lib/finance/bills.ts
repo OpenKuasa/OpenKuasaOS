@@ -7,8 +7,12 @@ import { z } from 'zod';
 import {
   type FinResult,
   type FinanceWriteContext,
+  NOT_ALLOWED,
+  PG_FORBIDDEN,
   PG_FOREIGN_KEY,
+  PG_OUT_OF_RANGE,
   PG_UNIQUE,
+  TOO_LARGE,
   pgCode,
   writeFailed,
 } from './result';
@@ -34,13 +38,16 @@ export const BILL_MESSAGES = {
   empty: 'A bill needs at least one line with an amount.',
   numberTaken: 'That bill number is already used.',
   missing: 'The supplier or a product on this bill no longer exists.',
+  product: 'Choose a product from the list, or leave it empty.',
 } as const;
 
 const M = BILL_MESSAGES;
 
-/** YYYY-MM-DD that is a real calendar date. */
+/** YYYY-MM-DD that is a real calendar date from 1900 to 2200; a slipped key gives year 0202. */
 export function isIsoDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  if (year < 1900 || year > 2200) return false;
   const d = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
@@ -49,6 +56,21 @@ const round = (places: number) => (v: number) => {
   const f = 10 ** places;
   return Math.round(v * f) / f;
 };
+
+/**
+ * An SST rate as the column numeric(5,2) stores it: two decimals, half away
+ * from zero, rounded on the figure as written. 1.005 is 1.01 here and in the
+ * database, where `Math.round(1.005 * 100)` and `(1.005).toFixed(2)` both
+ * give 1.00, because the nearest floating point number is a hair below 1.005.
+ * Something that is not a number comes back as it was.
+ */
+export function roundRate(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  // The shortest digits that give this number back, e.g. "1.005e+0": shift the point two places in the text.
+  const [digits, exponent] = Math.abs(value).toExponential().split('e');
+  const hundredths = Math.round(Number(`${digits}e${Number(exponent) + 2}`));
+  return (Math.sign(value) * hundredths) / 100;
+}
 
 const date = z.string({ error: M.date }).refine(isIsoDate, M.date);
 const text = z
@@ -59,7 +81,7 @@ const text = z
   .nullable();
 /** An id, or nothing chosen (an empty string from a select). */
 const optionalId = z
-  .union([z.string().uuid(), z.literal(''), z.null()])
+  .union([z.string().uuid(M.product), z.literal(''), z.null()], { error: M.product })
   .transform((v) => (v === '' ? null : v));
 
 const line = z.object({
@@ -69,7 +91,7 @@ const line = z.object({
   uom: text.default(null),
   pack_size: text.default(null),
   unit_price: z.number({ error: M.price }).min(0, M.price).max(999_999_999, M.price).transform(round(4)),
-  sst_rate: z.number({ error: M.sst }).min(0, M.sst).max(100, M.sst).default(0),
+  sst_rate: z.number({ error: M.sst }).transform(roundRate).pipe(z.number().min(0, M.sst).max(100, M.sst)).default(0),
 });
 
 export const saveBillInput = z
@@ -94,6 +116,8 @@ const REFUSALS: Record<string, string> = {
   FIN11: M.gone,
   [PG_UNIQUE]: M.numberTaken,
   [PG_FOREIGN_KEY]: M.missing,
+  [PG_FORBIDDEN]: NOT_ALLOWED,
+  [PG_OUT_OF_RANGE]: TOO_LARGE,
 };
 
 function billWriteFailed(fnName: string, error: unknown): { ok: false; error: string } {
@@ -133,6 +157,13 @@ export type BillLine = {
 
 export type BillDetail = BillListRow & { supplier_ref: string | null; notes: string | null; lines: BillLine[] };
 
+/**
+ * The answer to "Save and post". When the draft was saved but posting it was
+ * refused, `draftId` is that draft, so the form goes on editing it instead of
+ * saving a second copy.
+ */
+export type SaveAndPostResult = FinResult<{ id: string; bill_no: string }> & { draftId?: string };
+
 const LIST_COLUMNS = 'id,bill_no,supplier_id,supplier_name,bill_date,due_date,total,paid,balance,display_status';
 
 function toListRow(row: Record<string, unknown>): BillListRow {
@@ -162,8 +193,10 @@ export async function listBills(ctx: FinanceWriteContext): Promise<BillListRow[]
   }
 }
 
-/** One bill with its lines, for the form; null when it is not in this workspace. */
+/** One bill with its lines, for the form; null when it is not in this workspace or the id is not an id. */
 export async function getBill(ctx: FinanceWriteContext, id: string): Promise<BillDetail | null> {
+  // The database would throw on casting it; there is simply no such bill.
+  if (!billIdInput.safeParse({ id }).success) return null;
   const { data: bill, error } = await ctx.client
     .from('supplier_bill_totals')
     .select(`${LIST_COLUMNS},supplier_ref,notes`)

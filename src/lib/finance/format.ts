@@ -9,3 +9,15 @@ export function rmShort(n: number) {
     ? `RM ${(n / 1000).toFixed(1)}k`
     : `RM ${Math.round(n).toLocaleString('en-MY')}`;
 }
+
+/**
+ * What a person typed into a number box, as a number. null when the box is
+ * empty or holds anything but digits with an optional decimal point, so
+ * "1,200.50" is refused instead of being read as some other number.
+ */
+export function typedNumber(value: string): number | null {
+  const text = value.trim();
+  if (!/^-?(\d+\.?\d*|\.\d+)$/.test(text)) return null;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : null;
+}

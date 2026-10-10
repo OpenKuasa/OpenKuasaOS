@@ -9,7 +9,11 @@ import { isIsoDate } from './bills';
 import {
   type FinResult,
   type FinanceWriteContext,
+  NOT_ALLOWED,
+  PG_FORBIDDEN,
   PG_FOREIGN_KEY,
+  PG_OUT_OF_RANGE,
+  TOO_LARGE,
   pgCode,
   writeFailed,
 } from './result';
@@ -89,6 +93,8 @@ const REFUSALS: Record<string, string> = {
   FIN09: M.locked,
   FIN11: M.gone,
   [PG_FOREIGN_KEY]: M.missing,
+  [PG_FORBIDDEN]: NOT_ALLOWED,
+  [PG_OUT_OF_RANGE]: TOO_LARGE,
 };
 
 function moneyWriteFailed(fnName: string, error: unknown): { ok: false; error: string } {
