@@ -122,15 +122,28 @@ export async function listContacts(ctx: FinanceWriteContext): Promise<FinanceCon
 
 export type BillBalance = { supplier_id: string; balance: number; display_status: string };
 
-/** What is still owed on each supplier bill, for the Payable figures. */
+/** Bills read per request; the database caps one response, so we page. */
+export const BILL_PAGE_SIZE = 1000;
+
+/**
+ * What is still owed on each supplier bill, for the Payable figures. Reads
+ * every open bill, a page at a time, so the money figures are never cut short.
+ */
 export async function listBillBalances(ctx: FinanceWriteContext): Promise<BillBalance[]> {
-  const { data, error } = await ctx.client
-    .from('supplier_bill_totals')
-    .select('supplier_id, balance, display_status')
-    .eq('org_id', ctx.orgId)
-    .in('display_status', ['pending', 'overdue']);
-  if (error) throw error;
-  return (data ?? []).map((row) => ({ ...row, balance: Number(row.balance) })) as BillBalance[];
+  const bills: BillBalance[] = [];
+  for (let from = 0; ; from += BILL_PAGE_SIZE) {
+    const { data, error } = await ctx.client
+      .from('supplier_bill_totals')
+      .select('supplier_id, balance, display_status')
+      .eq('org_id', ctx.orgId)
+      .in('display_status', ['pending', 'overdue'])
+      .order('id', { ascending: true })
+      .range(from, from + BILL_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    for (const row of page) bills.push({ ...row, balance: Number(row.balance) } as BillBalance);
+    if (page.length < BILL_PAGE_SIZE) return bills;
+  }
 }
 
 export async function createContact(

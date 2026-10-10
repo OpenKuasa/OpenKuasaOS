@@ -6,6 +6,7 @@ import {
   createContact,
   createContactInput,
   deleteContact,
+  listBillBalances,
   setContactActive,
   updateContact,
   updateContactInput,
@@ -150,5 +151,58 @@ describe('contactsView', () => {
   it('sorts rows by name', () => {
     const view = contactsView([contact, customer, archived], []);
     expect(view.rows.map((r) => r.name)).toEqual(['Aisyah Trading', 'Lim Hardware Sdn Bhd', 'Old Supplier']);
+  });
+});
+
+describe('listBillBalances', () => {
+  type Page = { data: unknown[] | null; error: unknown };
+
+  /** A stand-in list query: from → select → eq → in → order → range, answering one canned page per range call. */
+  function fakeListClient(pages: Page[]) {
+    const ranges: [number, number][] = [];
+    const client = {
+      from() {
+        const builder = {
+          select() { return builder; },
+          eq() { return builder; },
+          in() { return builder; },
+          order() { return builder; },
+          range(from: number, to: number) {
+            ranges.push([from, to]);
+            return Promise.resolve(pages[ranges.length - 1] ?? { data: [], error: null });
+          },
+        };
+        return builder;
+      },
+    };
+    return { ctx: { client: client as never, orgId: 'org-1' } satisfies FinanceWriteContext, ranges };
+  }
+
+  const bill = (n: number) => ({ supplier_id: 's1', balance: String(n), display_status: 'pending' });
+  const fullPage = Array.from({ length: 1000 }, (_, i) => bill(i + 1));
+
+  it('reads one page when there are fewer than a page, with balances as numbers', async () => {
+    const { ctx, ranges } = fakeListClient([{ data: [bill(12.5), bill(7)], error: null }]);
+    const rows = await listBillBalances(ctx);
+    expect(ranges).toEqual([[0, 999]]);
+    expect(rows).toEqual([
+      { supplier_id: 's1', balance: 12.5, display_status: 'pending' },
+      { supplier_id: 's1', balance: 7, display_status: 'pending' },
+    ]);
+  });
+  it('keeps reading until a short page, so no bill is left out', async () => {
+    const { ctx, ranges } = fakeListClient([
+      { data: fullPage, error: null },
+      { data: [bill(5)], error: null },
+    ]);
+    const rows = await listBillBalances(ctx);
+    expect(ranges).toEqual([[0, 999], [1000, 1999]]);
+    expect(rows).toHaveLength(1001);
+    expect(rows.every((r) => typeof r.balance === 'number')).toBe(true);
+  });
+  it('throws a database error instead of swallowing it', async () => {
+    const failure = { code: 'XX000', message: 'boom' };
+    const { ctx } = fakeListClient([{ data: null, error: failure }]);
+    await expect(listBillBalances(ctx)).rejects.toBe(failure);
   });
 });
