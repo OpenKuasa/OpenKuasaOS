@@ -258,6 +258,12 @@ export function approvalTitle(
     case 'createDepartment': return `Add department “${i.name ?? ''}”?`;
     case 'updateDepartment': return `Rename ${the('department', 'department')} to “${i.name ?? ''}”?`;
     case 'deleteDepartment': return `Delete ${the('department', 'department')}?`;
+    case 'updateCareersPage':
+      return i.careers_enabled === true
+        ? 'Turn on the public careers page?'
+        : i.careers_enabled === false
+          ? 'Turn off the public careers page?'
+          : 'Save changes to the careers page?';
     default: return 'Approve this change?';
   }
 }
@@ -385,6 +391,20 @@ export function approvalDetail(toolName: string, input?: unknown): string | null
     // A new employee has nothing to clear: a null or blank field simply sets nothing.
     const words = employeeFieldWords(i, false).filter((w) => !w.endsWith('(cleared)'));
     return words.length > 0 ? `Sets: ${words.join(', ')}` : null;
+  }
+  if (toolName === 'updateCareersPage') {
+    const quoted = (label: string, key: string) => {
+      if (!Object.hasOwn(i, key)) return null;
+      const value = text(i[key]);
+      return `${label}: ${value ? `“${value}”` : 'none'}`;
+    };
+    const parts = [
+      i.careers_enabled === true ? 'Your open jobs become visible to anyone with the link.' : null,
+      i.careers_enabled === false ? 'The page and every job page stop being public.' : null,
+      quoted('Headline', 'careers_headline'),
+      quoted('Tagline', 'careers_tagline'),
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(' · ') : null;
   }
   if (toolName === 'createJob') {
     const salary = salaryText(sen(i.salary_min_cents), sen(i.salary_max_cents));

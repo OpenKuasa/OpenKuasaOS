@@ -20,6 +20,7 @@ import {
   ClipboardList,
   Coins,
   Filter,
+  Globe,
   Images,
   Megaphone,
   PieChart,
@@ -90,6 +91,7 @@ const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
   getPerformanceSummary: { label: 'Performance', Icon: TrendingUp },
   listTrainings: { label: 'Trainings', Icon: Briefcase },
   listAnnouncements: { label: 'Announcements', Icon: Megaphone },
+  getCareersPage: { label: 'Careers page', Icon: Globe },
   listContacts: { label: 'Leads', Icon: Users },
 };
 

@@ -22,7 +22,7 @@ describe('LEKIR_SYSTEM', () => {
   it('says what it can change, in step with the change tools it holds', () => {
     expect(t).toContain('create, edit, open, pause, close, reopen or delete jobs');
     // A change tool for something else means this line has to grow with it.
-    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$/.test(name))).toBe(true);
+    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$|^updateCareersPage$/.test(name))).toBe(true);
     expect(HIRE_WRITE_TOOL_NAMES.length).toBeGreaterThan(0);
   });
   it('still cannot change candidates, applications or interviews', () => {

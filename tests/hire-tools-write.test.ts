@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const created = vi.hoisted(() => vi.fn());
+const careers = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/hire/capabilities', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/hire/capabilities')>()),
   createJob: created,
+  updateCareersPage: careers,
 }));
 
 const { createHireTools } = await import('@/lib/ai/hire-tools');
@@ -21,5 +23,18 @@ describe('a change tool', () => {
     // The very same context object the route built, never an id from the model.
     expect(created.mock.calls[0][0]).toBe(ctx);
     expect(result).toMatchObject({ ok: true, data: { name: 'Barista' } });
+  });
+
+  it('reaches updateCareersPage with the same context, and an org_id from the model is not the workspace', async () => {
+    careers.mockResolvedValue({ ok: true, data: { careers_enabled: true } });
+    const ctx = { client: { marker: true } as never, orgId: 'org1' };
+    const tools = createHireTools(createSeedHireData(new Date()), new Date(), { ctx, canWrite: true });
+    const tool = tools.updateCareersPage as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> };
+    await tool.execute({ careers_enabled: true, org_id: 'evil' }, { toolCallId: 't', messages: [] });
+
+    expect(careers).toHaveBeenCalledTimes(1);
+    expect(careers.mock.calls[0][0]).toBe(ctx);
+    expect(ctx.orgId).toBe('org1');
+    expect(careers.mock.calls[0][0].orgId).toBe('org1');
   });
 });

@@ -21,6 +21,7 @@ import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { answersWithTeam, namesIn, proposalsIn, transcriptOf } from '@/lib/chat/delegation';
 import { saveAnswer, saveQuestion } from '@/lib/chat/store';
 import { getHireData } from '@/lib/hire/supabase';
+import { originFromHeaders } from '@/lib/reach/form-submissions';
 import { getReachData } from '@/lib/reach/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,11 @@ export async function POST(request: Request) {
       ? { ctx: { client: supabase, orgId: org.orgId }, canWrite: true }
       : undefined;
   // Lekir's change tools need the same write access as Jebat's.
-  const hire = { data: await getHireData(supabase), write };
+  const hire = {
+    data: await getHireData(supabase),
+    write,
+    origin: originFromHeaders((name) => request.headers.get(name)),
+  };
   const crm = org
     ? {
         client: supabase,

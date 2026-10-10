@@ -13,7 +13,7 @@ const ctl = vi.hoisted(() => ({
   /** Tables the provider read, to prove which data the tools were given. */
   tablesRead: [] as string[],
   /** The HireAccess the route handed to the runner. */
-  captured: null as null | { data: import('@/lib/hire/types').HireData },
+  captured: null as null | { data: import('@/lib/hire/types').HireData; origin?: string | null },
 }));
 
 vi.mock('@/lib/ai/agents/orchestrator', async (importOriginal) => {
@@ -92,10 +92,10 @@ const { HIRE_TOOL_NAMES } = await import('@/lib/ai/hire-tools');
 const { HIRE_WRITE_TOOL_NAMES } = await import('@/lib/ai/products');
 const { POST } = await import('@/app/api/hire/chat/route');
 
-function post(body: unknown): Request {
+function post(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/hire/chat', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
 }
@@ -169,6 +169,13 @@ describe('POST /api/hire/chat happy path', () => {
     // A user in a workspace reads the hire_ tables.
     await ctl.captured!.data.listJobs();
     expect(ctl.tablesRead).toContain('hire_jobs');
+  });
+
+  it('hands Lekir the site origin from the request headers', async () => {
+    const res = await POST(post(validBody, { 'x-forwarded-host': 'openkuasa.com' }));
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(ctl.captured!.origin).toBe('https://openkuasa.com');
   });
 
   it('gives a viewer the lookups and no change tools', async () => {

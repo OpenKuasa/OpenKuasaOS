@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { HIRE_TOOL_NAMES, createHireTools } from '@/lib/ai/hire-tools';
 import { CRM_WRITE_TOOL_NAMES } from '@/lib/ai/crm-tools';
 import { HIRE_WRITE_TOOL_NAMES, REACH_WRITE_TOOL_NAMES } from '@/lib/ai/products';
-import { createJobInput, deleteJobInput, setJobStatusInput, updateJobInput } from '@/lib/hire/capabilities';
+import {
+  createJobInput, deleteJobInput, setJobStatusInput, updateCareersPageInput, updateJobInput,
+} from '@/lib/hire/capabilities';
 import { createReachTools } from '@/lib/ai/tools';
 import { toolMeta } from '@/components/chat/tool-parts';
 import { formatWhen } from '@/lib/reach/overview';
@@ -26,11 +28,11 @@ const run = (name: string): Run => (input) =>
   });
 
 describe('hire tools', () => {
-  it('is exactly the eight lookups, none sharing a name with another product', () => {
+  it('is exactly the nine lookups, none sharing a name with another product', () => {
     expect(Object.keys(tools)).toEqual([...HIRE_TOOL_NAMES]);
     expect(HIRE_TOOL_NAMES).toEqual([
       'getHiringOverview', 'listJobs', 'listApplications', 'getHiringFunnel',
-      'listTalentPool', 'listInterviews', 'getTimeToHire', 'getSourceBreakdown',
+      'listTalentPool', 'listInterviews', 'getTimeToHire', 'getSourceBreakdown', 'getCareersPage',
     ]);
     const others = new Set([
       ...Object.keys(createReachTools(createSeedReachData())),
@@ -211,7 +213,7 @@ describe('hire change tools', () => {
       expect(viewer).not.toContain(name);
       expect(member).toContain(name);
     }
-    expect(HIRE_WRITE_TOOL_NAMES).toEqual(['createJob', 'updateJob', 'setJobStatus', 'deleteJob']);
+    expect(HIRE_WRITE_TOOL_NAMES).toEqual(['createJob', 'updateJob', 'setJobStatus', 'deleteJob', 'updateCareersPage']);
   });
   it('gives a writer nothing beyond the lookups except the listed change tools, so each one needs approval', () => {
     const writerTools = createHireTools(data, NOW, { ctx, canWrite: true });
@@ -237,6 +239,7 @@ describe('hire change tools', () => {
     expect(t.updateJob.inputSchema).toBe(updateJobInput);
     expect(t.setJobStatus.inputSchema).toBe(setJobStatusInput);
     expect(t.deleteJob.inputSchema).toBe(deleteJobInput);
+    expect(t.updateCareersPage.inputSchema).toBe(updateCareersPageInput);
   });
   it('lets listJobs hand the model an id and the new fields', async () => {
     const { jobs } = await run('listJobs')({ status: 'open' });
@@ -245,5 +248,36 @@ describe('hire change tools', () => {
     expect(jobs[0]).not.toHaveProperty('description');
     expect(jobs[0].description_excerpt.length).toBeLessThanOrEqual(161);
     expect(jobs[0]).toHaveProperty('closes_on');
+  });
+});
+
+describe('getCareersPage', () => {
+  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Join us', careers_tagline: null };
+  const withSettings = (over: Record<string, unknown> = {}): HireData => ({
+    ...createSeedHireData(NOW),
+    getSettings: async () => ({ ...settings, ...over }),
+  });
+  const call = (t: ReturnType<typeof createHireTools>, input: Record<string, unknown>): Promise<Loose> =>
+    (t.getCareersPage as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute(input, {
+      toolCallId: 't', messages: [],
+    });
+
+  it('gives the address from the site origin and the session workspace, never from the model', async () => {
+    const out = await call(createHireTools(withSettings(), NOW, undefined, { origin: 'https://openkuasa.com' }), { org_id: 'evil' });
+    expect(out).toMatchObject({
+      enabled: true, headline: 'Join us', tagline: null,
+      path: '/careers/org-1', url: 'https://openkuasa.com/careers/org-1',
+    });
+    // Open jobs that have a description: what a visitor would see listed.
+    const open = (await data.listJobs()).filter((j) => j.status === 'open' && j.description?.trim()).length;
+    expect(open).toBeGreaterThan(0);
+    expect(out).toMatchObject({ jobs_showing: open });
+  });
+  it('shows nothing public while the page is off', async () => {
+    const t = createHireTools(withSettings({ careers_enabled: false }), NOW, undefined, { origin: 'https://openkuasa.com' });
+    expect(await call(t, {})).toMatchObject({ enabled: false, jobs_showing: 0, url: null });
+  });
+  it('has no address for the sample data', async () => {
+    expect(await call(createHireTools(createSeedHireData(NOW), NOW), {})).toMatchObject({ path: null, url: null });
   });
 });

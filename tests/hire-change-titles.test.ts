@@ -58,3 +58,22 @@ describe('approval titles for jobs', () => {
     expect(approvalDetail('createJob', 'text')).toBeNull();
   });
 });
+
+describe('the careers page change', () => {
+  it('is named by what it does', () => {
+    expect(approvalTitle('updateCareersPage', { careers_enabled: true })).toBe('Turn on the public careers page?');
+    expect(approvalTitle('updateCareersPage', { careers_enabled: false })).toBe('Turn off the public careers page?');
+    expect(approvalTitle('updateCareersPage', { careers_headline: 'Join us' })).toBe('Save changes to the careers page?');
+  });
+  it('says what turning it on exposes, and shows the words being saved', () => {
+    expect(approvalDetail('updateCareersPage', { careers_enabled: true }))
+      .toBe('Your open jobs become visible to anyone with the link.');
+    expect(approvalDetail('updateCareersPage', { careers_enabled: true, careers_headline: 'Join us' }))
+      .toBe('Your open jobs become visible to anyone with the link. · Headline: “Join us”');
+    expect(approvalDetail('updateCareersPage', { careers_headline: '', careers_tagline: 'Good coffee' }))
+      .toBe('Headline: none · Tagline: “Good coffee”');
+    expect(approvalDetail('updateCareersPage', { careers_enabled: false })).toBe('The page and every job page stop being public.');
+    expect(approvalDetail('updateCareersPage', null)).toBeNull();
+    expect(approvalDetail('updateCareersPage', 'text')).toBeNull();
+  });
+});

@@ -161,6 +161,7 @@ export class Conversation {
       },
       {
         data: createSupabaseHireData(client, orgId),
+        origin: 'https://example.test',
         write: canWrite ? { ctx: { client, orgId }, canWrite: true } : undefined,
       },
     );

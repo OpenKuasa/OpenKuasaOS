@@ -14,6 +14,7 @@ import { runLekir } from '@/lib/ai/agents/orchestrator';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { getHireData } from '@/lib/hire/supabase';
+import { originFromHeaders } from '@/lib/reach/form-submissions';
 
 export const dynamic = 'force-dynamic';
 // Hint for serverless hosts; a no-op on a persistent server (Railway).
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     org && org.role !== 'viewer'
       ? { ctx: { client: chat.supabase, orgId: org.orgId }, canWrite: true }
       : undefined;
-  const result = runLekir(chat.messages, { data, write }, request.signal, chat.apiKey);
+  const result = runLekir(chat.messages, { data, write, origin: originFromHeaders((name) => request.headers.get(name)) }, request.signal, chat.apiKey);
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {
