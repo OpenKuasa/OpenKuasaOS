@@ -58,7 +58,7 @@ describe('form capability schemas', () => {
     expect(first(createFormInput, {})).toBe('Enter a name for the form.');
   });
   it('explains a link that is not allowed', () => {
-    const message = 'Use only lower-case letters, numbers and hyphens in the link, such as raya-promo.';
+    const message = 'Use only lower-case letters, numbers and hyphens in the short name, such as raya-promo.';
     expect(first(createFormInput, { name: 'x y', slug: 'Raya Promo' })).toBe(message);
     expect(first(createFormInput, { name: 'x y', slug: 'a' })).toBe(message);
     expect(first(updateFormInput, { id: ID, slug: 'no_underscores' })).toBe(message);
@@ -117,13 +117,13 @@ describe('createForm', () => {
     const res = await createForm(ctx, { name: '!!!' });
     expect(res).toEqual({
       ok: false,
-      error: 'Use only lower-case letters, numbers and hyphens in the link, such as raya-promo.',
+      error: 'Use only lower-case letters, numbers and hyphens in the short name, such as raya-promo.',
     });
     expect(calls).toHaveLength(0);
   });
   it('says the link is taken on a unique violation', async () => {
     const { ctx } = fakeClient({ data: null, error: { code: '23505', message: 'duplicate key' } });
-    expect(await createForm(ctx, { name: 'Raya Promo' })).toEqual({ ok: false, error: 'Another form already uses that link.' });
+    expect(await createForm(ctx, { name: 'Raya Promo' })).toEqual({ ok: false, error: 'Another form already uses that short name.' });
   });
   it('hides any other database error behind the general message', async () => {
     const { ctx } = fakeClient({ data: null, error: { code: '42501', message: 'permission denied for table forms' } });
@@ -162,7 +162,7 @@ describe('updateForm', () => {
   });
   it('says the link is taken on a unique violation', async () => {
     const { ctx } = fakeClient({ data: null, error: { code: '23505' } });
-    expect(await updateForm(ctx, { id: ID, slug: 'newsletter' })).toEqual({ ok: false, error: 'Another form already uses that link.' });
+    expect(await updateForm(ctx, { id: ID, slug: 'newsletter' })).toEqual({ ok: false, error: 'Another form already uses that short name.' });
   });
 });
 

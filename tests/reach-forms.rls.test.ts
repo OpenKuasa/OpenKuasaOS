@@ -219,7 +219,7 @@ testWithSupabase('the capabilities write to the caller workspace and explain a t
 
   expect(await createForm(cap, { name: 'Other', slug: `/${created.data.slug}` })).toEqual({
     ok: false,
-    error: 'Another form already uses that link.',
+    error: 'Another form already uses that short name.',
   });
   const active = await setFormStatus(cap, { id: created.data.id, status: 'active' });
   expect(active).toMatchObject({ ok: true, data: { status: 'active' } });

@@ -311,7 +311,7 @@ export function LeadFormsView({
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="search"
-                aria-label="Search forms by name or link"
+                aria-label="Search forms by name or short name"
                 placeholder="Search form title…"
                 className="pl-9"
                 value={filters.query}
@@ -366,7 +366,7 @@ export function LeadFormsView({
               <TableHeader>
                 <TableRow className="bg-muted/40">
                   <TableHead className="whitespace-nowrap">Form details</TableHead>
-                  <TableHead className="whitespace-nowrap">URL / Slug</TableHead>
+                  <TableHead className="whitespace-nowrap">Public link</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
                   <TableHead className="whitespace-nowrap">Views</TableHead>
                   <TableHead className="whitespace-nowrap">Contacts</TableHead>
@@ -402,7 +402,7 @@ export function LeadFormsView({
                       </TableCell>
                       <TableCell>
                         <p className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                          /{f.slug}
+                          {f.slug}
                         </p>
                         {publicOrigin ? (
                           f.status === 'active' ? (
@@ -540,8 +540,8 @@ function LeadFormCard({
   const [name, setName] = useState(editing?.name ?? '');
   const [category, setCategory] = useState(editing?.category ?? '');
   const [slug, setSlug] = useState(editing?.slug ?? '');
-  // The link follows the name until the person types a link of their own. An
-  // existing form keeps its link: changing it would break what points at it.
+  // The short name follows the name until the person types one of their own.
+  // An existing form keeps its short name unless it is changed on purpose.
   const [slugEdited, setSlugEdited] = useState(editing != null);
   const [status, setStatus] = useState<FormStatus>(editing?.status ?? 'draft');
   const [pending, start] = useTransition();
@@ -612,19 +612,13 @@ function LeadFormCard({
           </datalist>
         </div>
         <div className="space-y-1.5 md:col-span-3">
-          <Label htmlFor={`${id}-slug`}>Link</Label>
+          <Label htmlFor={`${id}-slug`}>Short name</Label>
           <div className="relative">
-            <span
-              aria-hidden
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-sm text-muted-foreground"
-            >
-              /
-            </span>
             <Input
               id={`${id}-slug`}
               name="slug"
               placeholder="raya-promo"
-              className="pl-6 font-mono"
+              className="font-mono"
               value={slug}
               maxLength={FORM_SLUG_MAX + 1}
               autoComplete="off"
@@ -632,16 +626,17 @@ function LeadFormCard({
               spellCheck={false}
               aria-describedby={`${id}-slug-hint`}
               onChange={(e) => {
-                // The "/" is already shown in front of the field.
+                // Older forms were typed with a leading "/"; it is not part of the name.
                 const typed = e.target.value.replace(/^\/+/, '');
                 setSlug(typed);
-                // Emptying the field hands the link back to the name.
+                // Emptying the field hands the short name back to the name.
                 setSlugEdited(typed !== '');
               }}
             />
           </div>
           <p id={`${id}-slug-hint`} className="text-xs text-muted-foreground">
-            Lower-case letters, numbers and hyphens. Leave empty to use the name.
+            A label for your own use: lower-case letters, numbers and hyphens. Leave empty
+            to use the name. The public link is made for you once the form is active.
           </p>
         </div>
         <div className="space-y-1.5 md:col-span-2">
@@ -773,9 +768,9 @@ function DeleteFormRow({
           className="sticky left-2 flex max-w-[calc(100vw-4rem)] flex-wrap items-center gap-3 py-1 whitespace-normal md:max-w-none"
         >
           <p className="min-w-48 flex-1 text-sm">
-            Delete <span className="font-medium">{form.name}</span>? Its link{' '}
-            <span className="font-mono text-xs">/{form.slug}</span> will be free to use again.
-            This cannot be undone.
+            Delete <span className="font-medium">{form.name}</span>? Its public link stops
+            working and its submissions are deleted; the contacts they created stay. This
+            cannot be undone.
           </p>
           {error ? (
             <p role="alert" className="text-sm text-destructive">

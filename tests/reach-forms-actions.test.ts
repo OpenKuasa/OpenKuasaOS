@@ -62,7 +62,7 @@ describe('lead form actions', () => {
     expect(await createFormAction({ name: '' })).toEqual({ ok: false, error: 'Enter a name for the form.' });
     expect(await createFormAction({ name: 'Raya', slug: 'Not A Link' })).toEqual({
       ok: false,
-      error: 'Use only lower-case letters, numbers and hyphens in the link, such as raya-promo.',
+      error: 'Use only lower-case letters, numbers and hyphens in the short name, such as raya-promo.',
     });
     expect(await deleteFormAction({ id: 'form_1' })).toEqual({ ok: false, error: 'That form no longer exists.' });
     expect(await createFormAction(null)).toMatchObject({ ok: false });
@@ -89,10 +89,10 @@ describe('lead form actions', () => {
   });
 
   it('pass a capability failure through and refresh nothing', async () => {
-    ctl.result = { ok: false, error: 'Another form already uses that link.' };
+    ctl.result = { ok: false, error: 'Another form already uses that short name.' };
     expect(await createFormAction({ name: 'Raya Promo' })).toEqual({
       ok: false,
-      error: 'Another form already uses that link.',
+      error: 'Another form already uses that short name.',
     });
     expect(ctl.revalidated).toHaveLength(0);
   });

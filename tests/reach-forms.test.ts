@@ -90,7 +90,7 @@ describe('parseFormFields', () => {
   it('explains a link that is not allowed', () => {
     expect(parseFormFields({ ...typed, slug: 'Raya Promo!' })).toEqual({
       ok: false,
-      error: 'Use only lower-case letters, numbers and hyphens in the link, such as raya-promo.',
+      error: 'Use only lower-case letters, numbers and hyphens in the short name, such as raya-promo.',
     });
   });
   it('stores an empty category as none', () => {
