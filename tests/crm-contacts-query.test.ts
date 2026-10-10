@@ -38,7 +38,10 @@ describe('listCrmContacts', () => {
   test('reads contacts for one org and maps database rows to the screen model', async () => {
     const { client, from, contactsQuery, profilesQuery } = createClient(
       { data: [ROW], count: 8, error: null },
-      { data: [{ user_id: 'user-1', full_name: 'Faiz Hakim' }], error: null },
+      {
+        data: [{ user_id: 'user-1', full_name: 'Faiz Hakim', email: 'faiz@example.com' }],
+        error: null,
+      },
     );
 
     const result = await listCrmContacts(client, 'org-1', 25);
@@ -52,6 +55,8 @@ describe('listCrmContacts', () => {
     expect(contactsQuery.eq).toHaveBeenCalledWith('org_id', 'org-1');
     expect(contactsQuery.order).toHaveBeenCalledWith('created_at', { ascending: false });
     expect(contactsQuery.limit).toHaveBeenCalledWith(25);
+    expect(from).toHaveBeenCalledWith('profiles');
+    expect(profilesQuery.select).toHaveBeenCalledWith('user_id,full_name,email');
     expect(profilesQuery.in).toHaveBeenCalledWith('user_id', ['user-1']);
     expect(result).toEqual({
       total: 8,
@@ -114,6 +119,77 @@ describe('listCrmContacts', () => {
     expect(contacts[0].form?.tags).toBe('');
   });
 
+  test('shows the full name of the person in charge, trimmed, ahead of the email', async () => {
+    const { client } = createClient(
+      { data: [ROW], count: 1, error: null },
+      {
+        data: [{ user_id: 'user-1', full_name: '  Faiz Hakim ', email: 'faiz@example.com' }],
+        error: null,
+      },
+    );
+
+    const { contacts } = await listCrmContacts(client, 'org-1');
+
+    expect(contacts[0].pic).toBe('Faiz Hakim');
+  });
+
+  test.each([
+    ['null', null],
+    ['empty', ''],
+    ['whitespace-only', '   '],
+  ])(
+    'falls back to the part of the email before the @ when the full name is %s',
+    async (_label, fullName) => {
+      const { client } = createClient(
+        { data: [ROW], count: 1, error: null },
+        {
+          data: [{ user_id: 'user-1', full_name: fullName, email: 'faiz.hakim@example.com' }],
+          error: null,
+        },
+      );
+
+      const { contacts } = await listCrmContacts(client, 'org-1');
+
+      expect(contacts[0].pic).toBe('faiz.hakim');
+    },
+  );
+
+  test.each([
+    ['null', null],
+    ['empty', ''],
+  ])(
+    'calls an owner with no full name and a %s email a demo guest',
+    async (_label, email) => {
+      const { client } = createClient(
+        { data: [ROW], count: 1, error: null },
+        { data: [{ user_id: 'user-1', full_name: null, email }], error: null },
+      );
+
+      const { contacts } = await listCrmContacts(client, 'org-1');
+
+      expect(contacts[0].pic).toBe('Demo guest');
+    },
+  );
+
+  test('leaves the person in charge blank when the owner has no profile row', async () => {
+    const { client, profilesQuery } = createClient(
+      {
+        data: [ROW, { ...ROW, id: 'contact-2', owner_user_id: 'user-2' }],
+        count: 2,
+        error: null,
+      },
+      {
+        data: [{ user_id: 'user-1', full_name: null, email: 'faiz@example.com' }],
+        error: null,
+      },
+    );
+
+    const { contacts } = await listCrmContacts(client, 'org-1');
+
+    expect(profilesQuery.in).toHaveBeenCalledWith('user_id', ['user-1', 'user-2']);
+    expect(contacts.map((c) => c.pic)).toEqual(['faiz', null]);
+  });
+
   test('still returns contacts when the owner names cannot be read', async () => {
     const { client } = createClient(
       { data: [ROW], count: 1, error: null },
@@ -122,6 +198,8 @@ describe('listCrmContacts', () => {
 
     const { contacts } = await listCrmContacts(client, 'org-1');
 
+    expect(contacts).toHaveLength(1);
+    expect(contacts[0].id).toBe('contact-1');
     expect(contacts[0].pic).toBeNull();
   });
 

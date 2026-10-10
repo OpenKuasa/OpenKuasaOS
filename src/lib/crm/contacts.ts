@@ -238,7 +238,10 @@ export function mapCrmContact(row: CrmContactRow, ownerName: string | null = nul
 
 /**
  * The person in charge is stored as `owner_user_id`; the name shown comes from
- * `profiles`. A name that cannot be read (no profile, or the lookup fails) is
+ * `profiles`, by the same rule as the app's top bar (`toViewer`): the full
+ * name if one is set, otherwise the part of the email before the `@`,
+ * otherwise 'Demo guest' (a profile with neither is an anonymous demo
+ * visitor). A name that cannot be read (no profile, or the lookup fails) is
  * shown as blank and never fails the page.
  */
 async function ownerNames(client: SupabaseClient, rows: CrmContactRow[]) {
@@ -250,12 +253,19 @@ async function ownerNames(client: SupabaseClient, rows: CrmContactRow[]) {
 
   const { data, error } = await client
     .from('profiles')
-    .select('user_id,full_name')
+    .select('user_id,full_name,email')
     .in('user_id', ids);
   if (error) return names;
 
-  for (const p of (data ?? []) as { user_id: string; full_name: string | null }[]) {
-    if (p.full_name) names.set(p.user_id, p.full_name);
+  const profiles = (data ?? []) as {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+  }[];
+  for (const p of profiles) {
+    // Profiles start with only the email copied from the sign-in record.
+    const name = p.full_name?.trim() || p.email?.split('@')[0].trim() || 'Demo guest';
+    names.set(p.user_id, name);
   }
   return names;
 }
