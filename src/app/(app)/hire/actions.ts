@@ -14,8 +14,16 @@ import {
 import { createClient } from '@/lib/supabase/server';
 
 const FORBIDDEN: CapResult<never> = { ok: false, error: 'You do not have permission to make changes here.' };
-/** Every screen that shows jobs or numbers worked out from them. */
-const JOB_PATHS = ['/hire/jobs', '/hire/careers-page', '/hire/assistant', '/hire/dashboard'];
+/** Every screen that shows jobs, job titles or numbers worked out from them. */
+const JOB_PATHS = [
+  '/hire/jobs',
+  '/hire/careers-page',
+  '/hire/assistant',
+  '/hire/dashboard',
+  '/hire/applications',
+  '/hire/candidates',
+  '/hire/interviews',
+];
 
 /** Resolve a write context after checking the viewer may edit data. */
 async function writeCtx(): Promise<HireWriteContext | null> {

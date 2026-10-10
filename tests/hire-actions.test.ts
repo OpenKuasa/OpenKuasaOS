@@ -29,11 +29,29 @@ beforeEach(() => {
 
 describe('hire job actions', () => {
   it('runs the capability with the viewer\'s workspace and refreshes the hiring screens', async () => {
-    const result = await createJobAction({ title: 'Barista', org_id: 'someone-else' });
+    const sent = { title: 'Barista', org_id: 'someone-else' };
+    const result = await createJobAction(sent);
     expect(result.ok).toBe(true);
     expect(ctl.calls).toHaveLength(1);
-    expect(ctl.calls[0]).toMatchObject({ fn: 'createJob', ctx: { orgId: 'org1' } });
-    expect(ctl.revalidated.sort()).toEqual(['/hire/assistant', '/hire/careers-page', '/hire/dashboard', '/hire/jobs']);
+    expect(ctl.calls[0]).toMatchObject({ fn: 'createJob', ctx: { orgId: 'org1', client: { marker: 'client' } } });
+    expect(ctl.calls[0].input).toEqual(sent);
+    expect(ctl.revalidated.sort()).toEqual([
+      '/hire/applications',
+      '/hire/assistant',
+      '/hire/candidates',
+      '/hire/careers-page',
+      '/hire/dashboard',
+      '/hire/interviews',
+      '/hire/jobs',
+    ]);
+  });
+  it('allows an owner and an admin who are not demo visitors', async () => {
+    for (const role of ['owner', 'admin']) {
+      ctl.viewer = { orgId: 'org1', role, isDemo: false };
+      ctl.calls = [];
+      expect((await deleteJobAction({ id: ID })).ok).toBe(true);
+      expect(ctl.calls).toHaveLength(1);
+    }
   });
   it('refuses a viewer and a demo visitor without calling the capability', async () => {
     for (const viewer of [{ orgId: 'org1', role: 'viewer', isDemo: false }, { orgId: 'demo', role: 'viewer', isDemo: true }, { orgId: 'org1', role: 'owner', isDemo: true }]) {
