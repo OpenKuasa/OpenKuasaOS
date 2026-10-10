@@ -1,7 +1,9 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { SariConversation } from '@/components/command/sari-conversation';
 
 export function CommandChat() {
-  return <SariConversation showSidebar />;
+  const urlThreadId = useSearchParams().get('chat');
+  return <SariConversation showSidebar urlThreadId={urlThreadId} />;
 }

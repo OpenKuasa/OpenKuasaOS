@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import {
@@ -13,11 +13,12 @@ import {
   Lightbulb,
   Receipt,
   SquareKanban,
-  MessageSquare,
   Compass,
   Megaphone,
   UserRound,
   Landmark,
+  PanelLeft,
+  SquarePen,
   type LucideIcon,
 } from 'lucide-react';
 import { ASSISTANT } from '@/config/nav';
@@ -29,6 +30,23 @@ import {
   isChatLocked,
   useChatStatus,
 } from '@/components/chat/chat-key-notice';
+import {
+  ChatHistory,
+  type ChatHistoryState,
+} from '@/components/command/chat-history';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  deleteChatThreadAction,
+  listChatThreadsAction,
+  loadChatThreadAction,
+  renameChatThreadAction,
+} from '@/app/(app)/command/actions';
+import {
+  isThreadId,
+  titleFromText,
+  type ChatThread,
+  type StoredMessage,
+} from '@/lib/chat/threads';
 import { cn } from '@/lib/utils';
 
 type Role = 'user' | 'assistant';
@@ -97,20 +115,339 @@ const AGENTS: { label: string; icon: LucideIcon; prompt: string }[] = [
   { label: 'CFO', icon: Landmark, prompt: 'Show me overdue invoices' },
 ];
 
-const RECENT = [
-  'October performance review',
-  'Where are my leads coming from?',
-  'Overdue invoices & cash',
-  'Q4 hiring plan',
-  'Payroll for October',
-];
+/** The chat on screen: a saved thread being read back, or a new one. */
+type Session = {
+  id: string;
+  status: 'ready' | 'loading' | 'error';
+  messages: StoredMessage[];
+  /** False until the first question is sent, so an untouched chat has no URL. */
+  saved: boolean;
+};
+
+function freshSession(): Session {
+  return { id: crypto.randomUUID(), status: 'ready', messages: [], saved: false };
+}
+
+function savedSession(id: string): Session {
+  return { id, status: 'loading', messages: [], saved: true };
+}
+
+/** `?chat=<id>` keeps a saved thread on screen across refresh and back. */
+function showInUrl(threadId: string | null, mode: 'push' | 'replace') {
+  const url = new URL(window.location.href);
+  if (threadId) url.searchParams.set('chat', threadId);
+  else url.searchParams.delete('chat');
+  const next = `${url.pathname}${url.search}`;
+  if (mode === 'push') window.history.pushState(null, '', next);
+  else window.history.replaceState(null, '', next);
+}
 
 export function SariConversation({
   showSidebar = false,
   compact = false,
+  urlThreadId = null,
 }: {
   showSidebar?: boolean;
   compact?: boolean;
+  /** The thread named in the address bar, on the page that keeps history. */
+  urlThreadId?: string | null;
+}) {
+  const viewer = useViewer();
+  // Demo guests chat with sample answers and nothing of theirs is saved.
+  const keepsHistory = showSidebar && !viewer.isDemo;
+  const wanted = keepsHistory && isThreadId(urlThreadId) ? urlThreadId : null;
+
+  const [session, setSession] = useState<Session>(() =>
+    wanted ? savedSession(wanted) : freshSession(),
+  );
+  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [listState, setListState] = useState<ChatHistoryState>(
+    keepsHistory ? 'loading' : 'ready',
+  );
+  const [notice, setNotice] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // The address bar leads: back, forward and picking a thread all arrive here.
+  const [seenWanted, setSeenWanted] = useState(wanted);
+  if (wanted !== seenWanted) {
+    setSeenWanted(wanted);
+    if (wanted && wanted !== session.id) setSession(savedSession(wanted));
+    else if (!wanted && session.saved) setSession(freshSession());
+  }
+
+  const sessionId = session.id;
+  const sessionStatus = session.status;
+  useEffect(() => {
+    if (sessionStatus !== 'loading') return;
+    let current = true;
+    const load = async () => {
+      const loaded = await loadChatThreadAction(sessionId).catch(
+        () => ({ ok: false, reason: 'error' }) as const,
+      );
+      if (!current) return;
+      if (loaded.ok) {
+        setSession({
+          id: sessionId,
+          status: 'ready',
+          messages: loaded.messages,
+          saved: true,
+        });
+      } else if (loaded.reason === 'missing') {
+        setNotice('That chat is no longer available, so here is a new one.');
+        setSession(freshSession());
+        showInUrl(null, 'replace');
+      } else {
+        setSession((s) => (s.id === sessionId ? { ...s, status: 'error' } : s));
+      }
+    };
+    void load();
+    return () => {
+      current = false;
+    };
+  }, [sessionId, sessionStatus]);
+
+  const refreshThreads = useCallback(async () => {
+    const next = await listChatThreadsAction().catch(() => null);
+    if (next) {
+      setThreads(next);
+      setListState('ready');
+    } else {
+      setListState((state) => (state === 'loading' ? 'error' : state));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!keepsHistory) return;
+    let current = true;
+    const load = async () => {
+      const next = await listChatThreadsAction().catch(() => null);
+      if (!current) return;
+      if (next) setThreads(next);
+      setListState(next ? 'ready' : 'error');
+    };
+    void load();
+    return () => {
+      current = false;
+    };
+  }, [keepsHistory]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDrawerOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
+  const handleAsk = useCallback(
+    (text: string) => {
+      if (!keepsHistory) return;
+      setNotice(null);
+      // Show the thread at the top straight away; the server copy follows.
+      setThreads((list) => {
+        const existing = list.find((t) => t.id === sessionId);
+        const thread: ChatThread = {
+          id: sessionId,
+          title: existing?.title ?? titleFromText(text),
+          updatedAt: new Date().toISOString(),
+        };
+        return [thread, ...list.filter((t) => t.id !== sessionId)];
+      });
+      setSession((s) => (s.id === sessionId ? { ...s, saved: true } : s));
+      showInUrl(sessionId, 'replace');
+    },
+    [keepsHistory, sessionId],
+  );
+
+  const handleSettled = useCallback(() => {
+    if (keepsHistory) void refreshThreads();
+  }, [keepsHistory, refreshThreads]);
+
+  function newChat() {
+    setDrawerOpen(false);
+    setNotice(null);
+    setSession(freshSession());
+    if (showSidebar) showInUrl(null, 'push');
+  }
+
+  function selectThread(id: string) {
+    setDrawerOpen(false);
+    setNotice(null);
+    if (id === session.id) return;
+    setSession(savedSession(id));
+    showInUrl(id, 'push');
+  }
+
+  async function renameThread(id: string, title: string): Promise<boolean> {
+    const saved = await renameChatThreadAction(id, title).catch(() => null);
+    if (!saved) return false;
+    setThreads((list) => list.map((t) => (t.id === id ? { ...t, title: saved } : t)));
+    return true;
+  }
+
+  async function deleteThread(id: string): Promise<boolean> {
+    const gone = await deleteChatThreadAction(id).catch(() => false);
+    if (!gone) return false;
+    setThreads((list) => list.filter((t) => t.id !== id));
+    if (id === session.id) {
+      setSession(freshSession());
+      showInUrl(null, 'replace');
+    }
+    return true;
+  }
+
+  const activeTitle = threads.find((t) => t.id === session.id)?.title ?? 'New chat';
+  const history = (
+    <ChatHistory
+      threads={threads}
+      state={listState}
+      activeId={session.saved ? session.id : null}
+      isDemo={viewer.isDemo}
+      onNew={newChat}
+      onSelect={selectThread}
+      onRename={renameThread}
+      onDelete={deleteThread}
+      onRetry={() => {
+        setListState('loading');
+        void refreshThreads();
+      }}
+    />
+  );
+
+  return (
+    <div className="flex h-full">
+      {showSidebar ? (
+        <aside className="hidden w-72 shrink-0 border-r bg-sidebar lg:block">
+          {history}
+        </aside>
+      ) : null}
+
+      {showSidebar && drawerOpen ? (
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Your chats"
+        >
+          <button
+            type="button"
+            aria-label="Close your chats"
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 cursor-default bg-black/50 animate-in fade-in-0 duration-200"
+          />
+          <div className="absolute inset-y-0 left-0 w-80 max-w-[85vw] border-r bg-sidebar shadow-xl animate-in slide-in-from-left duration-200">
+            {history}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+        {showSidebar ? (
+          <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open your chats"
+              className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <PanelLeft className="size-5" aria-hidden />
+            </button>
+            <p className="min-w-0 flex-1 truncate text-center text-sm font-medium">
+              {activeTitle}
+            </p>
+            <button
+              type="button"
+              onClick={newChat}
+              aria-label="New chat"
+              className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <SquarePen className="size-5" aria-hidden />
+            </button>
+          </div>
+        ) : null}
+
+        {notice ? (
+          <p
+            role="status"
+            className="border-b bg-muted/60 px-4 py-2 text-center text-xs text-muted-foreground"
+          >
+            {notice}
+          </p>
+        ) : null}
+
+        {session.status === 'loading' ? (
+          <ThreadSkeleton compact={compact} />
+        ) : session.status === 'error' ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="text-sm font-medium">This chat could not be opened</p>
+            <p className="max-w-xs text-sm text-muted-foreground">
+              It is still saved. Check your connection and try again.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSession(savedSession(session.id))}
+              className="h-10 cursor-pointer rounded-lg border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <ChatPane
+            key={session.id}
+            threadId={session.id}
+            initialMessages={session.messages}
+            compact={compact}
+            onAsk={handleAsk}
+            onSettled={handleSettled}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ThreadSkeleton({ compact }: { compact: boolean }) {
+  return (
+    <div className="flex-1 overflow-hidden" aria-busy="true" aria-label="Opening chat">
+      <div
+        className={cn('space-y-6 px-4 py-6 sm:px-6', compact ? '' : 'mx-auto max-w-2xl')}
+      >
+        <div className="flex justify-end">
+          <Skeleton className="h-10 w-48 rounded-2xl" />
+        </div>
+        <div className="flex gap-3">
+          <Skeleton className="size-8 shrink-0 rounded-full" />
+          <div className="flex-1 space-y-2 pt-1">
+            <Skeleton className="h-3.5 w-11/12" />
+            <Skeleton className="h-3.5 w-4/5" />
+            <Skeleton className="h-3.5 w-2/3" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One conversation. Mounted fresh for each thread (the parent keys it by
+ * thread id), so its messages start from what was saved and nothing leaks
+ * between chats.
+ */
+function ChatPane({
+  threadId,
+  initialMessages,
+  compact,
+  onAsk,
+  onSettled,
+}: {
+  threadId: string;
+  initialMessages: StoredMessage[];
+  compact: boolean;
+  /** A question was sent to the live assistant. */
+  onAsk: (text: string) => void;
+  /** A live turn finished, whether it answered or was refused. */
+  onSettled: () => void;
 }) {
   const viewer = useViewer();
   const firstName = viewer.isDemo ? null : viewer.name.split(' ')[0];
@@ -125,7 +462,13 @@ export function SariConversation({
   const [transport] = useState(
     () => new DefaultChatTransport({ api: '/api/chat' }),
   );
-  const chat = useChat({ transport, throttle: 50 });
+  // The thread id travels with every request; the server files the turn under it.
+  const chat = useChat({
+    id: threadId,
+    messages: initialMessages,
+    transport,
+    throttle: 50,
+  });
   const busy = chat.status === 'submitted' || chat.status === 'streaming';
 
   // Who is paying: the workspace's own key, or the user's free weekly questions.
@@ -137,6 +480,17 @@ export function SariConversation({
   useEffect(() => {
     if (chatState === 'ready' || chatState === 'error') void refreshChatStatus();
   }, [chatState, refreshChatStatus]);
+
+  // Tell the history list once per turn, after the answer (or refusal) lands.
+  const turnOpen = useRef(false);
+  useEffect(() => {
+    if (chatState === 'submitted' || chatState === 'streaming') {
+      turnOpen.current = true;
+    } else if (turnOpen.current) {
+      turnOpen.current = false;
+      onSettled();
+    }
+  }, [chatState, onSettled]);
 
   const liveMessages: Message[] = chat.messages
     .map((m) => ({
@@ -163,6 +517,7 @@ export function SariConversation({
     if (live) {
       if (busy || locked) return;
       void chat.sendMessage({ text: q });
+      onAsk(q);
       setInput('');
       return;
     }
@@ -180,48 +535,12 @@ export function SariConversation({
     }, 800);
   }
 
-  function newChat() {
-    if (live) chat.setMessages([]);
-    else setDemoMessages([]);
-  }
-
   const empty = messages.length === 0;
   const width = compact ? '' : 'mx-auto max-w-2xl';
   const suggestions = compact ? SUGGESTIONS.slice(0, 4) : SUGGESTIONS;
 
   return (
-    <div className="flex h-full">
-      {showSidebar ? (
-        <aside className="hidden w-72 shrink-0 flex-col border-r bg-sidebar lg:flex">
-          <div className="p-3">
-            <button
-              type="button"
-              onClick={newChat}
-              className="flex w-full items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent"
-            >
-              <Plus className="size-4" />
-              New chat
-            </button>
-          </div>
-          <p className="px-4 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Recent
-          </p>
-          <div className="flex-1 space-y-0.5 overflow-y-auto px-2">
-            {RECENT.map((title) => (
-              <button
-                key={title}
-                type="button"
-                className="flex w-full items-center gap-2.5 truncate rounded-lg px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <MessageSquare className="size-4 shrink-0" />
-                <span className="truncate">{title}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-      ) : null}
-
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
         {empty ? (
           <div
             className={cn(
@@ -366,7 +685,6 @@ export function SariConversation({
             </div>
           </>
         )}
-      </div>
     </div>
   );
 }
