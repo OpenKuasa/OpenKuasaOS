@@ -51,9 +51,10 @@ create table public.departments (
   org_id uuid not null references public.orgs(id) on delete cascade,
   name text not null check (char_length(trim(name)) between 1 and 80),
   created_at timestamptz not null default now(),
-  unique (org_id, name),
   unique (id, org_id)
 );
+-- One department per name, whatever its capitals or stray spaces.
+create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));
 
 -- ---- employees: the staff directory, readable by every member --------
 -- Nothing a colleague should not see belongs on this table. Pay, identity
@@ -213,8 +214,11 @@ create trigger org_members_link_employee after insert on public.org_members
 create or replace function private.unlink_employee_on_member_leave()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  -- Nothing to do when the whole workspace is being deleted: its employees go
+  -- with it, and touching them mid-delete would fail their workspace check.
   update public.employees set user_id = null
-  where org_id = old.org_id and user_id = old.user_id;
+  where org_id = old.org_id and user_id = old.user_id
+    and exists (select 1 from public.orgs o where o.id = old.org_id);
   return old;
 end; $$;
 revoke all on function private.unlink_employee_on_member_leave() from public, anon, authenticated;

@@ -2,7 +2,7 @@
 -- with RAISE, so every insert below is rolled back. Read the message:
 --   PEOPLE_RLS_CHECK PASSED ...   or   PEOPLE_RLS_CHECK FAILED: <what went wrong>
 -- It rebuilds the demo HR rows inside its transaction and holds them until the
--- rollback, so do not start it at minute 15 of the hour, when the scheduled
+-- rollback, so do not start it at minute 1 of the hour, when the scheduled
 -- demo reseed runs.
 do $$
 declare
@@ -21,6 +21,8 @@ declare
   t text;
   k text;
   q text;
+  ref text;
+  ref_rule text;
   core text[] := array['departments','employees','employee_private'];
   shared text[] := array['departments','public_holidays','trainings','announcements'];
   fails text[] := '{}';
@@ -52,8 +54,24 @@ begin
       fails := array_append(fails, format('%s should be HR only, its rule is: %s', t, q));
     end if;
 
+    -- The rule must be word for word the rule of the table of its kind whose
+    -- reads are tested as a member further down, so a rule that keeps every
+    -- expected term but adds a wider one cannot pass.
+    ref := case k when 'personal' then 'payslips' when 'hr' then 'payroll_runs' else 'departments' end;
+    select p.qual into ref_rule from pg_policies p
+    where p.schemaname = 'public' and p.tablename = ref and p.policyname = ref || '_select';
+    if q is distinct from ref_rule then
+      fails := array_append(fails, format('%s does not have the same read rule as %s: %s', t, ref, q));
+    end if;
+
     select count(*) into n from pg_policies p
-    where p.schemaname = 'public' and p.tablename = t and p.policyname = 'mfa_required' and p.permissive = 'RESTRICTIVE';
+    where p.schemaname = 'public' and p.tablename = t and p.policyname = t || '_select'
+      and p.permissive = 'PERMISSIVE' and p.roles = array['authenticated']::name[];
+    if n <> 1 then fails := array_append(fails, format('%s read policy is not for signed-in users only', t)); end if;
+
+    select count(*) into n from pg_policies p
+    where p.schemaname = 'public' and p.tablename = t and p.policyname = 'mfa_required'
+      and p.permissive = 'RESTRICTIVE' and p.cmd = 'ALL' and p.qual like '%mfa_ok()%';
     if n <> 1 then fails := array_append(fails, format('%s has no restrictive second-factor policy', t)); end if;
 
     select count(*) into n from pg_policies p

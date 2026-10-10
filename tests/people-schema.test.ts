@@ -121,6 +121,18 @@ describe('Lekiu schema', () => {
     expect(text).not.toContain('on delete restrict');
   });
 
+  test('a member leaving does not touch employees of a workspace that is being deleted', () => {
+    expect(sql(CORE)).toContain('and exists (select 1 from public.orgs o where o.id = old.org_id);');
+  });
+
+  test('a department name is unique whatever its capitals or spaces', () => {
+    const text = sql(CORE);
+    expect(text).toContain(
+      'create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));',
+    );
+    expect(text).not.toContain('unique (org_id, name)');
+  });
+
   test('a payslip carries its own month and a derived net pay', () => {
     const text = sql(PAYROLL);
     const start = text.indexOf('create table public.payslips (');

@@ -40,7 +40,7 @@ describe('Lekiu demo seed', () => {
     const text = cron();
     expect(text).toContain('create extension if not exists pg_cron;');
     expect(text).toContain(
-      "select cron.schedule('reseed-demo-people', '15 * * * *', $$select private.reseed_demo_people()$$);",
+      "select cron.schedule('reseed-demo-people', '1 * * * *', $$select private.reseed_demo_people()$$);",
     );
   });
 
