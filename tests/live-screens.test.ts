@@ -23,6 +23,13 @@ describe('live screens', () => {
     expect(isSampleScreen('/command')).toBe(false);
   });
 
+  it('counts the eight connected Lekir screens as live, and Settings as sample', () => {
+    for (const slug of ['assistant', 'dashboard', 'jobs', 'candidates', 'applications', 'interviews', 'talent-pool', 'careers-page']) {
+      expect(isSampleScreen(`/hire/${slug}`), slug).toBe(false);
+    }
+    expect(isSampleScreen('/hire/settings')).toBe(true);
+  });
+
   it('ignores paths that are not a screen', () => {
     expect(isSampleScreen('/reach')).toBe(false);
     expect(isSampleScreen('/nope/nothing')).toBe(false);

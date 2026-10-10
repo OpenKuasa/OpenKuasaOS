@@ -5,7 +5,7 @@
  * otherwise one of the user's free weekly questions on the platform key.
  *
  * Tuah works through a team: it asks a specialist per product (Jebat for
- * marketing, Kasturi for the CRM) and carries out the changes they prepare.
+ * marketing, Kasturi for the CRM, Lekir for hiring) and carries out the changes they prepare.
  * Lookups run on their own; changes wait for the user's approval. A chat can
  * ask for the single agent that holds every tool itself with `team: false`.
  *
@@ -20,6 +20,7 @@ import { getCurrentOrg } from '@/lib/auth/current-org';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { answersWithTeam, namesIn, proposalsIn, transcriptOf } from '@/lib/chat/delegation';
 import { saveAnswer, saveQuestion } from '@/lib/chat/store';
+import { getHireData } from '@/lib/hire/supabase';
 import { getReachData } from '@/lib/reach/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
 
   const org = hasSupabaseEnv() ? await getCurrentOrg(supabase) : null;
   const data = await getReachData(supabase);
+  const hire = { data: await getHireData(supabase) };
   // Only a non-viewer member gets change tools (and each still needs approval).
   const write =
     org && org.role !== 'viewer'
@@ -79,6 +81,7 @@ export async function POST(request: Request) {
     chat.screen,
     crm,
     team,
+    hire,
   );
   void result.consumeStream();
 

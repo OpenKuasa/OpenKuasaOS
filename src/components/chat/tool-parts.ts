@@ -15,9 +15,11 @@ import {
   type Proposal,
 } from '@/lib/chat/delegation';
 import {
+  Briefcase,
   CalendarDays,
   ClipboardList,
   Coins,
+  Filter,
   Images,
   Megaphone,
   PieChart,
@@ -27,8 +29,11 @@ import {
   ChartColumn,
   Send,
   SlidersHorizontal,
+  Timer,
   TrendingUp,
+  UserSearch,
   Users,
+  Waypoints,
   Wrench,
   Zap,
 } from 'lucide-react';
@@ -57,6 +62,14 @@ const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
   getDealStats: { label: 'Deal totals', Icon: ChartColumn },
   listFollowUps: { label: 'Follow-ups', Icon: ClipboardList },
   getCalendar: { label: 'Calendar', Icon: CalendarDays },
+  getHiringOverview: { label: 'Hiring overview', Icon: PieChart },
+  listJobs: { label: 'Jobs', Icon: Briefcase },
+  listApplications: { label: 'Applications', Icon: ClipboardList },
+  getHiringFunnel: { label: 'Hiring funnel', Icon: Filter },
+  listTalentPool: { label: 'Talent pool', Icon: UserSearch },
+  listInterviews: { label: 'Interviews', Icon: CalendarDays },
+  getTimeToHire: { label: 'Time to hire', Icon: Timer },
+  getSourceBreakdown: { label: 'Candidate sources', Icon: Waypoints },
   listContacts: { label: 'Leads', Icon: Users },
 };
 

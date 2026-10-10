@@ -10,8 +10,10 @@
 
 import type { ToolSet } from 'ai';
 import { CRM_WRITE_TOOL_NAMES, createCrmTools, type CrmAccess } from '@/lib/ai/crm-tools';
+import { createHireTools } from '@/lib/ai/hire-tools';
 import { createReachTools } from '@/lib/ai/tools';
 import type { ReachWriteContext } from '@/lib/reach/capabilities';
+import type { HireData } from '@/lib/hire/types';
 import type { ReachData } from '@/lib/reach/types';
 
 /** The marketing data an agent works on, and whether this caller may change it. */
@@ -45,7 +47,13 @@ export const REACH_WRITE_TOOL_NAMES = [
   'deleteAppointment',
 ] as const;
 
-export type ProductKey = 'reach' | 'crm';
+/** The hiring data an agent reads. */
+export type HireAccess = { data: HireData };
+
+/** Hiring tools that change data. None yet: Lekir can only look things up. */
+export const HIRE_WRITE_TOOL_NAMES: readonly string[] = [];
+
+export type ProductKey = 'reach' | 'crm' | 'hire';
 
 export type ProductToolkit = {
   /** The product's route segment, as in the navigation. */
@@ -76,6 +84,11 @@ export function reachProduct(reach: ReachAccess): ProductToolkit {
 /** Kasturi: CRM contacts, deals, pipelines, follow-ups and the calendar. */
 export function crmProduct(crm: CrmAccess): ProductToolkit {
   return { key: 'crm', name: 'Kasturi', ...split(createCrmTools(crm), CRM_WRITE_TOOL_NAMES) };
+}
+
+/** Lekir: jobs, candidates, applications and interviews. */
+export function hireProduct(hire: HireAccess): ProductToolkit {
+  return { key: 'hire', name: 'Lekir', ...split(createHireTools(hire.data), HIRE_WRITE_TOOL_NAMES) };
 }
 
 /**

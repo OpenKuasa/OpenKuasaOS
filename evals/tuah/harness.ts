@@ -16,6 +16,7 @@ import { runTuah } from '@/lib/ai/agents/orchestrator';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { collectNames, type KnownNames } from '@/lib/chat/change-titles';
 import { APPLY_TOOL, ASK_PREFIX, isDelegation, type Proposal } from '@/lib/chat/delegation';
+import { createSupabaseHireData } from '@/lib/hire/supabase';
 import { createSupabaseReachData } from '@/lib/reach/supabase';
 
 /** Marks every row an eval creates, so cleanup never touches anything else. */
@@ -158,6 +159,7 @@ export class Conversation {
         proposals: this.proposals,
         names: this.names,
       },
+      { data: createSupabaseHireData(client, orgId) },
     );
     // A model call that breaks partway leaves a half answer; that is not Tuah's answer.
     let broke: unknown;

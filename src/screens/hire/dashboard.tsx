@@ -15,8 +15,6 @@ import {
   BarGroup,
   DonutStat,
   FunnelFlow,
-  RadialGauge,
-  Sparkline,
   type Series,
   type Slice,
 } from '@/components/charts';
@@ -28,84 +26,61 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { buildHireDashboardModel } from '@/lib/hire/dashboard';
+import { FUNNEL_COLOR, LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire, topSlices } from '@/screens/hire/parts';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd · FY2026) ------------------ */
+/* ---- static config ------------------------------------------------ */
 
-/** Time-to-hire & time-to-offer, monthly (days). Trending down = faster. */
-const TIME_TO_HIRE = [
-  { label: 'Mar', hire: 36, offer: 22 },
-  { label: 'Apr', hire: 35, offer: 21 },
-  { label: 'May', hire: 34, offer: 20 },
-  { label: 'Jun', hire: 33, offer: 20 },
-  { label: 'Jul', hire: 31, offer: 19 },
-  { label: 'Aug', hire: 30, offer: 18 },
-  { label: 'Sep', hire: 29, offer: 18 },
-  { label: 'Oct', hire: 28, offer: 17 },
-];
 const TIME_SERIES: Series[] = [
   { key: 'hire', label: 'Days to hire', color: 'var(--chart-1)' },
   { key: 'offer', label: 'Days to offer', color: 'var(--chart-2)' },
 ];
 
-/** Applications by job, this month (short labels) — sums to 142 = Applications · MTD. */
-const APPS_BY_JOB = [
-  { label: 'Software Eng', applications: 34 },
-  { label: 'Sales Exec', applications: 28 },
-  { label: 'Designer', applications: 22 },
-  { label: 'Account Mgr', applications: 21 },
-  { label: 'Support', applications: 20 },
-  { label: 'Ops Exec', applications: 17 },
-];
 const APPS_BY_JOB_SERIES: Series[] = [
   { key: 'applications', label: 'Applications', color: 'var(--chart-2)' },
 ];
 
-/** Source effectiveness — hires YTD by source (quality, not volume). */
-const SOURCE_EFFECTIVENESS: Slice[] = [
-  { key: 'referral', label: 'Referral', value: 9, color: 'var(--chart-5)' },
-  { key: 'linkedin', label: 'LinkedIn', value: 7, color: 'var(--chart-2)' },
-  { key: 'jobstreet', label: 'JobStreet', value: 6, color: 'var(--chart-1)' },
-  { key: 'careers', label: 'Careers page', value: 3, color: 'var(--chart-3)' },
-];
-
-/** Hiring pipeline snapshot. Applied = 248 = Candidates; Offer = 4 = Offers out. */
-const PIPELINE: Slice[] = [
-  { key: 'applied', label: 'Applied', value: 248, color: 'var(--chart-1)' },
-  { key: 'screening', label: 'Screening', value: 96, color: 'var(--chart-2)' },
-  { key: 'interview', label: 'Interview', value: 38, color: 'var(--chart-5)' },
-  { key: 'offer', label: 'Offer', value: 4, color: 'var(--chart-3)' },
-  { key: 'hired', label: 'Hired', value: 2, color: 'var(--chart-4)' },
-];
-
-const ACTIVITY = [
-  { text: 'Aisyah Karim moved to Interview — Sales Executive', when: '1h' },
-  { text: 'Offer sent to Rajesh Kumar — Software Engineer', when: '3h' },
-  { text: 'Nurul Huda completed screening — Account Manager', when: '5h' },
-  { text: 'Faiz Rahman applied via LinkedIn — Software Engineer', when: '1d' },
-  { text: 'Mei Ling Tan accepted offer — Graphic Designer', when: '2d' },
-];
+const SOURCE_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'];
 
 /* ------------------------------------------------------------------ */
 
-export default function DashboardScreen() {
+export default async function DashboardScreen() {
+  const { model } = await loadHire('dashboard', buildHireDashboardModel);
+  const trendMonths = (model?.timeByMonth ?? [])
+    .filter((m) => m.hire !== null || m.offer !== null)
+    .map((m) => ({
+      label: m.label,
+      hire: m.hire ?? 0,
+      offer: m.offer ?? 0,
+    }));
+  const sourceMix: Slice[] = topSlices(
+    model?.hiresBySource ?? [],
+    (r) => r.hires,
+    (r) => r.source,
+  ).map((row, index) => ({ ...row, color: SOURCE_COLORS[index] }));
+  const pipeline: Slice[] = (model?.funnel ?? []).map((f) => ({
+    key: f.key,
+    label: f.label,
+    value: f.value,
+    color: FUNNEL_COLOR[f.key],
+  }));
+
   return (
     <ScreenContainer>
       <PageHeader
         title="Dashboard"
-        subtitle="Your recruiting performance · FY2026, Saudara."
+        subtitle="Your recruiting performance, Saudara."
         actions={
           <>
-            <Select defaultValue="mtd">
+            <Select defaultValue="all" disabled>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mtd">This month</SelectItem>
-                <SelectItem value="qtd">This quarter</SelectItem>
-                <SelectItem value="ytd">Financial year</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled>
               <Download className="size-4" />
               Export
             </Button>
@@ -118,90 +93,75 @@ export default function DashboardScreen() {
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Time to hire"
-            value="28d"
-            delta="−3d"
-            deltaTone="up"
+            value={
+              !model ? '—' : model.time.days_to_hire === null ? '—' : `${model.time.days_to_hire} days`
+            }
             onPrimary
-            chart={
-              <Sparkline
-                data={[36, 35, 34, 33, 31, 30, 29, 28]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
-            }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Applications · MTD"
-            value="142"
-            delta="+18%"
-            deltaTone="up"
-            chart={<Sparkline data={[96, 104, 112, 118, 124, 131, 137, 142]} height={36} />}
-          />
+          <BentoStat label="Applications" value={model ? String(model.totals.applications) : '—'} />
+        </BentoCard>
+        <BentoCard className="col-span-1 md:col-span-3">
+          <BentoStat label="Offers out" value={model ? String(model.totals.offers_out) : '—'} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
-            label="Offer-accept rate"
-            value="78%"
-            delta="+4pt"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[70, 71, 72, 73, 74, 75, 77, 78]}
-                color="var(--chart-5)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Cost per hire"
-            value="RM 3,200"
-            delta="−6%"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[3800, 3700, 3600, 3500, 3450, 3350, 3280, 3200]}
-                color="var(--chart-4)"
-                height={36}
-              />
-            }
+            label="Hires · last 30 days"
+            value={model ? String(model.totals.hires_last_30_days) : '—'}
           />
         </BentoCard>
 
         {/* Time-to-hire trend + source effectiveness */}
         <BentoCard
           title="Time to hire"
-          subtitle="Days to hire & offer · FY2026"
+          subtitle="Days to hire & offer"
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <AreaTrend data={TIME_TO_HIRE} series={TIME_SERIES} height={240} showLegend />
+          {!model ? LOAD_FAILED : model.time.offers === 0 ? (
+            <Muted>No offers or hires yet</Muted>
+          ) : trendMonths.length < 2 ? (
+            <Muted>Not enough history for a trend yet</Muted>
+          ) : (
+            <AreaTrend
+              data={trendMonths}
+              series={TIME_SERIES}
+              height={240}
+              showLegend
+            />
+          )}
         </BentoCard>
         <BentoCard
           title="Source effectiveness"
-          subtitle="Hires YTD by source"
+          subtitle="Hires by source"
           icon={PieChart}
           className="col-span-2 md:col-span-4"
         >
-          <DonutStat
-            data={SOURCE_EFFECTIVENESS}
-            height={240}
-            centerValue="25"
-            centerLabel="hires"
-          />
+          {!model ? LOAD_FAILED : sourceMix.length === 0 ? (
+            <Muted>No hires yet</Muted>
+          ) : (
+            <DonutStat
+              data={sourceMix}
+              height={240}
+              centerValue={String(sourceMix.reduce((sum, row) => sum + row.value, 0))}
+              centerLabel="hires"
+            />
+          )}
         </BentoCard>
 
         {/* Applications by job + offer-accept gauge */}
         <BentoCard
           title="Applications by job"
-          subtitle="This month"
+          subtitle="All time"
           icon={ChartColumn}
           className="col-span-2 md:col-span-8"
         >
-          <BarGroup data={APPS_BY_JOB} series={APPS_BY_JOB_SERIES} horizontal height={240} />
+          {!model ? LOAD_FAILED : model.byJob.length === 0 ? (
+            <Muted>No applications yet</Muted>
+          ) : (
+            <BarGroup data={model.byJob} series={APPS_BY_JOB_SERIES} horizontal height={240} />
+          )}
         </BentoCard>
         <BentoCard
           title="Offer-accept rate"
@@ -209,13 +169,7 @@ export default function DashboardScreen() {
           icon={Gauge}
           className="col-span-2 md:col-span-4"
         >
-          <RadialGauge
-            value={78}
-            label="accepted"
-            valueLabel="78%"
-            color="var(--chart-2)"
-            height={240}
-          />
+          {NOT_AVAILABLE}
         </BentoCard>
 
         {/* Pipeline funnel + recent activity */}
@@ -225,7 +179,11 @@ export default function DashboardScreen() {
           icon={Filter}
           className="col-span-2 md:col-span-6"
         >
-          <FunnelFlow data={PIPELINE} height={220} />
+          {!model ? LOAD_FAILED : model.totals.applications === 0 ? (
+            <Muted>No applications yet</Muted>
+          ) : (
+            <FunnelFlow data={pipeline} height={220} />
+          )}
         </BentoCard>
         <BentoCard
           title="Recent activity"
@@ -233,17 +191,21 @@ export default function DashboardScreen() {
           icon={Activity}
           className="col-span-2 md:col-span-6"
         >
-          <ul className="space-y-2.5">
-            {ACTIVITY.map((a) => (
-              <li key={a.text} className="flex items-start gap-2.5">
-                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                <span className="min-w-0 flex-1 text-sm leading-snug">{a.text}</span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {a.when}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {!model ? LOAD_FAILED : model.activity.length === 0 ? (
+            <Muted>Nothing yet</Muted>
+          ) : (
+            <ul className="space-y-2.5">
+              {model.activity.map((a, index) => (
+                <li key={`${a.text}-${index}`} className="flex items-start gap-2.5">
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span className="min-w-0 flex-1 text-sm leading-snug">{a.text}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {a.when}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
