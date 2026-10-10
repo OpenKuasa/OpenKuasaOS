@@ -131,4 +131,15 @@ describe('listAgentConfigs', () => {
     expect(eq).toHaveBeenCalledWith('org_id', ORG);
     expect(out).toEqual([]);
   });
+
+  it('selects the workspace cap columns so the budget strip has real values', async () => {
+    // Regression: omitting these made the Agents screen show "RM NaN" once a
+    // real agent_configs row existed (the synthetic default has them hard-coded).
+    const eq = vi.fn(async () => ({ data: null, error: null }));
+    const select = vi.fn(() => ({ eq }));
+    const from = vi.fn(() => ({ select }));
+    await listAgentConfigs({ from } as unknown as SupabaseClient, ORG);
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('daily_cap_cents'));
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('weekly_cap_cents'));
+  });
 });

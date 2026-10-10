@@ -10,7 +10,8 @@ const cadence = z.enum(['off', 'daily', 'weekly']);
 export const setAgentEnabledInput = z.object({ agent_key: agentKey, enabled: z.boolean() });
 export const setAgentCadenceInput = z.object({ agent_key: agentKey, cadence });
 export const setAgentCapInput = z.object({ agent_key: agentKey, max_cost_cents: z.number().int().min(0).max(10000) });
-const COLS = 'id,org_id,agent_key,enabled,cadence,max_cost_cents,last_run_at,created_at,updated_at';
+const COLS =
+  'id,org_id,agent_key,enabled,cadence,max_cost_cents,daily_cap_cents,weekly_cap_cents,last_run_at,created_at,updated_at';
 
 export async function listAgentConfigs(client: SupabaseClient, orgId: string): Promise<AgentConfig[]> {
   const { data } = await client.from('agent_configs').select(COLS).eq('org_id', orgId);
