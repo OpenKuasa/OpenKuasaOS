@@ -70,22 +70,20 @@ export function ProductsView({ view, actions }: { view: ProductsViewData; action
         title="Products & Services"
         subtitle="Items you sell & buy, Saudara."
         actions={
-          <Button
-            size="sm"
-            aria-expanded={actions ? adding : undefined}
-            onClick={
-              actions
-                ? () => {
-                    setEditing(null);
-                    setDeleting(null);
-                    setAdding(true);
-                  }
-                : undefined
-            }
-          >
-            <Plus className="size-4" />
-            Add Item
-          </Button>
+          actions ? (
+            <Button
+              size="sm"
+              aria-expanded={adding}
+              onClick={() => {
+                setEditing(null);
+                setDeleting(null);
+                setAdding(true);
+              }}
+            >
+              <Plus className="size-4" />
+              Add Item
+            </Button>
+          ) : undefined
         }
       />
 
