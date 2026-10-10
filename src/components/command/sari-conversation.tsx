@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport } from 'ai';
 import {
   Sparkles,
   Plus,
@@ -45,8 +44,15 @@ import {
   isThreadId,
   titleFromText,
   type ChatThread,
-  type StoredMessage,
 } from '@/lib/chat/threads';
+import {
+  createChat,
+  dropChat,
+  isAnswering,
+  keepChat,
+  keptChat,
+  type LiveChat,
+} from '@/components/command/live-chats';
 import { cn } from '@/lib/utils';
 
 type Role = 'user' | 'assistant';
@@ -119,17 +125,37 @@ const AGENTS: { label: string; icon: LucideIcon; prompt: string }[] = [
 type Session = {
   id: string;
   status: 'ready' | 'loading' | 'error';
-  messages: StoredMessage[];
+  /** The conversation itself; absent only while a saved thread is being read. */
+  chat: LiveChat | null;
   /** False until the first question is sent, so an untouched chat has no URL. */
   saved: boolean;
+  /** How the last question stands when a thread is read back without its answer. */
+  answer: AnswerState;
 };
 
+/** `coming`: asked moments ago, the reply may still be on its way. `lost`: it never arrived. */
+type AnswerState = 'settled' | 'coming' | 'lost';
+
+/** How long after a question its answer can still be expected to turn up. */
+const ANSWER_WINDOW_MS = 90_000;
+const ANSWER_POLL_MS = 2_500;
+const ANSWER_POLL_TRIES = 30;
+
 function freshSession(): Session {
-  return { id: crypto.randomUUID(), status: 'ready', messages: [], saved: false };
+  const id = crypto.randomUUID();
+  return { id, status: 'ready', chat: createChat(id), saved: false, answer: 'settled' };
 }
 
-function savedSession(id: string): Session {
-  return { id, status: 'loading', messages: [], saved: true };
+/** A saved thread: straight from memory if it is still open here, else read back. */
+function savedSession(userId: string, id: string): Session {
+  const chat = keptChat(userId, id) ?? null;
+  return {
+    id,
+    status: chat ? 'ready' : 'loading',
+    chat,
+    saved: true,
+    answer: 'settled',
+  };
 }
 
 /** `?chat=<id>` keeps a saved thread on screen across refresh and back. */
@@ -153,12 +179,13 @@ export function SariConversation({
   urlThreadId?: string | null;
 }) {
   const viewer = useViewer();
+  const userId = viewer.userId;
   // Demo guests chat with sample answers and nothing of theirs is saved.
   const keepsHistory = showSidebar && !viewer.isDemo;
   const wanted = keepsHistory && isThreadId(urlThreadId) ? urlThreadId : null;
 
   const [session, setSession] = useState<Session>(() =>
-    wanted ? savedSession(wanted) : freshSession(),
+    wanted ? savedSession(userId, wanted) : freshSession(),
   );
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [listState, setListState] = useState<ChatHistoryState>(
@@ -171,7 +198,7 @@ export function SariConversation({
   const [seenWanted, setSeenWanted] = useState(wanted);
   if (wanted !== seenWanted) {
     setSeenWanted(wanted);
-    if (wanted && wanted !== session.id) setSession(savedSession(wanted));
+    if (wanted && wanted !== session.id) setSession(savedSession(userId, wanted));
     else if (!wanted && session.saved) setSession(freshSession());
   }
 
@@ -186,11 +213,21 @@ export function SariConversation({
       );
       if (!current) return;
       if (loaded.ok) {
+        const chat = createChat(sessionId, loaded.messages);
+        keepChat(userId, chat);
+        const last = loaded.messages[loaded.messages.length - 1];
+        const age = Date.now() - new Date(loaded.thread.updatedAt).getTime();
         setSession({
           id: sessionId,
           status: 'ready',
-          messages: loaded.messages,
+          chat,
           saved: true,
+          answer:
+            last?.role !== 'user'
+              ? 'settled'
+              : age < ANSWER_WINDOW_MS
+                ? 'coming'
+                : 'lost',
         });
       } else if (loaded.reason === 'missing') {
         setNotice('That chat is no longer available, so here is a new one.');
@@ -204,17 +241,33 @@ export function SariConversation({
     return () => {
       current = false;
     };
-  }, [sessionId, sessionStatus]);
+  }, [sessionId, sessionStatus, userId]);
+
+  // A list read can land after a question was asked but before its thread
+  // was saved. Threads still being answered here are kept on top, so a slow
+  // read never makes a chat vanish from the list.
+  const applyThreads = useCallback(
+    (fromServer: ChatThread[]) => {
+      setThreads((local) => {
+        const saved = new Set(fromServer.map((t) => t.id));
+        const inFlight = local.filter(
+          (t) => !saved.has(t.id) && isAnswering(userId, t.id),
+        );
+        return [...inFlight, ...fromServer];
+      });
+    },
+    [userId],
+  );
 
   const refreshThreads = useCallback(async () => {
     const next = await listChatThreadsAction().catch(() => null);
     if (next) {
-      setThreads(next);
+      applyThreads(next);
       setListState('ready');
     } else {
       setListState((state) => (state === 'loading' ? 'error' : state));
     }
-  }, []);
+  }, [applyThreads]);
 
   useEffect(() => {
     if (!keepsHistory) return;
@@ -222,14 +275,14 @@ export function SariConversation({
     const load = async () => {
       const next = await listChatThreadsAction().catch(() => null);
       if (!current) return;
-      if (next) setThreads(next);
+      if (next) applyThreads(next);
       setListState(next ? 'ready' : 'error');
     };
     void load();
     return () => {
       current = false;
     };
-  }, [keepsHistory]);
+  }, [keepsHistory, applyThreads]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -275,7 +328,7 @@ export function SariConversation({
     setDrawerOpen(false);
     setNotice(null);
     if (id === session.id) return;
-    setSession(savedSession(id));
+    setSession(savedSession(userId, id));
     showInUrl(id, 'push');
   }
 
@@ -289,6 +342,7 @@ export function SariConversation({
   async function deleteThread(id: string): Promise<boolean> {
     const gone = await deleteChatThreadAction(id).catch(() => false);
     if (!gone) return false;
+    dropChat(userId, id);
     setThreads((list) => list.filter((t) => t.id !== id));
     if (id === session.id) {
       setSession(freshSession());
@@ -376,9 +430,7 @@ export function SariConversation({
           </p>
         ) : null}
 
-        {session.status === 'loading' ? (
-          <ThreadSkeleton compact={compact} />
-        ) : session.status === 'error' ? (
+        {session.status === 'error' ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="text-sm font-medium">This chat could not be opened</p>
             <p className="max-w-xs text-sm text-muted-foreground">
@@ -386,17 +438,20 @@ export function SariConversation({
             </p>
             <button
               type="button"
-              onClick={() => setSession(savedSession(session.id))}
+              onClick={() => setSession(savedSession(userId, session.id))}
               className="h-10 cursor-pointer rounded-lg border bg-background px-4 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Try again
             </button>
           </div>
+        ) : session.status === 'loading' || !session.chat ? (
+          <ThreadSkeleton compact={compact} />
         ) : (
           <ChatPane
             key={session.id}
-            threadId={session.id}
-            initialMessages={session.messages}
+            chat={session.chat}
+            answer={session.answer}
+            keep={keepsHistory}
             compact={compact}
             onAsk={handleAsk}
             onSettled={handleSettled}
@@ -430,19 +485,22 @@ function ThreadSkeleton({ compact }: { compact: boolean }) {
 }
 
 /**
- * One conversation. Mounted fresh for each thread (the parent keys it by
- * thread id), so its messages start from what was saved and nothing leaks
- * between chats.
+ * One conversation on screen. The chat itself is owned by the page, not by
+ * this component, so leaving for another thread does not stop an answer.
  */
 function ChatPane({
-  threadId,
-  initialMessages,
+  chat: liveChat,
+  answer,
+  keep,
   compact,
   onAsk,
   onSettled,
 }: {
-  threadId: string;
-  initialMessages: StoredMessage[];
+  chat: LiveChat;
+  /** Where the last question stood when this thread was read back. */
+  answer: AnswerState;
+  /** Keep the chat alive after this screen moves on (the page with history). */
+  keep: boolean;
   compact: boolean;
   /** A question was sent to the live assistant. */
   onAsk: (text: string) => void;
@@ -459,16 +517,7 @@ function ChatPane({
   const idRef = useRef(1);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const [transport] = useState(
-    () => new DefaultChatTransport({ api: '/api/chat' }),
-  );
-  // The thread id travels with every request; the server files the turn under it.
-  const chat = useChat({
-    id: threadId,
-    messages: initialMessages,
-    transport,
-    throttle: 50,
-  });
+  const chat = useChat({ chat: liveChat, throttle: 50 });
   const busy = chat.status === 'submitted' || chat.status === 'streaming';
 
   // Who is paying: the workspace's own key, or the user's free weekly questions.
@@ -502,9 +551,38 @@ function ChatPane({
     }))
     .filter((m) => m.text.trim().length > 0);
   const messages = live ? liveMessages : demoMessages;
+
+  // A thread read back moments after its question (a reload mid-answer): the
+  // server is still finishing the reply, so look for it until it is saved.
+  const [awaiting, setAwaiting] = useState<AnswerState>(answer);
+  const threadId = liveChat.id;
+  const { setMessages } = chat;
+  useEffect(() => {
+    if (awaiting !== 'coming') return;
+    let current = true;
+    let tries = 0;
+    const timer = window.setInterval(async () => {
+      tries += 1;
+      const loaded = await loadChatThreadAction(threadId).catch(() => null);
+      if (!current) return;
+      const last = loaded?.ok ? loaded.messages[loaded.messages.length - 1] : null;
+      if (loaded?.ok && last?.role === 'assistant') {
+        setMessages(loaded.messages);
+        setAwaiting('settled');
+      } else if (tries >= ANSWER_POLL_TRIES) {
+        setAwaiting('lost');
+      }
+    }, ANSWER_POLL_MS);
+    return () => {
+      current = false;
+      window.clearInterval(timer);
+    };
+  }, [awaiting, threadId, setMessages]);
+
   // Show the dots until the first words of the answer arrive.
   const thinking = live
-    ? busy && liveMessages[liveMessages.length - 1]?.role !== 'assistant'
+    ? (busy && liveMessages[liveMessages.length - 1]?.role !== 'assistant') ||
+      awaiting === 'coming'
     : demoThinking;
 
   useEffect(() => {
@@ -516,6 +594,8 @@ function ChatPane({
     if (!q) return;
     if (live) {
       if (busy || locked) return;
+      if (keep) keepChat(viewer.userId, liveChat);
+      setAwaiting('settled');
       void chat.sendMessage({ text: q });
       onAsk(q);
       setInput('');
@@ -657,6 +737,11 @@ function ChatPane({
                       ))}
                     </div>
                   </div>
+                ) : null}
+                {live && awaiting === 'lost' && !busy && !chat.error ? (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    This question did not get an answer. Ask it again to try once more.
+                  </p>
                 ) : null}
                 {live && chat.error ? (
                   <p role="alert" className="text-sm text-muted-foreground">

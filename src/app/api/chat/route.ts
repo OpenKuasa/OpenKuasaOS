@@ -15,6 +15,7 @@ import { saveAnswer, saveQuestion } from '@/lib/chat/store';
 export const dynamic = 'force-dynamic';
 // Hint for serverless hosts; a no-op on a persistent server.
 export const maxDuration = 60;
+const ANSWER_TIMEOUT_MS = 55_000;
 
 export async function POST(request: Request) {
   const chat = await prepareChat(request);
@@ -28,13 +29,30 @@ export async function POST(request: Request) {
       ? saveQuestion(supabase, chat.userId, threadId, lastMessage.parts)
       : Promise.resolve(false);
 
-  const result = runTuah(chat.messages, request.signal, chat.apiKey);
+  // The answer does not depend on anyone watching it arrive: closing the tab
+  // or opening another chat must not cut it short, so the model is bounded by
+  // time rather than by the request, and the stream is drained here.
+  const result = runTuah(
+    chat.messages,
+    AbortSignal.timeout(ANSWER_TIMEOUT_MS),
+    chat.apiKey,
+  );
+  void result.consumeStream();
+
+  if (threadId) {
+    void (async () => {
+      if (!(await questionSaved)) return;
+      const text = await result.text;
+      await saveAnswer(supabase, threadId, [{ type: 'text', text }]);
+    })().catch((error) => {
+      console.error(
+        '[tuah] answer not saved:',
+        error instanceof Error ? error.message : error,
+      );
+    });
+  }
 
   return result.toUIMessageStreamResponse({
-    onEnd: async ({ responseMessage }) => {
-      if (!threadId || !(await questionSaved)) return;
-      await saveAnswer(supabase, threadId, responseMessage.parts);
-    },
     onError: (error) => {
       console.error('[tuah] stream error:', error);
       return 'Tuah ran into a problem. Please try again in a moment.';
