@@ -23,9 +23,9 @@ the data layer, with unit tests; the client components only draw them.
 | File | Holds |
 |---|---|
 | `purchase-views.ts` | KPI figures, chart data, table filters and CSV rows for Supplier Bills and Payments Out |
-| `bill-math.ts` | Line amounts and bill totals, rounded exactly as the generated columns `amount` and `sst_amount` round them |
-| `bill-form.ts` | The bill form: defaults, the due date following the supplier's terms, validation, what is sent |
-| `payment-form.ts` | The payment form: which bills can take a payment and how much, defaults, validation, what is sent |
+| `bill-math.ts` | Line amounts and bill totals, rounded exactly as the generated columns `amount` and `sst_amount` round them; the SST rate keeps two decimals, as its column does (`roundRate` in `bills.ts`) |
+| `bill-form.ts` | The bill form: defaults, the due date following the supplier's terms, validation, what is sent. `savedNotPosted` words a bill that was saved as a draft but not posted |
+| `payment-form.ts` | The payment form: which bills can take a payment and how much, defaults, validation, what is sent. `heldByBill` adds up what unpaid payments already hold of each bill; `keepPayable` drops a ticked bill that was paid off while the form was open |
 | `csv.ts` | CSV text for Export: RFC 4180, a UTF-8 byte-order mark, and a guard against spreadsheet formulas |
 
 The forms validate by running the write's own Zod schema on what they are about
@@ -74,9 +74,11 @@ The view `finance_payments_out` has one row per bill a payment pays;
 `supplier_bill_totals` counts only posted money out as paid.
 
 A bill's `balance` is its total less paid money. What a new payment may take is
-less than that when payments are scheduled: the allocation guard counts
-scheduled payments too. The payment form works this out (`payableBills`) and
-does not offer a bill that scheduled payments already cover.
+less than that when payments are waiting: the allocation guard counts
+scheduled, draft and pending-approval payments too, as they hold a bill's
+balance. The payment form works this out (`payableBills`) and does not offer a
+bill that such payments already cover; Supplier Bills shows what is held under
+the bill's balance (`heldByBill`), for viewers too.
 
 Statuses of a transaction: `draft` (being written by a database function),
 `scheduled` (not yet money out), `posted` (paid; numbered `PV-0001`), `void`.
@@ -95,8 +97,9 @@ Triggers enforce it, so no caller can get round it:
   function to edit one yet. It cannot be voided: only a paid payment is voided.
   A paid one can only be
   voided, which frees the bills it paid. Its split is locked with it.
-- A payment cannot exceed what is still owed on a bill, counting scheduled
-  payments. The bill row is locked while this is checked, so two payments at
+- A payment cannot exceed what is still owed on a bill, counting scheduled,
+  draft and pending-approval payments. The bill row is locked while this is
+  checked, so two payments at
   the same moment are checked one after the other.
 - Clearing a deleted user from a payment's `created_by` or `approved_by` is
   allowed on a posted payment.
@@ -144,6 +147,12 @@ The guards and functions raise these SQLSTATEs; `bills.ts`, `money.ts` and
   browser. The product picker on a bill line is a plain list with no search.
 - KPI figures and Overdue use the UTC date; the forms' default dates use the
   person's own calendar date.
+- Month-to-date figures use the UTC month, so on the 1st before 08:00 Malaysia
+  time a payment dated today does not count yet.
+- A lost response cannot be told from a failed save. The screen says it could
+  not confirm the change and refreshes the list; a retry after a save that did
+  land can create a second bill or a second part-payment, until writes carry a
+  client-generated id.
 - Payment dates are not restricted: "pay now" accepts a future date and
   "schedule for later" a past one.
 - A payment's account must be active when it is chosen (only active accounts
