@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sparkles, X } from 'lucide-react';
 import { ASSISTANT } from '@/config/nav';
 import { SariConversation } from '@/components/command/sari-conversation';
@@ -11,6 +12,9 @@ import { SariConversation } from '@/components/command/sari-conversation';
  */
 export function AssistantFab() {
   const [open, setOpen] = useState(false);
+  // The Command page is this same assistant at full size; a second door to
+  // it there only covers the composer.
+  const onCommandPage = usePathname() === '/command';
 
   useEffect(() => {
     if (!open) return;
@@ -20,6 +24,8 @@ export function AssistantFab() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
+
+  if (onCommandPage) return null;
 
   return (
     <>
