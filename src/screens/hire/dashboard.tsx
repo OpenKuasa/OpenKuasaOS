@@ -46,7 +46,13 @@ const SOURCE_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'va
 
 export default async function DashboardScreen() {
   const { model } = await loadHire('dashboard', buildHireDashboardModel);
-  const applications = model?.funnel[0]?.value ?? 0;
+  const trendMonths = (model?.timeByMonth ?? [])
+    .filter((m) => m.hire !== null || m.offer !== null)
+    .map((m) => ({
+      label: m.label,
+      hire: m.hire ?? 0,
+      offer: m.offer ?? 0,
+    }));
   const sourceMix: Slice[] = topSlices(
     model?.hiresBySource ?? [],
     (r) => r.hires,
@@ -115,15 +121,11 @@ export default async function DashboardScreen() {
         >
           {!model ? LOAD_FAILED : model.time.offers === 0 ? (
             <Muted>No offers or hires yet</Muted>
+          ) : trendMonths.length < 2 ? (
+            <Muted>Not enough history for a trend yet</Muted>
           ) : (
             <AreaTrend
-              data={model.timeByMonth
-                .filter((m) => m.hire !== null || m.offer !== null)
-                .map((m) => ({
-                  label: m.label,
-                  hire: m.hire ?? 0,
-                  offer: m.offer ?? 0,
-                }))}
+              data={trendMonths}
               series={TIME_SERIES}
               height={240}
               showLegend
@@ -177,7 +179,7 @@ export default async function DashboardScreen() {
           icon={Filter}
           className="col-span-2 md:col-span-6"
         >
-          {!model ? LOAD_FAILED : applications === 0 ? (
+          {!model ? LOAD_FAILED : model.totals.applications === 0 ? (
             <Muted>No applications yet</Muted>
           ) : (
             <FunnelFlow data={pipeline} height={220} />
