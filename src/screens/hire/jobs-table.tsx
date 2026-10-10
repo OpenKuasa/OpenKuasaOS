@@ -11,7 +11,9 @@ import {
 } from '@/app/(app)/hire/actions';
 import {
   EMPTY_JOB_FORM,
+  HAS_APPLICATIONS,
   allowedMoves,
+  fieldForServerError,
   formErrors,
   fromJob,
   toInput,
@@ -54,7 +56,6 @@ const TYPE_LABEL: Record<EmploymentType, string> = {
   internship: 'Internship',
 };
 
-const HAS_APPLICATIONS = 'This job has applications. Close it instead.';
 const NOT_SENT = 'That change could not be sent. Check your connection and try again.';
 
 /** The fields that can be wrong, in the order they appear in the form. */
@@ -100,9 +101,24 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
   const [dirty, setDirty] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const reasonId = useId();
+  const postButton = useRef<HTMLButtonElement>(null);
+  /** Set when a delete or a status move succeeds: the row's own button may be gone, so focus goes to "Post a Job". */
+  const focusPost = useRef(false);
+  /** Set when a delete succeeds, so the closing confirm does not send focus back to the deleted row. */
+  const deleted = useRef(false);
+
+  // "Post a Job" is disabled while an action runs, so it can only take focus once the action has finished.
+  useEffect(() => {
+    if (!pending && focusPost.current) {
+      focusPost.current = false;
+      postButton.current?.focus();
+    }
+  }, [pending]);
 
   function act(promise: Promise<ActionResult>, onOk: () => void) {
+    // Cleared first, so the same message twice in a row is announced twice.
     setNotice(null);
+    setError(null);
     start(async () => {
       try {
         const result = await promise;
@@ -135,6 +151,11 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
     setError(null);
   }
 
+  function closeDelete() {
+    setDeleting(null);
+    setError(null);
+  }
+
   /** Cancel, Escape and a click outside all come here. */
   function requestClose() {
     if (pending) return;
@@ -146,11 +167,12 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
     <div className="mt-3">
       {/* The live region is always in the page, so a change to its text is announced. */}
       <div className={cn('flex items-center gap-3 px-4', canEdit && 'min-h-11 pb-3')}>
-        <p aria-live="polite" className="sr-only sm:not-sr-only sm:text-sm sm:text-muted-foreground">
+        <p aria-live="polite" className="min-w-0 flex-1 text-sm text-muted-foreground">
           {notice}
         </p>
         {canEdit && (
           <Button
+            ref={postButton}
             type="button"
             size="sm"
             className={cn(TARGET, 'ml-auto')}
@@ -162,7 +184,7 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
           </Button>
         )}
       </div>
-      {error && !formOpen && (
+      {error && !formOpen && !deleting && (
         <p role="alert" className={cn(ALERT_CLASS, 'mx-4 mb-3')}>
           {error}
         </p>
@@ -238,36 +260,43 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                               aria-label={`${move.label} ${row.title}`}
                               disabled={pending}
                               onClick={() =>
-                                act(setJobStatusAction({ id: row.id, status: move.to }), () =>
-                                  setNotice(`${row.title} is now ${move.to}.`),
-                                )
+                                act(setJobStatusAction({ id: row.id, status: move.to }), () => {
+                                  focusPost.current = true;
+                                  setNotice(`${row.title} is now ${move.to}.`);
+                                })
                               }
                             >
                               {move.label}
                             </Button>
                           ))}
-                          {/* The wrapper carries the reason too: a disabled button shows no tooltip of its own. */}
-                          <span title={blocked ? HAS_APPLICATIONS : undefined}>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className={cn(TARGET, 'text-destructive hover:text-destructive')}
-                              aria-label={`Delete ${row.title}`}
-                              aria-describedby={blocked ? blockedId : undefined}
-                              title={blocked ? HAS_APPLICATIONS : undefined}
-                              disabled={pending || blocked}
-                              onClick={() => setDeleting(row)}
-                            >
-                              <Trash2 className="size-4" />
-                              Delete
-                            </Button>
-                            {blocked && (
-                              <span id={blockedId} className="sr-only">
-                                {HAS_APPLICATIONS}
-                              </span>
+                          {/* A job with applications keeps a focusable Delete that says why it will not act. */}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              TARGET,
+                              'text-destructive hover:text-destructive',
+                              'aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:bg-transparent',
                             )}
-                          </span>
+                            aria-label={`Delete ${row.title}`}
+                            aria-disabled={blocked || undefined}
+                            aria-describedby={blocked ? blockedId : undefined}
+                            disabled={pending}
+                            onClick={() => {
+                              setNotice(null);
+                              setError(blocked ? HAS_APPLICATIONS : null);
+                              if (!blocked) setDeleting(row);
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                            Delete
+                          </Button>
+                          {blocked && (
+                            <span id={blockedId} className="sr-only">
+                              {HAS_APPLICATIONS}
+                            </span>
+                          )}
                         </div>
                       </TableCell>
                     )}
@@ -283,21 +312,41 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
       <AlertDialog.Root
         open={deleting !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleting(null);
+          if (!open && !pending) closeDelete();
         }}
       >
         <AlertDialog.Portal>
           <AlertDialog.Overlay className={OVERLAY_CLASS} />
-          <AlertDialog.Content className={cn(CONTENT_CLASS, 'max-w-sm')}>
+          <AlertDialog.Content
+            className={cn(CONTENT_CLASS, 'max-w-sm')}
+            onCloseAutoFocus={(event) => {
+              if (!deleted.current) return;
+              deleted.current = false;
+              event.preventDefault();
+              postButton.current?.focus();
+            }}
+          >
             <AlertDialog.Title className="text-base font-semibold break-words">
               Delete “{deleting?.title}”?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-1 text-sm text-muted-foreground">
               This can&apos;t be undone.
             </AlertDialog.Description>
+            {error && (
+              <p role="alert" className={cn(ALERT_CLASS, 'mt-3')}>
+                {error}
+              </p>
+            )}
             <div className="mt-5 flex items-center justify-between gap-6">
               <AlertDialog.Cancel asChild>
-                <Button type="button" variant="outline" size="sm" className={TARGET} autoFocus>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={TARGET}
+                  disabled={pending}
+                  autoFocus
+                >
                   Cancel
                 </Button>
               </AlertDialog.Cancel>
@@ -308,14 +357,21 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                   size="sm"
                   className={TARGET}
                   disabled={pending}
-                  onClick={() => {
+                  onClick={(event) => {
+                    // Stay open while the delete runs: a refusal is shown here, and only success closes it.
+                    event.preventDefault();
                     if (!deleting) return;
                     const { id, title } = deleting;
-                    act(deleteJobAction({ id }), () => setNotice(`${title} was deleted.`));
+                    act(deleteJobAction({ id }), () => {
+                      deleted.current = true;
+                      focusPost.current = true;
+                      setDeleting(null);
+                      setNotice(`${title} was deleted.`);
+                    });
                   }}
                 >
                   <Trash2 className="size-4" />
-                  Delete job
+                  {pending ? 'Deleting…' : 'Delete job'}
                 </Button>
               </AlertDialog.Action>
             </div>
@@ -349,6 +405,7 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                 pending={pending}
                 error={error}
                 onDirtyChange={setDirty}
+                onClearError={() => setError(null)}
                 onCancel={requestClose}
                 onSubmit={(input) =>
                   act(
@@ -407,6 +464,7 @@ function JobForm({
   pending,
   error,
   onDirtyChange,
+  onClearError,
   onCancel,
   onSubmit,
 }: {
@@ -414,9 +472,10 @@ function JobForm({
   row: Row | null;
   today: string;
   pending: boolean;
-  /** A refusal from the server, shown at the top. */
+  /** A refusal from the server: shown under the field it is about, or at the top when it is about none. */
   error: string | null;
   onDirtyChange: (dirty: boolean) => void;
+  onClearError: () => void;
   onCancel: () => void;
   onSubmit: (input: JobInput) => void;
 }) {
@@ -428,21 +487,40 @@ function JobForm({
   // The inputs by field name, so a failed save can focus the first one that is wrong.
   const inputs = useRef<Partial<Record<Field, HTMLElement | null>>>({});
   const serverError = useRef<HTMLParagraphElement>(null);
+  const form = useRef<HTMLFormElement>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  /** Set when a press starts on Cancel: some browsers do not focus a clicked button, so the blur names no target. */
+  const cancelling = useRef(false);
   const base = useId();
+  /** The field the server's refusal is about, if it is about one. */
+  const serverField = error ? fieldForServerError(error) : null;
 
-  // The form scrolls inside the dialog, so a refusal at the top may be out of sight.
+  // A refusal about a field takes focus to that field. Any other one sits at the
+  // top of a form that scrolls inside the dialog, so it is brought into view.
   useEffect(() => {
-    if (error) serverError.current?.scrollIntoView({ block: 'nearest' });
+    if (!error) return;
+    const field = fieldForServerError(error);
+    if (field) inputs.current[field]?.focus();
+    else serverError.current?.scrollIntoView({ block: 'nearest' });
   }, [error]);
 
   function set<K extends Field>(field: K, value: JobFormValues[K]) {
     const next = { ...values, [field]: value };
     setValues(next);
     onDirtyChange(FIELD_KEYS.some((key) => next[key] !== initial[key]));
+    // The refusal was about what was sent; once that changes it no longer applies.
+    if (serverField) onClearError();
   }
 
   /** A field is checked when the user leaves it, not on every keystroke. */
-  function blur(field: Field) {
+  function blur(field: Field, event: React.FocusEvent<HTMLElement>) {
+    // Not when focus is leaving for Cancel or out of the form: the form is closing, and an error
+    // appearing under the field would flash and move Cancel from under the pointer.
+    const to = event.relatedTarget;
+    const leaving =
+      cancelling.current || to === cancelButton.current || (to !== null && !form.current?.contains(to));
+    cancelling.current = false;
+    if (leaving) return;
     const found = formErrors(values, today, stored);
     setErrors(found);
     setTouched((prev) => {
@@ -469,7 +547,9 @@ function JobForm({
 
   const id = (field: Field) => `${base}-${field}`;
   const errorId = (field: Field) => `${base}-${field}-error`;
-  const shown = (field: Field) => (touched.has(field) ? errors[field] : undefined);
+  /** What is wrong with a field: the server's refusal if it is about this field, else the form's own check once the field was left. */
+  const shown = (field: Field) =>
+    serverField === field && error ? error : touched.has(field) ? errors[field] : undefined;
   const salaryHelpId = `${base}-salary-help`;
 
   /** The error under a field, announced when it appears. */
@@ -481,8 +561,8 @@ function JobForm({
     ) : null;
 
   return (
-    <form className="space-y-5" onSubmit={submit} noValidate>
-      {error && (
+    <form ref={form} className="space-y-5" onSubmit={submit} noValidate>
+      {error && !serverField && (
         <p ref={serverError} role="alert" className={ALERT_CLASS}>
           {error}
         </p>
@@ -505,7 +585,8 @@ function JobForm({
             className={FIELD_HEIGHT}
             value={values.title}
             onChange={(e) => set('title', e.target.value)}
-            onBlur={() => blur('title')}
+            onBlur={(event) => blur('title', event)}
+            maxLength={120}
             placeholder="For example, Sales Executive"
             aria-required="true"
             aria-invalid={shown('title') ? true : undefined}
@@ -524,9 +605,13 @@ function JobForm({
               className={FIELD_HEIGHT}
               value={values.department}
               onChange={(e) => set('department', e.target.value)}
-              onBlur={() => blur('department')}
+              onBlur={(event) => blur('department', event)}
               placeholder="For example, Sales"
+              maxLength={80}
+              aria-invalid={shown('department') ? true : undefined}
+              aria-describedby={shown('department') ? errorId('department') : undefined}
             />
+            {errorOf('department')}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={id('employmentType')}>Employment type</Label>
@@ -538,7 +623,7 @@ function JobForm({
               className={cn(SELECT_CLASS, FIELD_HEIGHT)}
               value={values.employmentType}
               onChange={(e) => set('employmentType', e.target.value as EmploymentType)}
-              onBlur={() => blur('employmentType')}
+              onBlur={(event) => blur('employmentType', event)}
             >
               {(Object.keys(TYPE_LABEL) as EmploymentType[]).map((type) => (
                 <option key={type} value={type}>
@@ -559,7 +644,7 @@ function JobForm({
             inputMode="numeric"
             value={values.headcount}
             onChange={(e) => set('headcount', e.target.value)}
-            onBlur={() => blur('headcount')}
+            onBlur={(event) => blur('headcount', event)}
             aria-invalid={shown('headcount') ? true : undefined}
             aria-describedby={shown('headcount') ? errorId('headcount') : undefined}
           />
@@ -580,9 +665,13 @@ function JobForm({
               className={FIELD_HEIGHT}
               value={values.location}
               onChange={(e) => set('location', e.target.value)}
-              onBlur={() => blur('location')}
+              onBlur={(event) => blur('location', event)}
               placeholder="For example, Shah Alam"
+              maxLength={120}
+              aria-invalid={shown('location') ? true : undefined}
+              aria-describedby={shown('location') ? errorId('location') : undefined}
             />
+            {errorOf('location')}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor={id('workArrangement')}>Work arrangement</Label>
@@ -594,7 +683,7 @@ function JobForm({
               className={cn(SELECT_CLASS, FIELD_HEIGHT)}
               value={values.workArrangement}
               onChange={(e) => set('workArrangement', e.target.value as WorkArrangement | '')}
-              onBlur={() => blur('workArrangement')}
+              onBlur={(event) => blur('workArrangement', event)}
             >
               <option value="">Not set</option>
               {(Object.keys(ARRANGEMENT_LABEL) as WorkArrangement[]).map((arrangement) => (
@@ -620,7 +709,7 @@ function JobForm({
             className="min-h-36"
             value={values.description}
             onChange={(e) => set('description', e.target.value)}
-            onBlur={() => blur('description')}
+            onBlur={(event) => blur('description', event)}
             aria-invalid={shown('description') ? true : undefined}
             aria-describedby={shown('description') ? errorId('description') : undefined}
           />
@@ -644,10 +733,10 @@ function JobForm({
                       inputs.current[field] = element;
                     }}
                     className={cn(FIELD_HEIGHT, 'flex-1 px-2 text-foreground')}
-                    inputMode="numeric"
+                    inputMode="decimal"
                     value={values[field]}
                     onChange={(e) => set(field, e.target.value)}
-                    onBlur={() => blur(field)}
+                    onBlur={(event) => blur(field, event)}
                     aria-invalid={shown(field) ? true : undefined}
                     aria-describedby={shown(field) ? `${errorId(field)} ${salaryHelpId}` : salaryHelpId}
                   />
@@ -683,7 +772,7 @@ function JobForm({
             min={today}
             value={values.closesOn}
             onChange={(e) => set('closesOn', e.target.value)}
-            onBlur={() => blur('closesOn')}
+            onBlur={(event) => blur('closesOn', event)}
             aria-invalid={shown('closesOn') ? true : undefined}
             aria-describedby={shown('closesOn') ? errorId('closesOn') : undefined}
           />
@@ -696,8 +785,15 @@ function JobForm({
           type="button"
           variant="outline"
           size="sm"
+          ref={cancelButton}
           className={TARGET}
-          onClick={onCancel}
+          onPointerDown={() => {
+            cancelling.current = true;
+          }}
+          onClick={() => {
+            cancelling.current = false;
+            onCancel();
+          }}
           disabled={pending}
         >
           Cancel

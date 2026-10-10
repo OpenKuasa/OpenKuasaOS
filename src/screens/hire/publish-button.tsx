@@ -20,8 +20,13 @@ export function PublishButton({ id, title, published }: { id: string; title: str
         aria-label={`${label} ${title}`}
         onClick={() =>
           start(async () => {
-            const result = await setJobStatusAction({ id, status: published ? 'closed' : 'open' });
-            setError(result.ok ? null : result.error);
+            try {
+              const result = await setJobStatusAction({ id, status: published ? 'closed' : 'open' });
+              setError(result.ok ? null : result.error);
+            } catch {
+              // The request itself failed: say so here rather than let it reach the error boundary.
+              setError('Something went wrong. Please try again.');
+            }
           })
         }
       >

@@ -1,7 +1,15 @@
 // tests/hire-job-form.test.ts
 import { describe, expect, it } from 'vitest';
-import { JOB_LIVE_NEEDS_DESCRIPTION } from '@/lib/hire/capabilities';
-import { EMPTY_JOB_FORM, allowedMoves, formErrors, fromJob, toInput } from '@/lib/hire/job-form';
+import { JOB_HAS_APPLICATIONS, JOB_LIVE_NEEDS_DESCRIPTION, JOB_NEEDS_DESCRIPTION } from '@/lib/hire/capabilities';
+import {
+  EMPTY_JOB_FORM,
+  HAS_APPLICATIONS,
+  allowedMoves,
+  fieldForServerError,
+  formErrors,
+  fromJob,
+  toInput,
+} from '@/lib/hire/job-form';
 import type { Job } from '@/lib/hire/types';
 
 const TODAY = '2026-10-11';
@@ -56,6 +64,47 @@ describe('job form helpers', () => {
     expect(formErrors(cleared, TODAY, { ...job, status: 'draft' })).toEqual({});
     expect(formErrors(cleared, TODAY, { ...job, status: 'closed' })).toEqual({});
     expect(formErrors(cleared, TODAY)).toEqual({});
+  });
+  it('holds headcount to a whole number from 1 to 999', () => {
+    const headcount = (text: string) => formErrors({ ...EMPTY_JOB_FORM, title: 'x', headcount: text }, TODAY).headcount;
+    const range = 'Headcount must be a whole number from 1 to 999.';
+    expect(headcount('')).toBe('Headcount must be at least 1.');
+    expect(headcount('0')).toBe('Headcount must be at least 1.');
+    for (const text of ['1e2', '0x10', '1.5', '-1', 'two', '1000']) expect(headcount(text), text).toBe(range);
+    for (const text of ['1', ' 12 ', '999']) expect(headcount(text), text).toBeUndefined();
+  });
+  it('never sends a headcount the form would not accept', () => {
+    const sent = (text: string) => toInput({ ...EMPTY_JOB_FORM, title: 'x', headcount: text }).headcount;
+    expect(sent('12')).toBe(12);
+    expect(sent(' 12 ')).toBe(12);
+    for (const text of ['1e2', '0x10', '1.5', '']) expect(sent(text), text).toBe(0);
+  });
+  it('holds each salary to RM 10,000,000 a month', () => {
+    const limit = 'Enter a monthly salary up to RM 10,000,000.';
+    expect(formErrors({ ...EMPTY_JOB_FORM, title: 'x', salaryMin: '10,000,000.01' }, TODAY).salaryMin).toBe(limit);
+    expect(formErrors({ ...EMPTY_JOB_FORM, title: 'x', salaryMax: '10000001' }, TODAY).salaryMax).toBe(limit);
+    expect(formErrors({ ...EMPTY_JOB_FORM, title: 'x', salaryMin: '10,000,000', salaryMax: '10000000' }, TODAY)).toEqual({});
+  });
+  it('holds department to 80 characters and location to 120', () => {
+    expect(formErrors({ ...EMPTY_JOB_FORM, title: 'x', department: 'd'.repeat(81) }, TODAY).department).toBe('Keep the department under 80 characters.');
+    expect(formErrors({ ...EMPTY_JOB_FORM, title: 'x', location: 'l'.repeat(121) }, TODAY).location).toBe('Keep the location under 120 characters.');
+    expect(formErrors({ ...EMPTY_JOB_FORM, title: 'x', department: 'd'.repeat(80), location: 'l'.repeat(120) }, TODAY)).toEqual({});
+  });
+  it('knows which field a refusal from the server belongs to', () => {
+    expect(fieldForServerError('Maximum salary can\'t be lower than the minimum.')).toBe('salaryMax');
+    expect(fieldForServerError('The closing date can\'t be in the past.')).toBe('closesOn');
+    expect(fieldForServerError(JOB_LIVE_NEEDS_DESCRIPTION)).toBe('description');
+    expect(fieldForServerError(JOB_NEEDS_DESCRIPTION)).toBe('description');
+    expect(fieldForServerError('An open or paused job needs a description.')).toBe('description');
+    expect(fieldForServerError('Add a description before opening this job.')).toBe('description');
+    expect(fieldForServerError('Give the job a title.')).toBe('title');
+    expect(fieldForServerError('Keep the title under 120 characters.')).toBe('title');
+    expect(fieldForServerError('Headcount must be at least 1.')).toBe('headcount');
+    expect(fieldForServerError('That change could not be saved. Please try again.')).toBeNull();
+    expect(fieldForServerError('toString')).toBeNull();
+  });
+  it('gives the same reason as the server for a job that cannot be deleted', () => {
+    expect(HAS_APPLICATIONS).toBe(JOB_HAS_APPLICATIONS);
   });
   it('lists the status moves each status allows, with the button wording', () => {
     expect(allowedMoves('draft')).toEqual([{ to: 'open', label: 'Open' }]);
