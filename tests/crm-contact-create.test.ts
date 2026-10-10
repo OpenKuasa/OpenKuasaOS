@@ -65,6 +65,24 @@ describe('create Kasturi contact', () => {
     });
   });
 
+  test('accepts archived as a status', () => {
+    const payload = parseCrmContactForm(
+      form({ firstName: 'Aisyah', email: 'aisyah@example.com', status: 'Archived' }),
+      'org-1',
+    );
+
+    expect(payload.status).toBe('archived');
+  });
+
+  test('sets the owner only when an owner id is passed', () => {
+    const values = form({ firstName: 'Aisyah', email: 'aisyah@example.com' });
+
+    expect(parseCrmContactForm(values, 'org-1', 'user-1').owner_user_id).toBe('user-1');
+    expect(parseCrmContactForm(values, 'org-1')).not.toHaveProperty('owner_user_id');
+    expect(parseCrmContactForm(values, 'org-1', null)).not.toHaveProperty('owner_user_id');
+    expect(parseCrmContactForm(values, 'org-1', '')).not.toHaveProperty('owner_user_id');
+  });
+
   test('rejects an invalid email before insert', () => {
     expect(() =>
       parseCrmContactForm(

@@ -12,6 +12,8 @@ export type CrmContact = {
   score: number;
   pic: string | null;
   lastInteraction: string | null;
+  /** Raw values keyed by the form's field names, for prefilling the edit form. */
+  form?: Record<string, string>;
 };
 
 export type CrmContactsResult = {
@@ -19,8 +21,8 @@ export type CrmContactsResult = {
   total: number;
 };
 
-export type CrmContactInsert = {
-  org_id: string;
+/** The columns of `crm_contacts` a person can edit. */
+export type CrmContactFields = {
   first_name: string;
   last_name: string | null;
   email: string;
@@ -31,10 +33,10 @@ export type CrmContactInsert = {
   lead_score: number;
 };
 
-/** What the Add contact form gets back when a submission is not saved. */
-export type CrmContactFormState =
-  | { error: string; values: Record<string, string> }
-  | undefined;
+export type CrmContactInsert = CrmContactFields & {
+  org_id: string;
+  owner_user_id?: string;
+};
 
 /** A problem with what was typed, safe to show beside the form. */
 export class CrmContactFormError extends Error {}
@@ -77,8 +79,10 @@ const STATUS_LABELS: Record<string, string> = {
   archived: 'Archived',
 };
 
-/** Statuses the Add contact form offers; all are allowed by the table. */
-const STATUSES = new Set(['lead', 'contacted', 'qualified', 'customer']);
+/** Statuses the contact form accepts; all are allowed by the table. */
+const STATUSES = new Set(['lead', 'contacted', 'qualified', 'customer', 'archived']);
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function readString(formData: FormData, key: string) {
   return String(formData.get(key) ?? '').trim();
@@ -110,10 +114,8 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
-export function parseCrmContactForm(
-  formData: FormData,
-  orgId: string,
-): CrmContactInsert {
+/** Validates the editable fields shared by the add and edit forms. */
+export function parseCrmContactFields(formData: FormData): CrmContactFields {
   const firstName = readString(formData, 'firstName');
   const lastName = readString(formData, 'lastName');
   const email = readString(formData, 'email').toLowerCase();
@@ -131,7 +133,6 @@ export function parseCrmContactForm(
   }
 
   return {
-    org_id: orgId,
     first_name: firstName,
     last_name: optionalString(lastName),
     email,
@@ -141,6 +142,26 @@ export function parseCrmContactForm(
     status: normalizeStatus(status),
     lead_score: normalizeScore(leadScore),
   };
+}
+
+/** The insert payload for a new contact, owned by `ownerUserId` when given. */
+export function parseCrmContactForm(
+  formData: FormData,
+  orgId: string,
+  ownerUserId?: string | null,
+): CrmContactInsert {
+  return {
+    org_id: orgId,
+    ...parseCrmContactFields(formData),
+    ...(ownerUserId ? { owner_user_id: ownerUserId } : {}),
+  };
+}
+
+/** The id of the contact an edit or delete form is about. */
+export function readContactId(formData: FormData): string {
+  const id = readString(formData, 'contactId');
+  if (!UUID.test(id)) throw new CrmContactFormError('That contact could not be found.');
+  return id;
 }
 
 export function mapCrmContact(row: CrmContactRow, ownerName: string | null = null): CrmContact {
@@ -156,6 +177,16 @@ export function mapCrmContact(row: CrmContactRow, ownerName: string | null = nul
     score: row.lead_score,
     pic: ownerName,
     lastInteraction: formatDate(row.last_interaction_at),
+    form: {
+      firstName: row.first_name,
+      lastName: row.last_name ?? '',
+      email: row.email ?? '',
+      phone: row.phone ?? '',
+      company: row.company ?? '',
+      country: row.country ?? '',
+      status: row.status,
+      leadScore: String(row.lead_score),
+    },
   };
 }
 
@@ -220,4 +251,45 @@ export async function createCrmContact(
 
   if (error) throw error;
   return mapCrmContact(data as unknown as CrmContactRow);
+}
+
+/**
+ * Nothing in the database maintains `updated_at`, so the write sets it. A
+ * contact that is gone, or belongs to another org, matches no row.
+ */
+export async function updateCrmContact(
+  client: SupabaseClient,
+  orgId: string,
+  id: string,
+  fields: CrmContactFields,
+): Promise<void> {
+  const { data, error } = await client
+    .from('crm_contacts')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('org_id', orgId)
+    .select('id');
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new CrmContactFormError('That contact no longer exists.');
+  }
+}
+
+export async function deleteCrmContact(
+  client: SupabaseClient,
+  orgId: string,
+  id: string,
+): Promise<void> {
+  const { data, error } = await client
+    .from('crm_contacts')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
+    .select('id');
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new CrmContactFormError('That contact no longer exists.');
+  }
 }

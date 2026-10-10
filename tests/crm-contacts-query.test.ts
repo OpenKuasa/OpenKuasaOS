@@ -67,6 +67,16 @@ describe('listCrmContacts', () => {
           score: 92,
           pic: 'Faiz Hakim',
           lastInteraction: '9 Oct 2026',
+          form: {
+            firstName: 'Aisyah',
+            lastName: 'Rahim',
+            email: 'aisyah@example.com',
+            phone: '+60123456789',
+            company: 'Rimba Ventures Sdn Bhd',
+            country: 'MY',
+            status: 'qualified',
+            leadScore: '92',
+          },
         },
       ],
     });
