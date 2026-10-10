@@ -114,7 +114,8 @@ its capabilities, forms and AI tools.
 
 Every table has `id uuid primary key default gen_random_uuid()`,
 `org_id uuid not null references public.orgs(id) on delete cascade`, and
-`created_at timestamptz not null default now()`. Tables that belong to one person carry
+`created_at timestamptz not null default now()`. Every `decided_by` is
+`uuid null references auth.users(id) on delete set null`. Tables that belong to one person carry
 `employee_id uuid not null references public.employees(id) on delete cascade`. Statuses are
 `text` with a `check` constraint, as in the reach tables.
 
@@ -188,7 +189,7 @@ OT Claims, Overtime and Approve Overtime are three views of `overtime_records`.
 | Table | Kind | Columns |
 |---|---|---|
 | `payroll_runs` | HR only | `period_month date` (first of month, unique per org), `status` (`draft`/`paid`), `paid_at null` |
-| `payslips` | Personal | `payroll_run_id`, `gross_cents`, `epf_cents`, `socso_cents`, `eis_cents`, `pcb_cents`, `net_cents` (generated: gross minus the four deductions), `status` (`pending`/`paid`) |
+| `payslips` | Personal | `payroll_run_id`, `period_month date` (copied from the run, because a member cannot read `payroll_runs`; unique per employee and period), `gross_cents`, `epf_cents`, `socso_cents`, `eis_cents`, `pcb_cents`, `net_cents` (generated: gross minus the four deductions), `status` (`pending`/`paid`) |
 | `payment_vouchers` | HR only | `voucher_no`, `payee`, `voucher_type`, `amount_cents`, `issued_date`, `status` (`draft`/`issued`/`paid`) |
 
 **Performance** — `…_people_performance.sql`
@@ -272,15 +273,22 @@ failure cannot block the tables.
 | `format.ts` | Dates and RM formatting for the screens, reusing `src/lib/reach/format.ts` where it already fits |
 
 `PeopleViewer` is `{ employeeId: string | null; isHr: boolean; isDemo: boolean }`.
-`isHr` is `role in ('owner','admin')`. For a demo guest, `employeeId` is the fixed demo
-employee and `isHr` is false, with `isDemo` granting the read-only HR view.
+`isHr` is `role in ('owner','admin')`. `isDemo` here means "the current workspace is the
+demo workspace" (slug `rimba-ventures-demo`), not "the user is anonymous" as
+`getViewer().isDemo` does. That is the condition the policies use, so a real account that
+has switched into the demo workspace sees the same thing an anonymous guest does. In the
+demo workspace a caller with no linked employee gets the fixed demo employee as
+`employeeId`, and the app shows the full HR view read-only; change controls and change
+tools still depend on `isHr` alone.
 
 `PeopleData` separates "mine" from "all": `listMyLeaveRequests()` filters to
 `viewer.employeeId`; `listLeaveRequests()` asks for everything the session may read. RLS is
 the security boundary; the filter only asks for the right rows.
 
-`getPeopleData(client)` picks Supabase when `hasSupabaseEnv()` and the caller has a current
-org, and the seed otherwise, the same selection `getReachData` makes.
+`getPeopleData(client)` mirrors `getReachData`: the seed only when `!hasSupabaseEnv()`
+(dev, preview, tests). With Supabase configured, a signed-in caller who has no workspace
+gets an empty `PeopleData`, never the fictional seed; the chat route answers them with the
+409.
 
 ### 5.2 Screens
 
@@ -292,17 +300,17 @@ to small client components under `src/components/people/`, as the reach screens 
   are derived from real rows where possible and removed otherwise. No invented numbers.
 - **Empty states** for a workspace with no HR data: a line of text and, for HR, a link to
   add the first employee.
-- **Role-aware views.** Approvals, Employees management, Payroll, Payment Vouchers and
-  Settings are for HR. The product nav has no per-item permission today, so nav items gain
+- **Role-aware views.** Approvals, Payroll, Payment Vouchers and Settings are for HR. The product nav has no per-item permission today, so nav items gain
   an optional `needs?: Capability` (the field the account sidebar already uses) and
   `SecondaryNav` filters with `canSee(viewer, item.needs)`; those items get
   `needs: 'approve'`. The screens themselves render a "for HR admins" notice if reached
   directly. The
   team-wide screens (Timesheet, Shift Calendar, Overtime, Scorecard, Review Scores) show a
   member only their own rows, which is what RLS returns.
-- **Employees** gains add, edit, deactivate and delete, a department manager, and the
-  link-to-member control. HR sees the private fields in the edit form; a directory row
-  never includes them.
+- **Employees** is visible to every member as a read-only staff directory (directory
+  columns only). For HR it gains add, edit, deactivate and delete, a department manager,
+  the link-to-member control, and the private fields in the edit form. A directory row
+  never includes the private fields.
 - **Records** shows the caller's own `employees` + `employee_private` row.
 - All 27 `people/<slug>` keys are added to `LIVE_SCREENS`. `people/calendar` is not.
 
@@ -342,7 +350,7 @@ Adding `'people'` to `ProductKey` requires a `TEAM_AREA.people` entry for the ty
 it is added, but `runTuah` does not include `peopleProduct`, so Tuah's tools and prompt are
 unchanged.
 
-**Lookup tools (19):** `getPeopleOverview`, `listEmployees`, `getEmployee`,
+**Lookup tools (20):** `getPeopleOverview`, `listEmployees`, `getEmployee`, `listDepartments`,
 `getHeadcountByDepartment`, `listWhoIsOnLeave`, `listLeaveRequests`, `getLeaveBalances`,
 `listPendingApprovals`, `listClaims`, `listOvertime`, `getAttendanceSummary`,
 `getTimesheet`, `listShifts`, `listPublicHolidays`, `getPayrollSummary`, `listPayslips`,
@@ -418,8 +426,18 @@ All model-facing tests use the mocked model; nothing here bills the OpenRouter k
 | `tests/people-chat-route.test.ts` | Gate, no-workspace 409, owner gets change tools, member and viewer do not |
 | `tests/people-approval.test.ts` | A change tool pauses for approval and runs once approved |
 | `tests/people-live-screens.test.ts` | All 27 keys are in `LIVE_SCREENS`; `people/calendar` is not |
-| **RLS check against the database** | Two signed-in sessions in one workspace, an admin and a member linked to one employee. The member selects 0 rows of another employee's `employee_private`, `payslips`, `claims`, `leave_requests`, `reviews`, `documents`, and 0 rows of `payroll_runs`; selects their own; cannot insert into `employees`. The admin sees all. A user in another workspace sees nothing |
+| **RLS check against the database** (see below) | Two signed-in sessions in one workspace, an admin and a member linked to one employee. The member selects 0 rows of another employee's `employee_private`, `payslips`, `claims`, `leave_requests`, `reviews`, `documents`, and 0 rows of `payroll_runs`; selects their own; cannot insert into `employees`. The admin sees all. A user in another workspace sees nothing |
 | Smoke test (smoke account) | Overview loads, Employees add → edit → delete, one chat question answered with a tool call |
+
+**Where the RLS check runs.** There is one database, the live Supabase project. If a
+Supabase branch can be created for this work, the migrations and the check run there first.
+Otherwise they run on the live project inside the smoke account's own workspace: the smoke
+account is its admin, and one second, persistent test member is invited into it as
+`member` and linked to one employee (its details stored beside
+`~/.config/openkuasa/smoke-account.json`, reused for later Lekiu slices). The check is a
+script in `scripts/` that signs in as each, runs the selects and inserts above through the
+normal client, and exits non-zero on any row it should not see. Creating that second
+account needs the owner's go-ahead.
 
 **Fixed question set** for a real-model check, run only after a yes to a call estimate:
 
@@ -457,6 +475,10 @@ Files, in order, all under `supabase/migrations/` with timestamps after the late
 `people_payroll`, `people_performance`, `people_comms_documents`, `people_demo_seed`,
 `people_demo_cron`.
 
+Other branches are adding migrations in parallel (`20261012160000_agent_runs` on feat-082,
+`20261012160000_bendahara_purchases` on `main`). These files take a `20261013…` prefix, and
+the prefixes are checked against `main` again just before the PR.
+
 Applying them to the live database is a separate step taken with the owner's go-ahead, not
 part of merging. Until they are applied, production would fail on the new reads, so the
 order is: apply migrations → confirm the RLS check passes → merge → smoke-test on
@@ -483,8 +505,8 @@ tests in §8.
 
 **Changed:** all 27 files in `src/screens/people/`, `src/lib/ai/products.ts`,
 `src/lib/ai/agents/orchestrator.ts`, `src/lib/ai/agents/prompts.ts`,
-`src/config/live-screens.ts`, `src/config/nav.ts` (the `needs` field and the HR-only
-items), `src/components/app/secondary-nav.tsx` (filtering by it).
+`src/config/live-screens.ts`, `src/config/nav.ts` (the `needs` field, set on the
+Approvals, Payroll, Payment Vouchers and Settings items), `src/components/app/secondary-nav.tsx` (filtering by it).
 
 **Unchanged:** `src/components/chat/ask-hero.tsx`, `prepareChat`, `combineToolkits`, the
 Tuah agents and prompts, `accept_invite`.
