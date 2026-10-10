@@ -14,76 +14,67 @@ import {
   AreaTrend,
   BarGroup,
   DonutStat,
-  FunnelFlow,
   RadialGauge,
-  Sparkline,
   type Series,
   type Slice,
 } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
 import { createClient } from '@/lib/supabase/server';
 import { isLiveChatAllowed } from '@/lib/ai/access';
+import { getCurrentOrg } from '@/lib/auth/current-org';
+import { hasSupabaseEnv } from '@/lib/auth/viewer';
+import { formatRM, formatWinRate } from '@/lib/crm/deal-stats';
+import { loadCrmOverview, type CrmOverviewModel } from '@/lib/crm/overview';
 import { cn } from '@/lib/utils';
 import { AskKasturiHero } from './ask-kasturi-hero';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
+/* ---- sample data (Rimba Ventures Sdn Bhd), shown when no database is configured ---- */
 
-const REVENUE_TREND = [
-  { label: 'Mar', revenue: 78, deals: 9 },
-  { label: 'Apr', revenue: 92, deals: 11 },
-  { label: 'May', revenue: 85, deals: 10 },
-  { label: 'Jun', revenue: 104, deals: 14 },
-  { label: 'Jul', revenue: 96, deals: 12 },
-  { label: 'Aug', revenue: 118, deals: 16 },
-  { label: 'Sep', revenue: 112, deals: 15 },
-  { label: 'Oct', revenue: 128, deals: 18 },
-];
-const REVENUE_SERIES: Series[] = [
-  { key: 'revenue', label: 'Revenue won (RM K)', color: 'var(--chart-1)' },
-  { key: 'deals', label: 'Deals won', color: 'var(--chart-2)' },
-];
-
-const STAGE_MIX: Slice[] = [
-  { key: 'lead', label: 'Lead', value: 12, color: 'var(--chart-1)' },
-  { key: 'qualified', label: 'Qualified', value: 9, color: 'var(--chart-2)' },
-  { key: 'proposal', label: 'Proposal', value: 8, color: 'var(--chart-5)' },
-  { key: 'negotiation', label: 'Negotiation', value: 6, color: 'var(--chart-3)' },
-  { key: 'won', label: 'Won', value: 3, color: 'var(--chart-4)' },
-];
-
-const PIPELINE: Slice[] = [
-  { key: 'lead', label: 'Lead', value: 120, color: 'var(--chart-1)' },
-  { key: 'qualified', label: 'Qualified', value: 78, color: 'var(--chart-2)' },
-  { key: 'proposal', label: 'Proposal', value: 52, color: 'var(--chart-5)' },
-  { key: 'negotiation', label: 'Negotiation', value: 34, color: 'var(--chart-3)' },
-  { key: 'won', label: 'Won', value: 18, color: 'var(--chart-4)' },
-];
-
-const DEALS_BY_OWNER = [
-  { label: 'Aisyah', deals: 12 },
-  { label: 'Faiz', deals: 9 },
-  { label: 'Nurul', deals: 8 },
-  { label: 'Zaki', deals: 9 },
-];
-const OWNER_SERIES: Series[] = [
-  { key: 'deals', label: 'Open deals', color: 'var(--chart-2)' },
-];
-
-type ClosingDeal = {
-  name: string;
-  value: number;
-  stage: string;
-  hot: boolean;
+const SAMPLE_OVERVIEW: CrmOverviewModel = {
+  isEmpty: false,
+  kpis: { pipelineValue: 486_000, openDeals: 38, winRate: 32, wonThisMonth: 128_000 },
+  trend: [
+    { label: '16 Aug', created: 11, won: 2 },
+    { label: '23 Aug', created: 9, won: 3 },
+    { label: '30 Aug', created: 12, won: 2 },
+    { label: '6 Sep', created: 10, won: 4 },
+    { label: '13 Sep', created: 14, won: 3 },
+    { label: '20 Sep', created: 12, won: 5 },
+    { label: '27 Sep', created: 15, won: 4 },
+    { label: '4 Oct', created: 13, won: 6 },
+  ],
+  pipelineName: 'Sales pipeline',
+  stages: [
+    { key: 'lead', label: 'Lead', count: 12, value: 120_000 },
+    { key: 'qualified', label: 'Qualified', count: 9, value: 98_000 },
+    { key: 'proposal', label: 'Proposal', count: 8, value: 132_000 },
+    { key: 'negotiation', label: 'Negotiation', count: 6, value: 94_000 },
+    { key: 'won', label: 'Won', count: 3, value: 42_000 },
+  ],
+  owners: [
+    { label: 'Aisyah', deals: 12 },
+    { label: 'Faiz', deals: 9 },
+    { label: 'Zaki', deals: 9 },
+    { label: 'Nurul', deals: 8 },
+  ],
+  closingSoon: [
+    { id: 's1', name: 'Lim Hardware — Fitout', stage: 'Negotiation', value: 15000, closes: '12 Oct' },
+    { id: 's2', name: 'Aisyah Trading — Bulk order', stage: 'Proposal', value: 12000, closes: '13 Oct' },
+    { id: 's3', name: 'Nurul Boutique — POS setup', stage: 'Qualified', value: 8900, closes: '14 Oct' },
+    { id: 's4', name: 'Siti Decor — Event', stage: 'Proposal', value: 7200, closes: '15 Oct' },
+    { id: 's5', name: 'Faiz Studio — Branding', stage: 'Qualified', value: 5400, closes: '16 Oct' },
+  ],
+  closingSoonTotal: 5,
+  followUps: [
+    { id: 'f1', title: 'Follow up with Aisyah Trading on bulk order', due: '9 Oct', overdue: true },
+    { id: 'f2', title: 'Send revised quote to Lim Hardware', due: 'Today', overdue: false },
+    { id: 'f3', title: 'Call Nurul Huda re: POS setup', due: 'Today', overdue: false },
+    { id: 'f4', title: 'Prepare proposal for Siti Decor event', due: '12 Oct', overdue: false },
+  ],
 };
-const CLOSING_SOON: ClosingDeal[] = [
-  { name: 'Lim Hardware — Fitout', value: 15000, stage: 'Negotiation', hot: true },
-  { name: 'Aisyah Trading — Bulk order', value: 12000, stage: 'Proposal', hot: true },
-  { name: 'Nurul Boutique — POS setup', value: 8900, stage: 'Qualified', hot: true },
-  { name: 'Siti Decor — Event', value: 7200, stage: 'Proposal', hot: false },
-  { name: 'Faiz Studio — Branding', value: 5400, stage: 'Qualified', hot: false },
-];
 
-const ACTIVITY = [
+/** Nothing records what happened on a deal yet, so only the sample has a feed. */
+const SAMPLE_ACTIVITY = [
   { text: 'Aisyah Rahim replied on WhatsApp', when: '8m' },
   { text: 'Proposal sent to Lim Hardware', when: '1h' },
   { text: 'Call booked with Nurul Huda', when: '3h' },
@@ -91,11 +82,22 @@ const ACTIVITY = [
   { text: 'Rahman Logistics marked Won — RM 24,000', when: '1d' },
 ];
 
-const TASKS = [
-  { text: 'Follow up with Aisyah Trading on bulk order', when: '10:00am', done: true },
-  { text: 'Send revised quote to Lim Hardware', when: '11:30am', done: false },
-  { text: 'Call Nurul Huda re: POS setup', when: '2:00pm', done: false },
-  { text: 'Prepare proposal for Siti Decor event', when: '4:00pm', done: false },
+const TREND_SERIES: Series[] = [
+  { key: 'created', label: 'Created', color: 'var(--chart-1)' },
+  { key: 'won', label: 'Won', color: 'var(--chart-2)' },
+];
+const OWNER_SERIES: Series[] = [
+  { key: 'deals', label: 'Open deals', color: 'var(--chart-2)' },
+];
+const VALUE_SERIES: Series[] = [
+  { key: 'value', label: 'Open value (RM)', color: 'var(--chart-1)' },
+];
+const STAGE_COLORS = [
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-5)',
+  'var(--chart-3)',
+  'var(--chart-4)',
 ];
 
 // Each is answered by a lookup Kasturi has, on the workspace's own data.
@@ -105,16 +107,51 @@ const PROMPTS = [
   'Show my newest contacts',
 ];
 
-const formatRM = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
+function Muted({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="grid min-h-24 place-items-center text-center text-sm text-muted-foreground">
+      {children}
+    </p>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 
 export default async function OverviewScreen() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const isDemo = !isLiveChatAllowed(user);
+  // The workspace's own figures. With no database configured the screen shows
+  // the sample; a workspace whose figures could not be read shows that instead.
+  const isSample = !hasSupabaseEnv();
+  let model: CrmOverviewModel | null = isSample ? SAMPLE_OVERVIEW : null;
+  // Without a database there is nobody signed in, so the chat stays a demo.
+  let isDemo = true;
+  if (!isSample) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    isDemo = !isLiveChatAllowed(user);
+    try {
+      const org = await getCurrentOrg(supabase);
+      if (org) model = await loadCrmOverview(supabase, org.orgId, new Date());
+    } catch (e) {
+      console.error('[crm/overview] data error:', e);
+    }
+  }
+
+  const failed = <Muted>Couldn&apos;t load your dashboard — please refresh</Muted>;
+  const noDeals = <Muted>No deals yet</Muted>;
+  const hasDeals = model ? model.trend.some((w) => w.created > 0 || w.won > 0) : false;
+  const stageCounts: Slice[] = (model?.stages ?? [])
+    .map((stage, i) => ({
+      key: stage.key,
+      label: stage.label,
+      value: stage.count,
+      color: STAGE_COLORS[i % STAGE_COLORS.length],
+    }))
+    .filter((slice) => slice.value > 0);
+  const stageValues = (model?.stages ?? []).map((stage) => ({ label: stage.label, value: stage.value }));
+  const hasStageValue = stageValues.some((stage) => stage.value > 0);
+  const stageSubtitle = model?.pipelineName ? `Open deals · ${model.pipelineName}` : 'Open deals';
 
   return (
     <ScreenContainer>
@@ -124,124 +161,138 @@ export default async function OverviewScreen() {
           <AskKasturiHero prompts={PROMPTS} isDemo={isDemo} />
         </BentoCard>
 
-        {/* KPI row */}
+        {/* KPI row: headline figures only, there is no history to compare them with */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Pipeline value"
-            value="RM 486K"
-            delta="+9%"
+            value={model ? formatRM(model.kpis.pipelineValue) : '—'}
             onPrimary
-            chart={
-              <Sparkline
-                data={[380, 410, 395, 430, 445, 460, 472, 486]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
-            }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Open deals"
-            value="38"
-            delta="+4"
-            deltaTone="up"
-            chart={<Sparkline data={[28, 30, 31, 33, 34, 36, 37, 38]} height={36} />}
-          />
+          <BentoStat label="Open deals" value={model ? String(model.kpis.openDeals) : '—'} />
+        </BentoCard>
+        <BentoCard className="col-span-1 md:col-span-3">
+          <BentoStat label="Win rate" value={model ? formatWinRate(model.kpis.winRate) : '—'} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
-            label="Win rate"
-            value="32%"
-            delta="+3pt"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[25, 26, 27, 28, 29, 30, 31, 32]}
-                color="var(--chart-5)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Revenue won · MTD"
-            value="RM 128K"
-            delta="+15%"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[78, 92, 85, 104, 96, 118, 112, 128]}
-                color="var(--chart-2)"
-                height={36}
-              />
-            }
+            label="Revenue won · this month"
+            value={model ? formatRM(model.kpis.wonThisMonth) : '—'}
           />
         </BentoCard>
 
-        {/* Revenue trend + stage mix */}
+        {/* Deals trend + stage mix */}
         <BentoCard
-          title="Revenue & deals over time"
-          subtitle="Won · last 8 months"
+          title="Deals over time"
+          subtitle="Created and won · last 8 weeks"
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <AreaTrend data={REVENUE_TREND} series={REVENUE_SERIES} height={240} showLegend />
+          {!model ? failed : !hasDeals ? (
+            <Muted>No deals in the last 8 weeks</Muted>
+          ) : (
+            <AreaTrend data={model.trend} series={TREND_SERIES} height={240} showLegend />
+          )}
         </BentoCard>
-        <BentoCard title="Deals by stage" icon={PieChart} className="col-span-2 md:col-span-4">
-          <DonutStat data={STAGE_MIX} height={240} centerValue="38" centerLabel="open" />
+        <BentoCard
+          title="Deals by stage"
+          subtitle={stageSubtitle}
+          icon={PieChart}
+          className="col-span-2 md:col-span-4"
+        >
+          {!model ? failed : stageCounts.length === 0 ? (
+            <Muted>No open deals yet</Muted>
+          ) : (
+            <DonutStat
+              data={stageCounts}
+              height={240}
+              centerValue={String(stageCounts.reduce((n, s) => n + s.value, 0))}
+              centerLabel="open"
+            />
+          )}
         </BentoCard>
 
-        {/* Pipeline funnel + owners + win rate */}
+        {/* Pipeline value + owners + win rate */}
         <BentoCard
-          title="Pipeline"
-          subtitle="Lead → won"
+          title="Pipeline value"
+          subtitle="Open deals by stage (RM)"
           icon={Filter}
           className="col-span-2 md:col-span-4"
         >
-          <FunnelFlow data={PIPELINE} height={200} />
+          {!model ? failed : !hasStageValue ? (
+            <Muted>No open deals yet</Muted>
+          ) : (
+            <BarGroup data={stageValues} series={VALUE_SERIES} horizontal height={200} />
+          )}
         </BentoCard>
         <BentoCard
           title="Deals by owner"
-          subtitle="Open deals per rep"
+          subtitle="Open deals per person"
           icon={Users}
           className="col-span-2 md:col-span-4"
         >
-          <BarGroup data={DEALS_BY_OWNER} series={OWNER_SERIES} horizontal height={200} />
+          {!model ? failed : model.owners.length === 0 ? (
+            <Muted>No open deals yet</Muted>
+          ) : (
+            <BarGroup data={model.owners} series={OWNER_SERIES} horizontal height={200} />
+          )}
         </BentoCard>
         <BentoCard
           title="Win rate"
-          subtitle="Closed-won share"
+          subtitle="Won out of deals closed"
           icon={Gauge}
           className="col-span-2 md:col-span-4"
         >
-          <RadialGauge value={32} label="won" valueLabel="32%" height={200} />
+          {!model ? failed : model.kpis.winRate === null ? (
+            <Muted>No deal has closed yet</Muted>
+          ) : (
+            <RadialGauge
+              value={model.kpis.winRate}
+              label="won"
+              valueLabel={`${model.kpis.winRate}%`}
+              height={200}
+            />
+          )}
         </BentoCard>
 
         {/* Deals closing soon + recent activity */}
         <BentoCard
           title="Deals closing soon"
-          subtitle="Next 14 days"
+          subtitle="Next 7 days"
           icon={Flame}
           className="col-span-2 md:col-span-8"
         >
-          <ul className="divide-y">
-            {CLOSING_SOON.map((d) => (
-              <li key={d.name} className="flex items-center gap-3 py-2.5">
-                <LiveDot active={d.hot} />
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {d.name}
-                </span>
-                <span className="hidden shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary sm:inline-block">
-                  {d.stage}
-                </span>
-                <span className="w-24 shrink-0 text-right text-sm font-semibold tabular-nums">
-                  {formatRM(d.value)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {!model ? failed : model.isEmpty ? noDeals : model.closingSoon.length === 0 ? (
+            <Muted>No open deal is due to close in the next 7 days</Muted>
+          ) : (
+            <>
+              <ul className="divide-y">
+                {model.closingSoon.map((d) => (
+                  <li key={d.id} className="flex items-center gap-3 py-2.5">
+                    <LiveDot active />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{d.name}</span>
+                    {d.stage && (
+                      <span className="hidden shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary sm:inline-block">
+                        {d.stage}
+                      </span>
+                    )}
+                    <span className="hidden w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline-block">
+                      {d.closes}
+                    </span>
+                    <span className="w-24 shrink-0 text-right text-sm font-semibold tabular-nums">
+                      {formatRM(d.value)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {model.closingSoonTotal > model.closingSoon.length && (
+                <p className="pt-2 text-xs text-muted-foreground">
+                  and {model.closingSoonTotal - model.closingSoon.length} more on the Deals screen
+                </p>
+              )}
+            </>
+          )}
         </BentoCard>
         <BentoCard
           title="Recent activity"
@@ -249,57 +300,52 @@ export default async function OverviewScreen() {
           icon={Activity}
           className="col-span-2 md:col-span-4"
         >
-          <ul className="space-y-2.5">
-            {ACTIVITY.map((a) => (
-              <li key={a.text} className="flex items-start gap-2.5">
-                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                <span className="min-w-0 flex-1 text-sm leading-snug">{a.text}</span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {a.when}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {isSample ? (
+            <ul className="space-y-2.5">
+              {SAMPLE_ACTIVITY.map((a) => (
+                <li key={a.text} className="flex items-start gap-2.5">
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                  <span className="min-w-0 flex-1 text-sm leading-snug">{a.text}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {a.when}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Muted>Not available yet</Muted>
+          )}
         </BentoCard>
 
-        {/* Today's tasks */}
+        {/* Follow-ups */}
         <BentoCard
-          title="Today's tasks"
-          subtitle="Follow-ups & actions"
+          title="Follow-ups"
+          subtitle="Open, soonest first"
           icon={ListChecks}
           className="col-span-2 md:col-span-12"
         >
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {TASKS.map((t) => (
-              <li
-                key={t.text}
-                className="flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2"
-              >
-                <span
-                  className={cn(
-                    'grid size-5 shrink-0 place-items-center rounded-md border text-[10px]',
-                    t.done
-                      ? 'border-emerald-500 bg-emerald-500 text-white'
-                      : 'border-muted-foreground/40 text-transparent',
-                  )}
-                  aria-hidden
+          {!model ? failed : model.followUps.length === 0 ? (
+            <Muted>No open follow-ups</Muted>
+          ) : (
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {model.followUps.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex items-center gap-3 rounded-lg border bg-background/50 px-3 py-2"
                 >
-                  ✓
-                </span>
-                <span
-                  className={cn(
-                    'min-w-0 flex-1 truncate text-sm',
-                    t.done && 'text-muted-foreground line-through',
-                  )}
-                >
-                  {t.text}
-                </span>
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {t.when}
-                </span>
-              </li>
-            ))}
-          </ul>
+                  <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
+                  <span
+                    className={cn(
+                      'shrink-0 text-xs tabular-nums',
+                      t.overdue ? 'font-medium text-destructive' : 'text-muted-foreground',
+                    )}
+                  >
+                    {t.overdue ? `Overdue · ${t.due}` : t.due}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
