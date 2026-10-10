@@ -42,3 +42,43 @@ describe('hire foundation migration', () => {
     expect(sql).toContain("array['hire_jobs','hire_candidates','hire_applications','hire_interviews']");
   });
 });
+
+const seedSql = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20261013090100_hire_demo_seed.sql'),
+  'utf8',
+);
+const cronSql = readFileSync(
+  join(process.cwd(), 'supabase/migrations/20261013090200_hire_demo_cron.sql'),
+  'utf8',
+);
+
+describe('hire demo seed migration', () => {
+  test('reseeds only the demo org, as a definer function nobody else can call', () => {
+    expect(seedSql).toContain('create or replace function private.reseed_demo_hire()');
+    expect(seedSql).toContain('security definer');
+    expect(seedSql).toContain("where slug = 'rimba-ventures-demo'");
+    expect(seedSql).toMatch(/delete from public\.hire_jobs where org_id = demo/);
+    expect(seedSql).toMatch(/delete from public\.hire_candidates where org_id = demo/);
+    expect(seedSql).not.toMatch(/delete from public\.hire_\w+\s*;/);
+    expect(seedSql).toContain('revoke all on function private.reseed_demo_hire() from public, anon, authenticated');
+  });
+
+  test('uses the same arithmetic as the TypeScript seed', () => {
+    expect(seedSql).toContain('(i * 37) % 248');
+    expect(seedSql).toContain('(i * 91) % 248');
+    expect(seedSql).toContain('(i * 53) % 248');
+    expect(seedSql).toContain('generate_series(1, 248)');
+    expect(seedSql).toContain('generate_series(1, 342)');
+  });
+
+  test('uses only made-up contact details', () => {
+    expect(seedSql).toContain("'@demo.openkuasa.com'");
+    expect(seedSql).toContain("'+60 12-555 '");
+  });
+
+  test('schedules the reseed hourly, in its own migration', () => {
+    expect(cronSql).toContain("cron.schedule('reseed-demo-hire', '0 * * * *'");
+    expect(cronSql).toContain('private.reseed_demo_hire()');
+    expect(seedSql).not.toContain('cron.schedule');
+  });
+});
