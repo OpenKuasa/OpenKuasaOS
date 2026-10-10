@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Check, ChevronDown, Loader2, TriangleAlert } from 'lucide-react';
-import { getProduct } from '@/config/nav';
+import { PRODUCTS, getProduct } from '@/config/nav';
 import { toolMeta } from '@/components/chat/tool-parts';
 import type { AgentStep, Delegation } from '@/lib/chat/delegation';
 import { cn } from '@/lib/utils';
@@ -31,18 +31,23 @@ function liveStatus(work: Delegation, changes: Set<string>): string {
  * glance. Opened, it lists every step and what was reported back.
  */
 export function SpecialistCard({
+  agent,
   work,
   failed = false,
 }: {
+  /** The specialist's name, shown from the moment Tuah starts handing over. */
+  agent: string;
   /** The specialist's work so far; absent for the moment before it starts. */
   work: Delegation | null;
   /** The request itself failed, whatever the last progress said. */
   failed?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const product = getProduct(work?.product);
+  // Before any work comes back, the product is found by the specialist's name.
+  const product =
+    getProduct(work?.product) ?? PRODUCTS.find((p) => p.name === agent);
   const Icon = product?.icon;
-  const name = work?.agent ?? 'Specialist';
+  const name = work?.agent ?? agent;
   const status = failed ? 'failed' : (work?.status ?? 'working');
   const working = status === 'working';
   const steps = work?.steps ?? [];
@@ -56,7 +61,7 @@ export function SpecialistCard({
       : working
         ? work
           ? liveStatus(work, new Set(steps.filter(isChange).map((s) => s.tool)))
-          : 'Starting…'
+          : 'Getting the task…'
         : steps.length === 0
           ? 'Done'
           : `Done · ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`;
@@ -71,7 +76,7 @@ export function SpecialistCard({
         className="flex min-h-11 w-full cursor-pointer items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <span
-          data-product={work?.product}
+          data-product={product?.key}
           className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground"
           aria-hidden
         >

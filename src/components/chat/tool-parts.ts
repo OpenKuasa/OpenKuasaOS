@@ -152,7 +152,14 @@ export function hasVisibleContent(message: UIMessage): boolean {
 }
 
 /** A request Tuah made to a specialist, with its work so far. */
-export type SpecialistWork = { key: string; work: Delegation | null; failed: boolean; running: boolean };
+export type SpecialistWork = {
+  key: string;
+  /** The specialist's name, known from the request itself before any work comes back. */
+  agent: string;
+  work: Delegation | null;
+  failed: boolean;
+  running: boolean;
+};
 
 export function toSpecialistWork(part: AnyPart, messageId: string, index: number): SpecialistWork | null {
   const name = toolName(part);
@@ -163,6 +170,7 @@ export function toSpecialistWork(part: AnyPart, messageId: string, index: number
   const failed = state === 'output-error' || work?.status === 'failed';
   return {
     key: ('toolCallId' in part ? (part.toolCallId as string) : undefined) ?? `${messageId}-${index}`,
+    agent: work?.agent ?? name.slice(ASK_PREFIX.length),
     work,
     failed,
     running: !failed && work?.status !== 'done',

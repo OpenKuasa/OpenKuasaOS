@@ -1053,7 +1053,12 @@ function ChatPane({
                             const asked = toSpecialistWork(part, String(m.id), i);
                             if (asked) {
                               return (
-                                <SpecialistCard key={asked.key} work={asked.work} failed={asked.failed} />
+                                <SpecialistCard
+                                  key={asked.key}
+                                  agent={asked.agent}
+                                  work={asked.work}
+                                  failed={asked.failed}
+                                />
                               );
                             }
                             const pending = toPendingApproval(part);
