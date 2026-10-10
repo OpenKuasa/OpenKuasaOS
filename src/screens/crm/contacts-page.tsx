@@ -1,4 +1,3 @@
-import { revalidatePath } from 'next/cache';
 import ContactsScreen from '@/screens/reach/contacts';
 import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
 import {
@@ -20,6 +19,7 @@ import {
 } from '@/lib/crm/follow-ups';
 import { importCrmContacts, planImport, type ImportMapping } from '@/lib/crm/import';
 import type { CrmContactActions, CrmFormState } from '@/lib/crm/form-state';
+import { runCrmWrite } from '@/lib/crm/run-write';
 import { createClient } from '@/lib/supabase/server';
 
 const CONTACTS_PATH = '/crm/contacts';
@@ -31,34 +31,9 @@ const CONTACTS_PATH = '/crm/contacts';
  */
 const CONTACTS_LOADED = 500;
 
-/**
- * Runs one write and turns its outcome into what the form shows: nothing on
- * success, a plain message otherwise. What was typed is handed back so a
- * rejected form is not emptied.
- */
-async function runWrite(
-  formData: FormData,
-  failure: string,
-  write: () => Promise<string | void>,
-): Promise<CrmFormState> {
-  const values: Record<string, string> = {};
-  for (const [key, value] of formData.entries()) {
-    if (typeof value === 'string' && key !== 'payload') values[key] = value;
-  }
-
-  let message: string | void;
-  try {
-    message = await write();
-  } catch (error) {
-    if (error instanceof CrmContactFormError) {
-      return { ok: false, error: error.message, values };
-    }
-    console.error(`[crm/contacts] ${failure}`, error);
-    return { ok: false, error: `${failure} Please try again.`, values };
-  }
-
-  revalidatePath(CONTACTS_PATH);
-  return message ? { ok: true, message } : { ok: true };
+/** Runs one write and reports its outcome to the form; see `runCrmWrite`. */
+function runWrite(formData: FormData, failure: string, write: () => Promise<string | void>) {
+  return runCrmWrite(CONTACTS_PATH, formData, failure, write);
 }
 
 /** The import card sends the table it read and which column feeds which field. */
