@@ -43,4 +43,13 @@ describe('Lekiu demo seed', () => {
       "select cron.schedule('reseed-demo-people', '15 * * * *', $$select private.reseed_demo_people()$$);",
     );
   });
+
+  test('leaves no time-off request waiting, so pending approvals stay at six', () => {
+    const text = seed();
+    const start = text.indexOf('insert into public.time_off_requests');
+    const block = text.slice(start, text.indexOf(') as v(n, day, start_time, end_time, reason, status);', start));
+    const rows = block.split('\n').filter((line) => /^\s+\(\d+, -?\d+, '\d\d:\d\d'/.test(line));
+    expect(rows).toHaveLength(6);
+    for (const row of rows) expect(row).not.toContain("'pending'");
+  });
 });

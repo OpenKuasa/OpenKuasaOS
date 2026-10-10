@@ -125,7 +125,7 @@ begin
   from (values
     (1, -9, '15:00', '17:00', 'Bank appointment', 'approved'),
     (1, -30, '09:00', '11:00', 'School event', 'approved'),
-    (2, 2, '14:00', '16:00', 'Clinic follow-up', 'pending'),
+    (2, 2, '14:00', '16:00', 'Clinic follow-up', 'approved'),
     (5, -14, '16:00', '18:00', 'JPJ appointment', 'approved'),
     (10, -6, '09:00', '10:30', 'Car service', 'rejected'),
     (14, -20, '13:00', '15:00', 'Bank appointment', 'approved')
