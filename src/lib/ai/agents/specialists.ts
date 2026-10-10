@@ -63,12 +63,26 @@ export function delegationForModel(output: Delegation): string {
   return lines.join('\n');
 }
 
-/** A specialist's tools: its lookups as they are, and its changes as proposals. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Every id a change refers to, wherever it sits in the input. */
+export function idsIn(value: unknown, depth = 0): string[] {
+  if (typeof value === 'string') return UUID.test(value) ? [value] : [];
+  if (!value || typeof value !== 'object' || depth > 4) return [];
+  return Object.values(value).flatMap((inner) => idsIn(inner, depth + 1));
+}
+
+/**
+ * A specialist's tools: its lookups as they are, and its changes as proposals.
+ * `given` is everything the specialist was told (its task and the
+ * conversation), which is the other place an id may rightly come from.
+ */
 function specialistTools(
   product: ProductToolkit,
   team: TeamContext,
   results: ToolResult[],
   prepared: Proposal[],
+  given: string,
 ): ToolSet {
   const tools: ToolSet = {};
 
@@ -92,6 +106,22 @@ function specialistTools(
         'Calling this only PREPARES the change: the user is shown an Approve card and nothing is saved until they approve.',
       inputSchema: change.inputSchema as z.ZodType,
       execute: async (input: unknown) => {
+        // An id must have come from somewhere: a lookup just now, an earlier
+        // turn, or the task. One that appears nowhere was made up, and a
+        // change prepared with it would fail after the user approved it.
+        const seen = JSON.stringify(results);
+        const known = Object.keys(team.names ?? {}).join(' ');
+        const invented = idsIn(input).filter(
+          (id) => !seen.includes(id) && !known.includes(id) && !given.includes(id),
+        );
+        if (invented.length > 0) {
+          return {
+            prepared: false,
+            error:
+              `You have not looked up ${invented.join(', ')}. Never guess an id: use a lookup tool ` +
+              'to list the item and get its real id, then prepare the change again.',
+          };
+        }
         const proposal: Proposal = {
           id: crypto.randomUUID().slice(0, 8),
           product: product.key,
@@ -143,15 +173,17 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
         ...(status === 'working' ? {} : { names: collectNames(results) }),
       });
 
+      const given =
+        (team.transcript ? `The conversation so far:\n${team.transcript}\n\n` : '') +
+        `Task from Tuah: ${task}`;
+
       yield snapshot('working');
       try {
         const result = streamText({
           model: getModel('worker', team.apiKey),
           system: subAgentSystem(product.key, canChange),
-          prompt:
-            (team.transcript ? `The conversation so far:\n${team.transcript}\n\n` : '') +
-            `Task from Tuah: ${task}`,
-          tools: specialistTools(product, team, results, prepared),
+          prompt: given,
+          tools: specialistTools(product, team, results, prepared, given),
           stopWhen: stepCountIs(8),
           maxOutputTokens: 900,
           abortSignal,

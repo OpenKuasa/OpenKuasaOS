@@ -5,6 +5,8 @@ import type { Delegation, Proposal } from '@/lib/chat/delegation';
 const seen = vi.hoisted(() => ({
   creates: 0,
   layers: [] as string[],
+  /** What Kasturi calls first; the contact by default. */
+  workerCall: null as null | { tool: string; input: unknown },
   tuahTools: [] as string[][],
   workerTools: [] as string[][],
   workerPrompts: [] as string[],
@@ -61,8 +63,10 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
           const all = JSON.stringify(options.prompt);
           seen.workerPrompts.push(all);
           const id = /proposalId\\?":\\?"(\w{8})/.exec(all)?.[1];
-          return id
-            ? text('w', `Prepared the contact. proposalId ${id}`)
+          if (id) return text('w', `Prepared the contact. proposalId ${id}`);
+          if (all.includes('Never guess an id')) return text('w', 'I could not find that stage.');
+          return seen.workerCall
+            ? call(seen.workerCall.tool, seen.workerCall.input)
             : call('createContact', {
                 firstName: 'Ali',
                 lastName: 'Hassan',
@@ -135,6 +139,25 @@ describe('Tuah with its team', () => {
     await runTuah(ask, reach(), undefined, undefined, null, crm(), team()).consumeStream();
     expect(seen.workerPrompts[0]).toContain('User: Add Ali Hassan');
     expect(seen.workerPrompts[0]).toContain('Task from Tuah');
+  });
+
+  it('does not prepare a change that uses an id nobody looked up', async () => {
+    const deal = '11111111-1111-4111-8111-111111111111';
+    const madeUpStage = '22222222-2222-4222-8222-222222222222';
+    seen.workerCall = { tool: 'moveDeal', input: { id: deal, stageId: madeUpStage } };
+    seen.workerPrompts = [];
+    // The deal's id is known from an earlier turn; the stage's is not.
+    const context = { ...team(), names: { [`deal:${deal}`]: 'Oven lease' } };
+    try {
+      await runTuah(ask, reach(), undefined, undefined, null, crm(), context).consumeStream();
+    } finally {
+      seen.workerCall = null;
+    }
+    expect(context.proposals.size).toBe(0);
+    const told = seen.workerPrompts.join(' ');
+    expect(told).toContain('Never guess an id');
+    expect(told).toContain(madeUpStage);
+    expect(told).not.toContain(`not looked up ${deal}`);
   });
 
   it('a viewer gets no applyChange, and the specialist no change tools', async () => {
