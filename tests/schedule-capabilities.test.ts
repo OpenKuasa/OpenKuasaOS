@@ -9,6 +9,7 @@ import {
   resumeSchedule,
   setWorkspaceCaps,
   setWorkspaceCapsInput,
+  syncCadenceSchedule,
   updateSchedule,
   updateScheduleInput,
 } from '@/lib/reach/schedule-capabilities';
@@ -28,6 +29,7 @@ function fakeClient(results: { data: unknown; error: { code: string } | null }[]
       b.update = (p: unknown) => ((call.op = 'update'), (call.payload = p), b);
       b.select = () => b;
       b.order = () => done();
+      b.in = (c: string, v: unknown) => (call.eq.push([c, v]), b);
       b.eq = (c: string, v: unknown) => (call.eq.push([c, v]), b);
       b.single = done;
       b.maybeSingle = done;
@@ -181,5 +183,56 @@ describe('workspace caps', () => {
     expect(r.ok).toBe(true);
     expect(calls.map((c) => c.op)).toEqual(['update', 'insert']);
     expect(calls[1].payload).toEqual({ org_id: ORG, agent_key: 'weekly-studio', ...caps });
+  });
+});
+
+describe('syncCadenceSchedule', () => {
+  const row = { id: ID, interval_seconds: 604800, status: 'active' };
+  const FORBIDDEN = ['spent_cents', 'runs_used', 'last_run_at', 'paused_reason'];
+
+  it('weekly: updates the tagged preset row first (604800, active), no insert', async () => {
+    const { client, calls } = fakeClient([ok(row)]);
+    const r = await syncCadenceSchedule({ client, orgId: ORG }, 'weekly');
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ table: 'agent_schedules', op: 'update' });
+    expect(calls[0].payload).toMatchObject({ interval_seconds: 604800, status: 'active', nl_text: 'cadence preset' });
+    expect(calls[0].eq).toContainEqual(['org_id', ORG]);
+    expect(calls[0].eq).toContainEqual(['agent_key', 'weekly-studio']);
+    for (const k of FORBIDDEN) expect(calls[0].payload).not.toHaveProperty(k);
+  });
+  it('daily: inserts one tagged row (86400) when none exists', async () => {
+    const { client, calls } = fakeClient([ok(null), ok(row)]);
+    const r = await syncCadenceSchedule({ client, orgId: ORG }, 'daily');
+    expect(r.ok).toBe(true);
+    expect(calls.map((c) => c.op)).toEqual(['update', 'insert']);
+    expect(calls[1].payload).toMatchObject({
+      org_id: ORG,
+      agent_key: 'weekly-studio',
+      interval_seconds: 86400,
+      status: 'active',
+      nl_text: 'cadence preset',
+    });
+    for (const k of FORBIDDEN) expect(calls[1].payload).not.toHaveProperty(k);
+  });
+  it('off: completes the preset row and never inserts', async () => {
+    const { client, calls } = fakeClient([ok(null)]);
+    const r = await syncCadenceSchedule({ client, orgId: ORG }, 'off');
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ op: 'update' });
+    expect(calls[0].payload).toMatchObject({ status: 'completed' });
+    expect(calls[0].eq).toContainEqual(['org_id', ORG]);
+  });
+  it('is idempotent: a second call updates the same row instead of inserting', async () => {
+    const { client, calls } = fakeClient([ok(null), ok(row), ok(row)]);
+    await syncCadenceSchedule({ client, orgId: ORG }, 'weekly');
+    await syncCadenceSchedule({ client, orgId: ORG }, 'weekly');
+    expect(calls.map((c) => c.op)).toEqual(['update', 'insert', 'update']);
+  });
+  it('fails closed on a DB error', async () => {
+    const { client } = fakeClient([{ data: null, error: { code: '42501' } }]);
+    const r = await syncCadenceSchedule({ client, orgId: ORG }, 'weekly');
+    expect(r.ok).toBe(false);
   });
 });

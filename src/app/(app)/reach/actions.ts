@@ -71,6 +71,7 @@ import {
   resumeScheduleInput,
   setWorkspaceCaps,
   setWorkspaceCapsInput,
+  syncCadenceSchedule,
   updateSchedule,
   updateScheduleInput,
 } from '@/lib/reach/schedule-capabilities';
@@ -309,7 +310,13 @@ export async function setAgentEnabledAction(input: unknown) {
   return runAgentConfig(setAgentEnabledInput, input, setAgentEnabled);
 }
 export async function setAgentCadenceAction(input: unknown) {
-  return runAgentConfig(setAgentCadenceInput, input, setAgentCadence);
+  // The dropdown also drives the schedule table (the runner reads only that).
+  return runAgentConfig(setAgentCadenceInput, input, async (ctx, parsed) => {
+    const result = await setAgentCadence(ctx, parsed);
+    if (!result.ok) return result;
+    const synced = await syncCadenceSchedule(ctx, parsed.cadence);
+    return synced.ok ? result : { ok: false, error: synced.error };
+  });
 }
 export async function setAgentCapAction(input: unknown) {
   return runAgentConfig(setAgentCapInput, input, setAgentCap);

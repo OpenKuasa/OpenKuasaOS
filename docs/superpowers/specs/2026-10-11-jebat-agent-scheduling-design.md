@@ -127,3 +127,9 @@ Two-layer RLS on `agent_schedules`; `org_id` from session; **`spent_cents`/`runs
 - **A quiet workspace on a frequent schedule** → monitor-skip advances `next_run_at` and spends nothing.
 - **A tenant attempting to reset `spent_cents`/`runs_used`** via the data API → denied (not in the UPDATE grant).
 - **A schedule reaching `max_runs`/`end_at`/`max_total_cents` mid-loop** → transitions to `completed` exactly once; a completed schedule is inert and shown read-only.
+
+## Operator note (rollout)
+
+- Change the `/api/agents/run` cron from hourly to **every ~5 minutes** (the schedule interval floor is 300s; a slower tick delays runs).
+- Unchanged and still required: `AGENTS_ENABLED`, the service-role-key header on the endpoint, and the per-schedule and workspace daily/weekly caps. No new secret.
+- The off/daily/weekly dropdown now writes through to a single tagged preset schedule row (`nl_text = 'cadence preset'`), so the dropdown and the schedule table stay in step. Rows created by the data migration are adopted as that preset on first change.

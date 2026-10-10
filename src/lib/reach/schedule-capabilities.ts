@@ -162,3 +162,64 @@ export async function setWorkspaceCaps(
   }
   return { ok: true, data: ins.data as { daily_cap_cents: number; weekly_cap_cents: number } };
 }
+
+/** Tag marking the one schedule row owned by the off/daily/weekly dropdown. */
+export const CADENCE_PRESET = 'cadence preset';
+// Rows the slice-6 data migration created from agent_configs.cadence: adopted as the preset.
+const PRESET_TAGS = [CADENCE_PRESET, 'Migrated from daily cadence', 'Migrated from weekly cadence'];
+const CADENCE_SECONDS = { daily: 86_400, weekly: 604_800 } as const;
+
+/**
+ * Keeps the off/daily/weekly dropdown and the schedule table in step: ensures a
+ * single preset schedule row (never a duplicate) mirrors the chosen cadence.
+ */
+export async function syncCadenceSchedule(
+  ctx: ReachWriteContext,
+  cadence: 'off' | 'daily' | 'weekly',
+): Promise<CapResult<null>> {
+  const now = new Date();
+  const scope = () =>
+    ctx.client
+      .from('agent_schedules')
+      .update(
+        cadence === 'off'
+          ? { status: 'completed', updated_at: now.toISOString() }
+          : {
+              interval_seconds: CADENCE_SECONDS[cadence],
+              next_run_at: new Date(now.getTime() + CADENCE_SECONDS[cadence] * 1000).toISOString(),
+              status: 'active',
+              nl_text: CADENCE_PRESET,
+              updated_at: now.toISOString(),
+            },
+      )
+      .eq('org_id', ctx.orgId)
+      .eq('agent_key', WEEKLY_STUDIO)
+      .in('nl_text', PRESET_TAGS)
+      .select('id')
+      .maybeSingle();
+  // Update-first: the column-level grants make ON CONFLICT (upsert) 42501.
+  const upd = await scope();
+  if (upd.error) {
+    console.error('[schedules] cadence sync failed:', upd.error.code);
+    return FAILED;
+  }
+  if (upd.data || cadence === 'off') return { ok: true, data: null };
+  const secs = CADENCE_SECONDS[cadence];
+  const ins = await ctx.client
+    .from('agent_schedules')
+    .insert({
+      org_id: ctx.orgId,
+      agent_key: WEEKLY_STUDIO,
+      nl_text: CADENCE_PRESET,
+      interval_seconds: secs,
+      next_run_at: new Date(now.getTime() + secs * 1000).toISOString(),
+      status: 'active',
+    })
+    .select('id')
+    .single();
+  if (ins.error || !ins.data) {
+    console.error('[schedules] cadence insert failed:', ins.error?.code);
+    return FAILED;
+  }
+  return { ok: true, data: null };
+}
