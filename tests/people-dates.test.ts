@@ -1,0 +1,50 @@
+import { describe, expect, it } from 'vitest';
+import {
+  addDays,
+  addMonths,
+  daysBetween,
+  formatDay,
+  isWeekday,
+  monthLabel,
+  monthStart,
+  todayInMalaysia,
+  weekStart,
+} from '@/lib/people/dates';
+
+describe('people dates', () => {
+  it('takes today from the clock in Malaysia, not UTC', () => {
+    // 17:30 UTC on the 9th is 01:30 on the 10th in Kuala Lumpur.
+    expect(todayInMalaysia(new Date('2026-10-09T17:30:00Z'))).toBe('2026-10-10');
+    expect(todayInMalaysia(new Date('2026-10-09T15:59:00Z'))).toBe('2026-10-09');
+  });
+
+  it('adds and subtracts days across month and year ends', () => {
+    expect(addDays('2026-10-31', 1)).toBe('2026-11-01');
+    expect(addDays('2026-01-01', -1)).toBe('2025-12-31');
+    expect(addDays('2028-02-28', 1)).toBe('2028-02-29');
+    expect(daysBetween('2026-10-01', '2026-10-10')).toBe(9);
+    expect(daysBetween('2026-10-10', '2026-10-01')).toBe(-9);
+  });
+
+  it('finds the first of the month and steps by whole months', () => {
+    expect(monthStart('2026-10-10')).toBe('2026-10-01');
+    expect(addMonths('2026-10-01', -7)).toBe('2026-03-01');
+    expect(addMonths('2026-01-01', -1)).toBe('2025-12-01');
+    expect(addMonths('2026-12-01', 1)).toBe('2027-01-01');
+  });
+
+  it('starts the week on Monday and knows a weekday from a weekend', () => {
+    expect(weekStart('2026-10-10')).toBe('2026-10-05'); // a Saturday
+    expect(weekStart('2026-10-05')).toBe('2026-10-05'); // a Monday
+    expect(weekStart('2026-10-11')).toBe('2026-10-05'); // a Sunday
+    expect(isWeekday('2026-10-09')).toBe(true);
+    expect(isWeekday('2026-10-10')).toBe(false);
+    expect(isWeekday('2026-10-11')).toBe(false);
+  });
+
+  it('labels a day and a month the same way on any machine', () => {
+    expect(formatDay('2026-10-09')).toBe('09 Oct');
+    expect(formatDay('2026-01-31')).toBe('31 Jan');
+    expect(monthLabel('2026-03-01')).toBe('Mar');
+  });
+});
