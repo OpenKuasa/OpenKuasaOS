@@ -1,13 +1,19 @@
 // tests/hire-capabilities.test.ts
+import { z } from 'zod';
 import { describe, expect, it, vi } from 'vitest';
 import {
   JOB_HAS_APPLICATIONS,
+  JOB_LIVE_NEEDS_DESCRIPTION,
   JOB_NEEDS_DESCRIPTION,
   JOB_NOT_FOUND,
   createJob,
+  createJobInput,
   deleteJob,
+  deleteJobInput,
   setJobStatus,
+  setJobStatusInput,
   updateJob,
+  updateJobInput,
   type HireWriteContext,
 } from '@/lib/hire/capabilities';
 import type { Job } from '@/lib/hire/types';
@@ -26,9 +32,13 @@ const job = (over: Partial<Job & { org_id: string }> = {}): Job & { org_id: stri
 });
 
 /** An in-memory stand-in for the two tables the capabilities touch. */
-function fake(rows: (Job & { org_id: string })[], applications: Record<string, number> = {}) {
+function fake(rows: (Job & { org_id: string })[], applications: Record<string, number> = {}, failLookup = false) {
   const writes: { op: string; values?: Record<string, unknown> }[] = [];
-  const strip = ({ org_id: _org, ...rest }: Job & { org_id: string }) => rest as Job;
+  const strip = (row: Job & { org_id: string }) => {
+    const copy: Record<string, unknown> = { ...row };
+    delete copy.org_id;
+    return copy as unknown as Job;
+  };
   const client = {
     from(table: string) {
       const filters: Record<string, unknown> = {};
@@ -50,7 +60,7 @@ function fake(rows: (Job & { org_id: string })[], applications: Record<string, n
         update: (v: Record<string, unknown>) => { op = 'update'; values = v; return chain; },
         delete: () => { op = 'delete'; return chain; },
         eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
-        maybeSingle: async () => ({ data: match()[0] ? strip(match()[0]) : null, error: null }),
+        maybeSingle: async () => failLookup ? { data: null, error: { message: 'boom' } } : ({ data: match()[0] ? strip(match()[0]) : null, error: null }),
         single: async () => {
           if (op === 'insert') {
             const row = { ...job(), ...values, id: ID } as Job & { org_id: string };
@@ -104,6 +114,12 @@ describe('createJob', () => {
     expect((await createJob(ctx, { title: 'Barista', closes_on: '2026-10-10' }, NOW)).ok).toBe(false);
     expect((await createJob(ctx, { title: 'Barista', closes_on: '2026-10-11' }, NOW)).ok).toBe(true);
   });
+  it('uses the Kuala Lumpur date when it is already the next day in UTC', async () => {
+    const lateUtc = new Date('2026-10-10T17:00:00Z'); // 01:00 on 11 Oct in Kuala Lumpur
+    const { ctx } = fake([]);
+    expect((await createJob(ctx, { title: 'Barista', closes_on: '2026-10-10' }, lateUtc)).ok).toBe(false);
+    expect((await createJob(ctx, { title: 'Barista', closes_on: '2026-10-11' }, lateUtc)).ok).toBe(true);
+  });
 });
 
 describe('updateJob', () => {
@@ -118,16 +134,36 @@ describe('updateJob', () => {
     const result = await updateJob(ctx, { id: ID, salary_min_cents: 350_000 }, NOW);
     expect(result).toEqual({ ok: false, error: 'Maximum salary can\'t be lower than the minimum.' });
     expect(writes).toHaveLength(0);
+    const lowered = await updateJob(ctx, { id: ID, salary_max_cents: 150_000 }, NOW);
+    expect(lowered).toEqual({ ok: false, error: 'Maximum salary can\'t be lower than the minimum.' });
+    expect(writes).toHaveLength(0);
   });
   it('will not clear the description of an open or paused job, but will for a draft or closed one', async () => {
     for (const status of ['open', 'paused'] as const) {
       const { ctx } = fake([job({ status, description: 'Make coffee.' })]);
-      expect(await updateJob(ctx, { id: ID, description: '   ' }, NOW)).toEqual({ ok: false, error: JOB_NEEDS_DESCRIPTION });
+      expect(await updateJob(ctx, { id: ID, description: '   ' }, NOW)).toEqual({ ok: false, error: JOB_LIVE_NEEDS_DESCRIPTION });
     }
     for (const status of ['draft', 'closed'] as const) {
       const { ctx } = fake([job({ status, description: 'Make coffee.' })]);
       expect(await updateJob(ctx, { id: ID, description: '' }, NOW)).toMatchObject({ ok: true, data: { description: null } });
     }
+  });
+  it('lets an open job with no stored description be edited without touching the description', async () => {
+    const { ctx } = fake([job({ status: 'open', description: null })]);
+    expect(await updateJob(ctx, { id: ID, location: 'Shah Alam' }, NOW)).toMatchObject({ ok: true, data: { location: 'Shah Alam' } });
+  });
+  it('checks the closing date only when it changes', async () => {
+    const { ctx } = fake([job({ closes_on: '2026-10-01' })]);
+    expect(await updateJob(ctx, { id: ID, closes_on: '2026-10-01', title: 'New title' }, NOW)).toMatchObject({ ok: true, data: { title: 'New title' } });
+    expect((await updateJob(ctx, { id: ID, closes_on: '2026-10-05' }, NOW)).ok).toBe(false);
+  });
+  it('reports a failed lookup as a generic failure and writes nothing', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { ctx, writes } = fake([job()], {}, true);
+    expect(await updateJob(ctx, { id: ID, title: 'X' }, NOW)).toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    expect(log).toHaveBeenCalled();
+    expect(writes).toHaveLength(0);
+    log.mockRestore();
   });
   it('cannot find a job in another workspace', async () => {
     const { ctx, writes } = fake([job({ org_id: OTHER_ORG })]);
@@ -173,8 +209,17 @@ describe('setJobStatus', () => {
     expect(writes).toHaveLength(0);
   });
   it('cannot find a job in another workspace', async () => {
-    const { ctx } = fake([job({ org_id: OTHER_ORG, description: 'x' })]);
+    const { ctx, writes } = fake([job({ org_id: OTHER_ORG, description: 'x' })]);
     expect(await setJobStatus(ctx, { id: ID, status: 'open' }, NOW)).toEqual({ ok: false, error: JOB_NOT_FOUND });
+    expect(writes).toHaveLength(0);
+  });
+  it('reports a failed lookup as a generic failure and writes nothing', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { ctx, writes } = fake([job({ description: 'x' })], {}, true);
+    expect(await setJobStatus(ctx, { id: ID, status: 'open' }, NOW)).toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    expect(log).toHaveBeenCalled();
+    expect(writes).toHaveLength(0);
+    log.mockRestore();
   });
 });
 
@@ -193,6 +238,26 @@ describe('deleteJob', () => {
     const { ctx, rows } = fake([job({ org_id: OTHER_ORG })]);
     expect(await deleteJob(ctx, { id: ID })).toEqual({ ok: false, error: JOB_NOT_FOUND });
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe('deleteJob lookup failure', () => {
+  it('reports a failed lookup as a generic failure and deletes nothing', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { ctx, rows, writes } = fake([job()], {}, true);
+    expect(await deleteJob(ctx, { id: ID })).toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    expect(log).toHaveBeenCalled();
+    expect(writes).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    log.mockRestore();
+  });
+});
+
+describe('input schemas', () => {
+  it('convert to JSON Schema, so they can be tool input schemas', () => {
+    for (const schema of [createJobInput, updateJobInput, setJobStatusInput, deleteJobInput]) {
+      expect(z.toJSONSchema(schema)).toMatchObject({ type: 'object' });
+    }
   });
 });
 

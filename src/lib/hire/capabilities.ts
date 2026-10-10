@@ -15,6 +15,7 @@ export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
 export const JOB_NOT_FOUND = 'That job could not be found.';
 export const JOB_HAS_APPLICATIONS = 'This job has applications. Close it instead.';
 export const JOB_NEEDS_DESCRIPTION = 'Add a description before opening this job.';
+export const JOB_LIVE_NEEDS_DESCRIPTION = 'An open or paused job needs a description.';
 const SALARY_RANGE = 'Maximum salary can\'t be lower than the minimum.';
 const CLOSES_IN_PAST = 'The closing date can\'t be in the past.';
 const WRITE_FAILED = 'That change could not be saved. Please try again.';
@@ -98,14 +99,17 @@ function ruleError(
   return null;
 }
 
-async function findJob(ctx: HireWriteContext, id: string): Promise<Job | null> {
-  const { data } = await ctx.client
+type Lookup = { state: 'found'; job: Job } | { state: 'missing' } | { state: 'failed'; error: string };
+
+async function findJob(ctx: HireWriteContext, id: string, fnName: string): Promise<Lookup> {
+  const { data, error } = await ctx.client
     .from('hire_jobs')
     .select(JOB_COLUMNS)
     .eq('id', id)
     .eq('org_id', ctx.orgId)
     .maybeSingle();
-  return (data as Job | null) ?? null;
+  if (error) return { state: 'failed', error: writeFailed(fnName, error).error };
+  return data ? { state: 'found', job: data as unknown as Job } : { state: 'missing' };
 }
 
 export async function createJob(
@@ -154,17 +158,21 @@ export async function updateJob(
     location: blankToNull(sent.location),
     description: blankToNull(sent.description),
   };
-  const current = await findJob(ctx, id);
-  if (!current) return { ok: false, error: JOB_NOT_FOUND };
+  const found = await findJob(ctx, id, 'updateJob');
+  if (found.state === 'failed') return { ok: false, error: found.error };
+  if (found.state === 'missing') return { ok: false, error: JOB_NOT_FOUND };
+  const current = found.job;
 
   // Only the fields the caller sent; undefined means "leave as it is".
   const patch = Object.fromEntries(Object.entries(given).filter(([, v]) => v !== undefined)) as Partial<Job>;
   const merged = { ...current, ...patch };
-  // A stored closing date that has since passed is not this edit's mistake.
-  const broken = ruleError(merged, now, 'closes_on' in patch);
+  // A stored closing date that has since passed is not this edit's mistake:
+  // the date rule only applies when the date actually changes.
+  const dateChanged = 'closes_on' in patch && patch.closes_on !== current.closes_on;
+  const broken = ruleError(merged, now, dateChanged);
   if (broken) return { ok: false, error: broken };
-  if ((current.status === 'open' || current.status === 'paused') && !merged.description) {
-    return { ok: false, error: JOB_NEEDS_DESCRIPTION };
+  if ((current.status === 'open' || current.status === 'paused') && 'description' in patch && !merged.description) {
+    return { ok: false, error: JOB_LIVE_NEEDS_DESCRIPTION };
   }
   if (Object.keys(patch).length === 0) return { ok: true, data: current };
 
@@ -195,8 +203,10 @@ export async function setJobStatus(
   const parsed = setJobStatusInput.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
   const { id, status } = parsed.data;
-  const current = await findJob(ctx, id);
-  if (!current) return { ok: false, error: JOB_NOT_FOUND };
+  const found = await findJob(ctx, id, 'setJobStatus');
+  if (found.state === 'failed') return { ok: false, error: found.error };
+  if (found.state === 'missing') return { ok: false, error: JOB_NOT_FOUND };
+  const current = found.job;
   if (current.status === status) return { ok: true, data: current };
   if (!MOVES[current.status].includes(status)) {
     const allowed = MOVES[current.status].join(' or ');
@@ -229,8 +239,10 @@ export async function deleteJob(
 ): Promise<CapResult<{ id: string; title: string }>> {
   const parsed = deleteJobInput.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const current = await findJob(ctx, parsed.data.id);
-  if (!current) return { ok: false, error: JOB_NOT_FOUND };
+  const found = await findJob(ctx, parsed.data.id, 'deleteJob');
+  if (found.state === 'failed') return { ok: false, error: found.error };
+  if (found.state === 'missing') return { ok: false, error: JOB_NOT_FOUND };
+  const current = found.job;
 
   const { count, error: countError } = await ctx.client
     .from('hire_applications')
