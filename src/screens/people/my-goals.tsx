@@ -1,174 +1,83 @@
-import {
-  AlertTriangle,
-  CircleCheck,
-  Flag,
-  Gauge,
-  Plus,
-  Target,
-  TrendingUp,
-} from 'lucide-react';
-import { ScreenContainer } from '@/components/screen/screen-container';
+import { AlertTriangle, CircleCheck, Flag, Gauge, Plus, Target, TrendingUp } from 'lucide-react';
+import { BentoCard, BentoGrid, BentoStat } from '@/components/bento/bento';
+import { BarGroup, RadialGauge, type Series } from '@/components/charts';
 import { PageHeader } from '@/components/screen/page-header';
-import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
-import { BarGroup, RadialGauge, Sparkline, type Series } from '@/components/charts';
-import { Button } from '@/components/ui/button';
+import { ScreenContainer } from '@/components/screen/screen-container';
 import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
+import { formatDate } from '@/lib/people/dates';
+import { type GoalRow, buildGoalsModel } from '@/lib/people/performance';
+import { LOAD_FAILED, LaterButton, Muted, NotLinkedCard, StatusPill, loadPeople } from './parts';
 
-/* ---- mock data (Saudara · Q4 2026) -------------------------------- */
+const PROGRESS_SERIES: Series[] = [{ key: 'progress', label: 'Progress %', color: 'var(--chart-1)' }];
 
-type GoalStatus = 'On track' | 'At risk' | 'Done';
-
-type Goal = {
-  title: string;
-  label: string;
-  description: string;
-  progress: number;
-  status: GoalStatus;
-  due: string;
+const STATUS_LABEL: Record<GoalRow['status'], string> = {
+  on_track: 'On track',
+  at_risk: 'At risk',
+  done: 'Done',
 };
+const STATUS_TONE = { on_track: 'good', at_risk: 'pending', done: 'neutral' } as const;
+const STATUS_ICON = { on_track: Target, at_risk: AlertTriangle, done: CircleCheck } as const;
 
-const GOALS: Goal[] = [
-  {
-    title: 'Close 20 enterprise deals',
-    label: 'Deals',
-    description: 'Convert qualified enterprise pipeline into signed contracts by year end.',
-    progress: 65,
-    status: 'On track',
-    due: '31 Dec 2026',
-  },
-  {
-    title: 'Improve CSAT to 90%',
-    label: 'CSAT',
-    description: 'Raise customer satisfaction through faster response and follow-up.',
-    progress: 80,
-    status: 'On track',
-    due: '31 Dec 2026',
-  },
-  {
-    title: 'Launch referral program',
-    label: 'Referral',
-    description: 'Roll out a customer referral programme with tracked rewards.',
-    progress: 30,
-    status: 'At risk',
-    due: '30 Nov 2026',
-  },
-  {
-    title: 'Complete sales certification',
-    label: 'Cert',
-    description: 'Finish the internal sales enablement certification track.',
-    progress: 100,
-    status: 'Done',
-    due: '15 Sep 2026',
-  },
-];
-
-const STATUS_STYLES: Record<GoalStatus, string> = {
-  'On track': 'bg-emerald-500/15 text-emerald-600',
-  'At risk': 'bg-amber-500/15 text-amber-600',
-  Done: 'bg-sky-500/15 text-sky-600',
-};
-
-const onTrack = GOALS.filter((g) => g.status === 'On track').length;
-const atRisk = GOALS.filter((g) => g.status === 'At risk').length;
-const completion = Math.round(
-  GOALS.reduce((sum, g) => sum + g.progress, 0) / GOALS.length,
-);
-
-/* KPI sparkline trends (last 6 periods) ------------------------------ */
-const SPARK_GOALS = [2, 3, 3, 4, 4, 4];
-const SPARK_ONTRACK = [1, 1, 2, 2, 3, 2];
-const SPARK_ATRISK = [0, 1, 1, 2, 1, 1];
-const SPARK_COMPLETION = [48, 52, 58, 61, 65, 69];
-
-const PROGRESS_BY_GOAL = GOALS.map((g) => ({ label: g.label, progress: g.progress }));
-const PROGRESS_SERIES: Series[] = [
-  { key: 'progress', label: 'Progress %', color: 'var(--chart-1)' },
-];
-
-function StatusPill({ status }: { status: GoalStatus }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-        STATUS_STYLES[status],
-      )}
-    >
-      {status}
-    </span>
+export default async function MyGoalsScreen() {
+  const { model } = await loadPeople('my-goals', async (data, _now, ctx) =>
+    buildGoalsModel(await data.listGoals(), ctx.viewer),
   );
-}
+  const dash = '—';
+  const header = (
+    <PageHeader
+      title="My Goals"
+      subtitle="Your objectives and how far along they are"
+      actions={
+        <LaterButton icon={Plus} size="sm">
+          Add Goal
+        </LaterButton>
+      }
+    />
+  );
 
-export default function MyGoalsScreen() {
+  if (model && !model.linked) {
+    return (
+      <ScreenContainer>
+        {header}
+        <BentoGrid>
+          <NotLinkedCard />
+        </BentoGrid>
+      </ScreenContainer>
+    );
+  }
+
+  const average = model?.average_progress ?? null;
   return (
     <ScreenContainer>
-      <PageHeader
-        title="My Goals"
-        subtitle="Your objectives this quarter, Saudara."
-        actions={
-          <Button size="sm">
-            <Plus className="size-4" />
-            Add Goal
-          </Button>
-        }
-      />
+      {header}
 
       <BentoGrid>
-        {/* KPI row */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Goals"
-            value={GOALS.length}
-            delta="this quarter"
-            deltaTone="flat"
-            onPrimary
-            chart={
-              <Sparkline data={SPARK_GOALS} color="var(--primary-foreground)" height={36} />
-            }
-          />
+          <BentoStat label="Goals" value={model ? model.counts.total : dash} onPrimary />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="On track"
-            value={onTrack}
-            delta="healthy"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_ONTRACK} color="var(--chart-2)" height={36} />}
-          />
+          <BentoStat label="On track" value={model ? model.counts.on_track : dash} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="At risk"
-            value={atRisk}
-            delta="needs focus"
-            deltaTone="down"
-            chart={<Sparkline data={SPARK_ATRISK} color="var(--chart-4)" height={36} />}
-          />
+          <BentoStat label="At risk" value={model ? model.counts.at_risk : dash} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Completion"
-            value={`${completion}%`}
-            delta="+6%"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_COMPLETION} color="var(--chart-1)" height={36} />}
-          />
+          <BentoStat label="Average progress" value={average === null ? dash : `${average}%`} />
         </BentoCard>
 
-        {/* Overall gauge + per-goal progress bars */}
         <BentoCard
           title="Overall progress"
           subtitle="Average across your goals"
           icon={Gauge}
           className="col-span-2 md:col-span-4"
         >
-          <RadialGauge
-            value={completion}
-            valueLabel={`${completion}%`}
-            label="complete"
-            color="var(--chart-1)"
-            height={220}
-          />
+          {!model ? (
+            LOAD_FAILED
+          ) : average === null ? (
+            <Muted>No goals yet</Muted>
+          ) : (
+            <RadialGauge value={average} valueLabel={`${average}%`} label="complete" color="var(--chart-1)" height={220} />
+          )}
         </BentoCard>
         <BentoCard
           title="Progress by goal"
@@ -176,39 +85,52 @@ export default function MyGoalsScreen() {
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <BarGroup
-            data={PROGRESS_BY_GOAL}
-            series={PROGRESS_SERIES}
-            horizontal
-            height={220}
-          />
+          {!model ? (
+            LOAD_FAILED
+          ) : model.goals.length === 0 ? (
+            <Muted>No goals yet</Muted>
+          ) : (
+            <BarGroup
+              data={model.goals.map((g) => ({ label: g.short, progress: g.progress }))}
+              series={PROGRESS_SERIES}
+              horizontal
+              height={220}
+            />
+          )}
         </BentoCard>
 
-        {/* Per-goal cards */}
-        {GOALS.map((g) => (
-          <BentoCard
-            key={g.title}
-            title={g.title}
-            icon={g.status === 'Done' ? CircleCheck : g.status === 'At risk' ? AlertTriangle : Target}
-            action={<StatusPill status={g.status} />}
-            className="col-span-2 md:col-span-6"
-          >
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">{g.description}</p>
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-semibold tabular-nums">{g.progress}%</span>
+        {!model ? (
+          <BentoCard className="col-span-2 md:col-span-12">{LOAD_FAILED}</BentoCard>
+        ) : (
+          model.goals.map((g) => {
+            const Icon = STATUS_ICON[g.status];
+            return (
+              <BentoCard
+                key={g.id}
+                title={g.title}
+                icon={Icon}
+                action={<StatusPill tone={STATUS_TONE[g.status]}>{STATUS_LABEL[g.status]}</StatusPill>}
+                className="col-span-2 md:col-span-6"
+              >
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Progress</span>
+                      <span className="font-semibold tabular-nums">{g.progress}%</span>
+                    </div>
+                    <Progress value={g.progress} />
+                  </div>
+                  {g.due_date ? (
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Flag className="size-3.5" />
+                      <span>Due {formatDate(g.due_date)}</span>
+                    </div>
+                  ) : null}
                 </div>
-                <Progress value={g.progress} />
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Flag className="size-3.5" />
-                <span>Due {g.due}</span>
-              </div>
-            </div>
-          </BentoCard>
-        ))}
+              </BentoCard>
+            );
+          })
+        )}
       </BentoGrid>
     </ScreenContainer>
   );

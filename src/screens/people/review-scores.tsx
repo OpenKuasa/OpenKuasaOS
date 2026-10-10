@@ -1,242 +1,158 @@
-import {
-  Award,
-  ChartColumn,
-  CircleCheck,
-  ClipboardList,
-  PieChart,
-  Star,
-  Users,
-} from 'lucide-react';
-import { ScreenContainer } from '@/components/screen/screen-container';
+import { ChartColumn, PieChart, Users } from 'lucide-react';
+import { BentoCard, BentoGrid, BentoStat } from '@/components/bento/bento';
+import { BarGroup, DonutStat, type Series, type Slice } from '@/components/charts';
 import { PageHeader } from '@/components/screen/page-header';
-import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
-import {
-  BarGroup,
-  DonutStat,
-  Sparkline,
-  type Series,
-  type Slice,
-} from '@/components/charts';
-import { LiveDot } from '@/components/ui/live-dot';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+import { ScreenContainer } from '@/components/screen/screen-container';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { formatDate } from '@/lib/people/dates';
+import { RATING_LABEL, buildReviewsModel, formatScore } from '@/lib/people/performance';
+import { EmployeeCell, HR_ONLY, LOAD_FAILED, Muted, StatusPill, loadPeople } from './parts';
 
-type Rating = 'Exceeds' | 'Meets' | 'Below';
+const DEPT_SERIES: Series[] = [{ key: 'rating', label: 'Avg score', color: 'var(--chart-1)' }];
+const RATING_TONE = { exceeds: 'good', meets: 'pending', below: 'bad' } as const;
 
-type Review = {
-  name: string;
-  cycle: string;
-  manager: string;
-  self: string;
-  final: string;
-  rating: Rating;
-  status: 'Completed' | 'In review';
-};
+export default async function ReviewScoresScreen() {
+  const { model } = await loadPeople('review-scores', async (data, _now, ctx) => {
+    const [reviews, employees] = await Promise.all([data.listReviews(), data.listEmployees()]);
+    return buildReviewsModel(reviews, employees, ctx.viewer);
+  });
+  const dash = '—';
+  const team = model?.team ?? true;
+  const average = model?.average ?? null;
+  const ratings = model?.ratings ?? null;
 
-const REVIEWS: Review[] = [
-  { name: 'Aisyah Rahim', cycle: 'H2 2026', manager: '4.4', self: '4.2', final: '4.3', rating: 'Exceeds', status: 'Completed' },
-  { name: 'Ahmad Zaki', cycle: 'H2 2026', manager: '4.0', self: '4.1', final: '4.0', rating: 'Meets', status: 'Completed' },
-  { name: 'Faiz Hakim', cycle: 'H2 2026', manager: '3.6', self: '3.8', final: '3.7', rating: 'Meets', status: 'Completed' },
-  { name: 'Nurul Huda', cycle: 'H2 2026', manager: '4.6', self: '4.3', final: '4.5', rating: 'Exceeds', status: 'Completed' },
-  { name: 'Siti Aminah', cycle: 'H2 2026', manager: '3.1', self: '3.4', final: '3.2', rating: 'Below', status: 'In review' },
-  { name: 'Lim Wei Jie', cycle: 'H2 2026', manager: '3.9', self: '3.7', final: '3.8', rating: 'Meets', status: 'Completed' },
-];
+  const tiles: { label: string; value: string }[] = !model
+    ? [
+        { label: 'Exceeds', value: dash },
+        { label: 'Meets', value: dash },
+        { label: 'Below', value: dash },
+        { label: 'Average score', value: dash },
+      ]
+    : ratings
+      ? [
+          { label: 'Exceeds', value: String(ratings.exceeds) },
+          { label: 'Meets', value: String(ratings.meets) },
+          { label: 'Below', value: String(ratings.below) },
+          { label: 'Average score', value: average === null ? dash : formatScore(average) },
+        ]
+      : [
+          { label: 'Your reviews', value: String(model.scored) },
+          { label: 'Your score', value: average === null ? dash : formatScore(average) },
+        ];
+  const span = tiles.length === 2 ? 'md:col-span-6' : 'md:col-span-3';
 
-const RATING_STYLES: Record<Rating, string> = {
-  Exceeds: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  Meets: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  Below: 'bg-red-500/15 text-red-600 dark:text-red-400',
-};
+  const mix: Slice[] = ratings
+    ? [
+        { key: 'exceeds', label: RATING_LABEL.exceeds, value: ratings.exceeds, color: 'var(--chart-2)' },
+        { key: 'meets', label: RATING_LABEL.meets, value: ratings.meets, color: 'var(--chart-1)' },
+        { key: 'below', label: RATING_LABEL.below, value: ratings.below, color: 'var(--chart-4)' },
+      ]
+    : [];
+  const rated = ratings ? ratings.exceeds + ratings.meets + ratings.below : 0;
 
-/** Rating distribution across completed reviews (sums to 23). */
-const RATING_MIX: Slice[] = [
-  { key: 'exceeds', label: 'Exceeds', value: 8, color: 'var(--chart-2)' },
-  { key: 'meets', label: 'Meets', value: 11, color: 'var(--chart-1)' },
-  { key: 'below', label: 'Below', value: 4, color: 'var(--chart-4)' },
-];
-
-/* Average final rating by department (out of 5), short axis labels. */
-const BY_DEPT = [
-  { label: 'Sales', rating: 4.3 },
-  { label: 'Finance', rating: 4.0 },
-  { label: 'Ops', rating: 3.7 },
-  { label: 'Support', rating: 4.5 },
-  { label: 'Mktg', rating: 3.2 },
-  { label: 'Eng', rating: 3.8 },
-];
-const DEPT_SERIES: Series[] = [
-  { key: 'rating', label: 'Avg rating', color: 'var(--chart-1)' },
-];
-
-export default function ReviewScoresScreen() {
   return (
     <ScreenContainer>
       <PageHeader
         title="Review Scores"
-        subtitle="Performance review results · H2 2026, Saudara."
+        subtitle={team ? 'Performance review results across the team' : 'Your performance review results'}
       />
 
       <BentoGrid>
-        {/* KPI row */}
-        <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Reviews"
-            value="26"
-            delta="+4"
-            onPrimary
-            chart={
-              <Sparkline
-                data={[10, 14, 18, 21, 23, 25, 26, 26]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Completed"
-            value="23"
-            delta="88%"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[8, 11, 15, 18, 20, 22, 23, 23]}
-                color="var(--chart-2)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Avg rating"
-            value="4.0"
-            delta="+0.2"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[3.6, 3.7, 3.7, 3.8, 3.9, 3.9, 4.0, 4.0]}
-                color="var(--chart-1)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Exceeds"
-            value="8"
-            delta="+2"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[3, 4, 5, 6, 7, 7, 8, 8]}
-                color="var(--chart-3)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
+        {tiles.map((tile, index) => (
+          <BentoCard
+            key={tile.label}
+            tone={index === 0 ? 'primary' : 'default'}
+            className={`col-span-1 ${span}`}
+          >
+            <BentoStat label={tile.label} value={tile.value} onPrimary={index === 0} />
+          </BentoCard>
+        ))}
 
-        {/* Rating distribution + by department */}
         <BentoCard
           title="Rating distribution"
-          subtitle="Completed reviews"
+          subtitle="Reviews by rating"
           icon={PieChart}
           className="col-span-2 md:col-span-4"
         >
-          <DonutStat
-            data={RATING_MIX}
-            height={240}
-            centerValue="23"
-            centerLabel="rated"
-          />
+          {!model ? (
+            LOAD_FAILED
+          ) : !model.team ? (
+            HR_ONLY
+          ) : rated === 0 ? (
+            <Muted>No reviews yet</Muted>
+          ) : (
+            <DonutStat data={mix} height={240} centerValue={String(rated)} centerLabel="rated" />
+          )}
         </BentoCard>
         <BentoCard
-          title="Average rating by department"
-          subtitle="Final score out of 5"
+          title="Average score by department"
+          subtitle="Review score out of 5"
           icon={ChartColumn}
           className="col-span-2 md:col-span-8"
         >
-          <BarGroup data={BY_DEPT} series={DEPT_SERIES} horizontal height={240} />
+          {!model ? (
+            LOAD_FAILED
+          ) : !model.team ? (
+            HR_ONLY
+          ) : model.department_averages.length === 0 ? (
+            <Muted>No reviews yet</Muted>
+          ) : (
+            <BarGroup
+              data={model.department_averages.map((d) => ({ label: d.department, rating: d.average }))}
+              series={DEPT_SERIES}
+              horizontal
+              height={240}
+            />
+          )}
         </BentoCard>
 
-        {/* Review table */}
         <BentoCard
           title="Review scores"
-          subtitle="Manager · self · final rating"
+          subtitle={team ? 'Score, rating and reviewer, highest first' : 'Your records'}
           icon={Users}
           flush
           className="col-span-2 md:col-span-12"
         >
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Cycle</TableHead>
-                  <TableHead className="text-right">Manager</TableHead>
-                  <TableHead className="text-right">Self</TableHead>
-                  <TableHead className="text-right">Final</TableHead>
-                  <TableHead>Rating</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {REVIEWS.map((r) => (
-                  <TableRow key={r.name}>
-                    <TableCell className="whitespace-nowrap font-medium">{r.name}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {r.cycle}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{r.manager}</TableCell>
-                    <TableCell className="text-right tabular-nums">{r.self}</TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
-                      {r.final}
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
-                          RATING_STYLES[r.rating],
-                        )}
-                      >
-                        {r.rating}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2 whitespace-nowrap text-muted-foreground">
-                        <LiveDot active={r.status === 'In review'} />
-                        {r.status}
-                      </span>
-                    </TableCell>
+          {!model ? (
+            LOAD_FAILED
+          ) : model.rows.length === 0 ? (
+            <Muted>No reviews yet</Muted>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Rating</TableHead>
+                    <TableHead className="text-right">Score</TableHead>
+                    <TableHead>Reviewer</TableHead>
+                    <TableHead>Reviewed on</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center gap-4 border-t px-4 py-3 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Award className="size-4 text-emerald-600" /> 8 exceeds
-            </span>
-            <span className="flex items-center gap-1.5">
-              <CircleCheck className="size-4" /> 23 completed
-            </span>
-            <span className="ml-auto flex items-center gap-1.5">
-              <Star className="size-4 text-amber-600" /> avg 4.0 / 5
-            </span>
-            <span className="flex items-center gap-1.5">
-              <ClipboardList className="size-4" /> 3 in review
-            </span>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {model.rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>
+                        <EmployeeCell name={row.employee} />
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{row.period}</TableCell>
+                      <TableCell>
+                        <StatusPill tone={RATING_TONE[row.rating]}>{RATING_LABEL[row.rating]}</StatusPill>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                        {formatScore(row.score)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">{row.reviewer ?? dash}</TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {row.reviewed_at ? formatDate(row.reviewed_at) : dash}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
