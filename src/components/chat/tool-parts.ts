@@ -12,6 +12,10 @@ import {
   Images,
   Megaphone,
   PieChart,
+  Contact,
+  Handshake,
+  SquareKanban,
+  ChartColumn,
   Send,
   SlidersHorizontal,
   TrendingUp,
@@ -32,10 +36,14 @@ const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
   getUpcomingAppointments: { label: 'Appointments', Icon: CalendarDays },
   getCreatives: { label: 'Creatives', Icon: Images },
   getAdSettings: { label: 'Ad settings', Icon: SlidersHorizontal },
-  listContacts: { label: 'Contacts', Icon: Users },
   listForms: { label: 'Lead forms', Icon: ClipboardList },
   listBroadcasts: { label: 'Broadcasts', Icon: Send },
   listAutomations: { label: 'Automations', Icon: Zap },
+  listCrmContacts: { label: 'Contacts', Icon: Contact },
+  listDeals: { label: 'Deals', Icon: Handshake },
+  listPipelines: { label: 'Pipelines', Icon: SquareKanban },
+  getDealStats: { label: 'Deal totals', Icon: ChartColumn },
+  listContacts: { label: 'Leads', Icon: Users },
 };
 
 function humanize(name: string): string {
@@ -113,53 +121,130 @@ function nameOf(value: unknown, id: string, depth = 0): string | null {
   return null;
 }
 
+/** What kind of thing each tool's result is about, so an id is only named from the right kind. */
+export type ItemKind = 'campaign' | 'creative' | 'form' | 'contact' | 'deal' | 'stage';
+const KIND_OF_TOOL: Record<string, ItemKind> = {
+  getCampaigns: 'campaign',
+  createCampaign: 'campaign',
+  updateCampaign: 'campaign',
+  setCampaignStatus: 'campaign',
+  getCreatives: 'creative',
+  createCreative: 'creative',
+  updateCreative: 'creative',
+  listForms: 'form',
+  createForm: 'form',
+  updateForm: 'form',
+  setFormStatus: 'form',
+  listCrmContacts: 'contact',
+  createContact: 'contact',
+  updateContact: 'contact',
+  listDeals: 'deal',
+  createDeal: 'deal',
+  updateDeal: 'deal',
+  moveDeal: 'deal',
+  markDealLost: 'deal',
+  reopenDeal: 'deal',
+  listPipelines: 'stage',
+};
+
 /**
- * The name of the thing a change is about. A change tool is given an id, and
- * the assistant got that id from an earlier tool result in the conversation
- * (a listing, or the row it created), so the name is there too.
+ * Finds the name of a row by its id. A change tool is given ids, and the
+ * assistant got each id from an earlier tool result in the conversation (a
+ * listing, or the row it created), so the name is there too. With a `kind`,
+ * only results about that kind of thing count: an id that belongs to a
+ * contact must never put the contact's name on a card about a deal.
  */
-export function approvalSubject(input: unknown, messages: { parts: AnyPart[] }[]): string | null {
-  const id = (input as { id?: unknown } | null)?.id;
-  if (typeof id !== 'string' || !id) return null;
-  for (let m = messages.length - 1; m >= 0; m -= 1) {
-    for (const part of messages[m].parts) {
-      if (!toolName(part) || !('output' in part)) continue;
-      const found = nameOf(part.output, id);
-      if (found) return found;
+export function nameFinder(
+  messages: { parts: AnyPart[] }[],
+): (id: unknown, kind?: ItemKind) => string | null {
+  return (id, kind) => {
+    if (typeof id !== 'string' || !id) return null;
+    for (let m = messages.length - 1; m >= 0; m -= 1) {
+      for (const part of messages[m].parts) {
+        const tool = toolName(part);
+        if (!tool || !('output' in part)) continue;
+        if (kind && KIND_OF_TOOL[tool] !== kind) continue;
+        const found = nameOf(part.output, id);
+        if (found) return found;
+      }
     }
-  }
-  return null;
+    return null;
+  };
 }
 
-/** The question on an approval card. `subject` names the item when it is known. */
-export function approvalTitle(toolName: string, input: unknown, subject?: string | null): string {
+/** The name of the thing a change is about, when the change names it by `id`. */
+export function approvalSubject(
+  input: unknown,
+  messages: { parts: AnyPart[] }[],
+  kind?: ItemKind,
+): string | null {
+  return nameFinder(messages)((input as { id?: unknown } | null)?.id, kind);
+}
+
+/**
+ * The question on an approval card. `named` is either the name of the item
+ * the change is about, or a way to look names up by id; without it the card
+ * falls back to "this campaign".
+ */
+export function approvalTitle(
+  toolName: string,
+  input: unknown,
+  named?: string | null | ((id: unknown, kind?: ItemKind) => string | null),
+): string {
   const i = (input ?? {}) as Record<string, unknown>;
-  const the = (kind: string) => (subject ? `${kind} “${subject}”` : `this ${kind}`);
+  const find = typeof named === 'function' ? named : () => null;
+  // "campaign “X”" when the item's name is known, else "this campaign".
+  const the = (label: string, kind: ItemKind) => {
+    const subject = typeof named === 'function' ? named(i.id, kind) : named;
+    return subject ? `${label} “${subject}”` : `this ${label}`;
+  };
+  const person = [i.firstName, i.lastName].filter((v) => typeof v === 'string' && v).join(' ');
   switch (toolName) {
     case 'createCampaign': return `Create campaign “${i.name ?? ''}”?`;
-    case 'updateCampaign': return `Save changes to ${the('campaign')}?`;
+    case 'updateCampaign': return `Save changes to ${the('campaign', 'campaign')}?`;
     case 'setCampaignStatus':
-      return i.status === 'paused' ? `Pause ${the('campaign')}?` : `Resume ${the('campaign')}?`;
-    case 'deleteCampaign': return `Delete ${the('campaign')}?`;
+      return i.status === 'paused' ? `Pause ${the('campaign', 'campaign')}?` : `Resume ${the('campaign', 'campaign')}?`;
+    case 'deleteCampaign': return `Delete ${the('campaign', 'campaign')}?`;
     case 'createCreative': return `Add creative “${i.name ?? ''}”?`;
-    case 'updateCreative': return `Save changes to ${the('creative')}?`;
-    case 'deleteCreative': return `Delete ${the('creative')}?`;
+    case 'updateCreative': return `Save changes to ${the('creative', 'creative')}?`;
+    case 'deleteCreative': return `Delete ${the('creative', 'creative')}?`;
     case 'updateAdSettings': return 'Update ad settings?';
     case 'createForm': return `Create lead form “${i.name ?? ''}”?`;
-    case 'updateForm': return `Save changes to ${the('lead form')}?`;
+    case 'updateForm': return `Save changes to ${the('lead form', 'form')}?`;
     case 'setFormStatus':
       return i.status === 'active'
-        ? `Activate ${the('lead form')}?`
+        ? `Activate ${the('lead form', 'form')}?`
         : i.status === 'paused'
-          ? `Pause ${the('lead form')}?`
-          : `Move ${the('lead form')} back to draft?`;
-    case 'deleteForm': return `Delete ${the('lead form')}?`;
+          ? `Pause ${the('lead form', 'form')}?`
+          : `Move ${the('lead form', 'form')} back to draft?`;
+    case 'deleteForm': return `Delete ${the('lead form', 'form')}?`;
+    case 'createContact': return `Add contact “${person}”?`;
+    case 'updateContact': return `Save changes to ${the('contact', 'contact')}?`;
+    case 'deleteContact': return `Delete ${the('contact', 'contact')}?`;
+    case 'createDeal': {
+      const who = find(i.contactId, 'contact');
+      return who ? `Add deal “${i.title ?? ''}” for ${who}?` : `Add deal “${i.title ?? ''}”?`;
+    }
+    case 'updateDeal': return `Save changes to ${the('deal', 'deal')}?`;
+    case 'moveDeal': {
+      const stage = find(i.stageId, 'stage');
+      return stage ? `Move ${the('deal', 'deal')} to ${stage}?` : `Move ${the('deal', 'deal')} to another stage?`;
+    }
+    case 'markDealLost': return `Mark ${the('deal', 'deal')} as lost?`;
+    case 'reopenDeal': return `Reopen ${the('deal', 'deal')}?`;
+    case 'deleteDeal': return `Delete ${the('deal', 'deal')}?`;
     default: return 'Approve this change?';
   }
 }
 
 export function approvalDetail(toolName: string): string | null {
-  if (toolName === 'deleteCampaign' || toolName === 'deleteCreative' || toolName === 'deleteForm') {
+  if (toolName === 'deleteContact') return 'Their deals are deleted too. This cannot be undone.';
+  if (
+    toolName === 'deleteCampaign' ||
+    toolName === 'deleteCreative' ||
+    toolName === 'deleteForm' ||
+    toolName === 'deleteDeal'
+  ) {
     return 'This cannot be undone.';
   }
   return null;

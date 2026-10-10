@@ -6,6 +6,7 @@ import {
   approvalDetail,
   approvalTitle,
   toolMeta,
+  type ItemKind,
   type PendingApproval,
   type ToolStep,
 } from '@/components/chat/tool-parts';
@@ -62,12 +63,12 @@ export function ToolStepCard({ step }: { step: ToolStep }) {
 /** A change waiting for a yes or no. Nothing is saved until it is approved. */
 export function ApprovalCard({
   approval,
-  subject,
+  named,
   onDecide,
 }: {
   approval: PendingApproval;
-  /** The name of the item the change is about, when it is known. */
-  subject?: string | null;
+  /** Looks up the name of a row the change mentions by id. */
+  named?: (id: unknown, kind?: ItemKind) => string | null;
   onDecide: (approved: boolean) => void;
 }) {
   const detail = approvalDetail(approval.toolName);
@@ -77,7 +78,7 @@ export function ApprovalCard({
       aria-label="Change waiting for your approval"
       className="rounded-xl border bg-card p-3 text-sm text-card-foreground shadow-sm"
     >
-      <p className="font-medium">{approvalTitle(approval.toolName, approval.input, subject)}</p>
+      <p className="font-medium">{approvalTitle(approval.toolName, approval.input, named)}</p>
       {detail ? (
         <p className="mt-1 flex items-center gap-1.5 text-muted-foreground">
           <TriangleAlert className="size-4 shrink-0" aria-hidden />

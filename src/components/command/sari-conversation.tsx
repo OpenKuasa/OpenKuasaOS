@@ -61,7 +61,7 @@ import {
 import { screenFromPath, screenLabel } from '@/lib/chat/screen';
 import { ApprovalCard, ToolStepCard } from '@/components/chat/tool-cards';
 import {
-  approvalSubject,
+  nameFinder,
   hasVisibleContent,
   isText,
   toPendingApproval,
@@ -1026,7 +1026,7 @@ function ChatPane({
                                 <ApprovalCard
                                   key={pending.approvalId}
                                   approval={pending}
-                                  subject={approvalSubject(pending.input, chat.messages)}
+                                  named={nameFinder(chat.messages)}
                                   onDecide={(approved) => {
                                     setAttachNote(null);
                                     void chat.addToolApprovalResponse({
