@@ -14,31 +14,31 @@ begin
     return;
   end if;
 
-  insert into public.contacts (org_id, type, name, email, phone, ssm_no, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, email, phone, ssm_no, payment_terms_days) values
     (demo, 'supplier', 'Nusantara Logistics', 'orders@nusantara.my', '+60 3-5121 8800', '201501076543', 7)
     returning id into nusantara;
-  insert into public.contacts (org_id, type, name, email, phone, ssm_no, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, email, phone, ssm_no, payment_terms_days) values
     (demo, 'supplier', 'Lim Hardware Sdn Bhd', 'sales@limhardware.com.my', '+60 3-7956 1234', '198701004567', 30)
     returning id into lim;
-  insert into public.contacts (org_id, type, name, email, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, email, payment_terms_days) values
     (demo, 'supplier', 'Printhub Enterprise', 'hello@printhub.my', 30) returning id into printhub;
-  insert into public.contacts (org_id, type, name, email, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, email, payment_terms_days) values
     (demo, 'supplier', 'Suria Utilities Sdn Bhd', 'billing@suria.my', 14) returning id into suria;
-  insert into public.contacts (org_id, type, name, email, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, email, payment_terms_days) values
     (demo, 'supplier', 'Syarikat Maju Jaya', 'akaun@majujaya.my', 30) returning id into maju;
-  insert into public.contacts (org_id, type, name, email, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, email, payment_terms_days) values
     (demo, 'supplier', 'Unifi Business (TM)', 'business@unifi.my', 30) returning id into unifi;
-  insert into public.contacts (org_id, type, name, phone, payment_terms_days) values
+  insert into public.finance_contacts (org_id, type, name, phone, payment_terms_days) values
     (demo, 'supplier', 'Kedai Kertas Ah Seng', '+60 12-778 2311', 30) returning id into ahseng;
-  insert into public.contacts (org_id, type, name, email, phone, ssm_no) values
+  insert into public.finance_contacts (org_id, type, name, email, phone, ssm_no) values
     (demo, 'customer', 'Aisyah Trading', 'accounts@aisyahtrading.my', '+60 12-345 6789', '201901012345'),
     (demo, 'customer', 'Zaki Enterprise', 'zaki@zakient.my', '+60 13-221 4455', '202001098765');
 
-  insert into public.products (org_id, sku, name, type, category, uom, price, cost, sst_rate) values
+  insert into public.finance_products (org_id, sku, name, type, category, uom, price, cost, sst_rate) values
     (demo, 'PRD-010', 'Printer Ink', 'product', 'Office supplies', 'cartridge', 85, 52, 6) returning id into ink;
-  insert into public.products (org_id, sku, name, type, category, uom, price, cost, sst_rate) values
+  insert into public.finance_products (org_id, sku, name, type, category, uom, price, cost, sst_rate) values
     (demo, 'PRD-011', 'A4 Paper (Ream)', 'product', 'Office supplies', 'ream', 14.5, 9.8, 6) returning id into paper;
-  insert into public.products (org_id, sku, name, type, category, uom, price, cost) values
+  insert into public.finance_products (org_id, sku, name, type, category, uom, price, cost) values
     (demo, 'PRD-012', 'Thermal Receipt Roll', 'product', 'Consumables', 'roll', 6, 2.35) returning id into roll;
 
   -- Pending, due in 4 days
