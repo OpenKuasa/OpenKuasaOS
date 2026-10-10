@@ -102,6 +102,37 @@ function toToolStep(part: AnyPart, messageId: string, index: number): ToolStep |
   return { key, name, running, output };
 }
 
+type PendingApproval = { approvalId: string; toolName: string; input: unknown };
+
+function toPendingApproval(part: AnyPart): PendingApproval | null {
+  const type = part.type;
+  if (typeof type !== 'string' || !type.startsWith('tool-')) return null;
+  if (!('state' in part) || (part as { state?: string }).state !== 'approval-requested') return null;
+  const approval = (part as { approval?: { id?: string } }).approval;
+  if (!approval?.id) return null;
+  return { approvalId: approval.id, toolName: type.slice('tool-'.length), input: (part as { input?: unknown }).input };
+}
+
+function approvalTitle(toolName: string, input: unknown): string {
+  const i = (input ?? {}) as Record<string, unknown>;
+  switch (toolName) {
+    case 'createCampaign': return `Create campaign “${i.name ?? ''}”?`;
+    case 'updateCampaign': return 'Save changes to this campaign?';
+    case 'setCampaignStatus': return i.status === 'paused' ? 'Pause this campaign?' : 'Resume this campaign?';
+    case 'deleteCampaign': return 'Delete this campaign?';
+    case 'createCreative': return `Add creative “${i.name ?? ''}”?`;
+    case 'updateCreative': return 'Save changes to this creative?';
+    case 'deleteCreative': return 'Delete this creative?';
+    case 'updateAdSettings': return 'Update ad settings?';
+    default: return 'Approve this change?';
+  }
+}
+
+function approvalDetail(toolName: string, _input: unknown): string | null {
+  if (toolName === 'deleteCampaign' || toolName === 'deleteCreative') return 'This cannot be undone.';
+  return null;
+}
+
 function hasVisibleContent(message: UIMessage): boolean {
   return message.parts.some(
     (p) =>
@@ -119,7 +150,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
   const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
-  const { messages, sendMessage, status, error } = useChat({ transport, throttle: 50 });
+  const { messages, sendMessage, status, error, addToolApprovalResponse } = useChat({ transport, throttle: 50 });
 
   // Who is paying: the workspace's own key, or the user's free weekly questions.
   const { status: chatStatus, refresh: refreshChatStatus } = useChatStatus(!isDemo);
@@ -301,6 +332,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
               error={error}
               openSteps={openSteps}
               onToggleStep={(k) => setOpenSteps((s) => ({ ...s, [k]: !s[k] }))}
+              onApproval={(id, approved) => addToolApprovalResponse({ id, approved })}
             />
           </div>
           <button
@@ -325,6 +357,7 @@ function Thread({
   error,
   openSteps,
   onToggleStep,
+  onApproval,
 }: {
   isDemo: boolean;
   demoAsked: boolean;
@@ -333,6 +366,7 @@ function Thread({
   error: Error | undefined;
   openSteps: Record<string, boolean>;
   onToggleStep: (key: string) => void;
+  onApproval: (approvalId: string, approved: boolean) => void;
 }) {
   if (isDemo) return demoAsked ? <DemoBubble /> : null;
 
@@ -387,6 +421,35 @@ function Thread({
                       {part.text}
                     </div>
                   ) : null;
+                }
+                const pending = toPendingApproval(part);
+                if (pending) {
+                  const detail = approvalDetail(pending.toolName, pending.input);
+                  return (
+                    <div
+                      key={`appr-${pending.approvalId}`}
+                      className="rounded-lg border border-border bg-card p-3 text-sm text-card-foreground"
+                    >
+                      <p className="font-medium">{approvalTitle(pending.toolName, pending.input)}</p>
+                      {detail && <p className="mt-1 text-muted-foreground">{detail}</p>}
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onApproval(pending.approvalId, true)}
+                          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onApproval(pending.approvalId, false)}
+                          className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  );
                 }
                 const step = toToolStep(part, m.id, i);
                 return step ? (
