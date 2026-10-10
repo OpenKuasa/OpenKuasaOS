@@ -14,16 +14,20 @@ export type RunSchedulesSummary = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+type OrgConfig = {
+  enabled: boolean | null;
+  daily_cap_cents: number | null;
+  weekly_cap_cents: number | null;
+};
+
 /** Rolling-ceiling check. Returns a pause reason, or null if under budget. */
-async function overBudget(client: SupabaseClient, orgId: string): Promise<string | null> {
-  const { data: cfg } = await client
-    .from('agent_configs')
-    .select('daily_cap_cents, weekly_cap_cents')
-    .eq('org_id', orgId)
-    .eq('agent_key', WEEKLY_STUDIO)
-    .maybeSingle();
-  const daily = (cfg?.daily_cap_cents as number | undefined) ?? 500;
-  const weekly = (cfg?.weekly_cap_cents as number | undefined) ?? 2000;
+async function overBudget(
+  client: SupabaseClient,
+  orgId: string,
+  caps: OrgConfig | null,
+): Promise<string | null> {
+  const daily = caps?.daily_cap_cents ?? 500;
+  const weekly = caps?.weekly_cap_cents ?? 2000;
   const spentSince = async (sinceIso: string): Promise<number> => {
     // Zero-cost rows (monitor-skips) are excluded: they add nothing and would
     // otherwise push the window past PostgREST's row cap and undercount the sum.
@@ -108,8 +112,31 @@ export async function runSchedules(client: SupabaseClient): Promise<RunSchedules
     .lte('next_run_at', nowIso);
   if (error || !data) return summary;
 
+  // Per-org Weekly Studio config, read once per org per tick.
+  const configs = new Map<string, OrgConfig | null>();
+  const configFor = async (orgId: string): Promise<OrgConfig | null> => {
+    if (configs.has(orgId)) return configs.get(orgId) ?? null;
+    const { data: cfg } = await client
+      .from('agent_configs')
+      .select('enabled, daily_cap_cents, weekly_cap_cents')
+      .eq('org_id', orgId)
+      .eq('agent_key', WEEKLY_STUDIO)
+      .maybeSingle();
+    const row = (cfg as OrgConfig | null) ?? null;
+    configs.set(orgId, row);
+    return row;
+  };
+
   for (const s of data as DueSchedule[]) {
     try {
+      // Off switch: leave the schedule untouched so re-enabling resumes it.
+      // No config row keeps the default behavior (proceed).
+      const config = await configFor(s.org_id);
+      if (config && config.enabled === false) {
+        summary.skipped += 1;
+        continue;
+      }
+
       const done =
         (s.max_runs != null && s.runs_used >= s.max_runs) ||
         (s.max_total_cents != null && s.spent_cents >= s.max_total_cents) ||
@@ -125,7 +152,7 @@ export async function runSchedules(client: SupabaseClient): Promise<RunSchedules
         continue;
       }
 
-      const reason = await overBudget(client, s.org_id);
+      const reason = await overBudget(client, s.org_id, config);
       if (reason) {
         await client
           .from('agent_schedules')
@@ -139,7 +166,7 @@ export async function runSchedules(client: SupabaseClient): Promise<RunSchedules
       const nextIso = new Date(Date.now() + s.interval_seconds * 1000).toISOString();
       const { data: claimed } = await client
         .from('agent_schedules')
-        .update({ next_run_at: nextIso, updated_at: nowIso })
+        .update({ next_run_at: nextIso, paused_reason: null, updated_at: nowIso })
         .eq('id', s.id)
         .eq('status', 'active')
         .lte('next_run_at', nowIso)

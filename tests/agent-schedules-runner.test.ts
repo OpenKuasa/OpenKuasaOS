@@ -43,7 +43,7 @@ const sched = (over: Partial<Sched> = {}): Sched => ({
 
 type Opts = {
   claim?: boolean;
-  cfg?: { daily_cap_cents: number; weekly_cap_cents: number } | null;
+  cfg?: { enabled?: boolean; daily_cap_cents: number; weekly_cap_cents: number } | null;
   recentRuns?: { cost_cents: number }[];
   runCost?: number;
   newData?: boolean;
@@ -251,6 +251,39 @@ describe('runSchedules', () => {
     await runSchedules(client);
     expect(runWeeklyStudio).toHaveBeenCalledTimes(1);
     expect(schedUpdates(writes).at(-1)!.patch).toMatchObject({ runs_used: 2, status: 'completed' });
+  });
+
+  it('enable-gate: a disabled Weekly Studio skips the schedule with no run, pause, or claim', async () => {
+    const { client, writes } = fakeClient([sched()], {
+      cfg: { enabled: false, daily_cap_cents: 500, weekly_cap_cents: 2000 },
+    });
+    const out = await runSchedules(client);
+    expect(runWeeklyStudio).not.toHaveBeenCalled();
+    expect(schedUpdates(writes)).toHaveLength(0);
+    expect(writes).toHaveLength(0);
+    expect(out).toMatchObject({ skipped: 1, ran: 0, paused: 0, failed: 0 });
+  });
+
+  it('enable-gate: enabled true runs, and the org config is read once per org', async () => {
+    let cfgReads = 0;
+    const { client } = fakeClient([sched({ id: 's1' }), sched({ id: 's2' })], {
+      cfg: { enabled: true, daily_cap_cents: 500, weekly_cap_cents: 2000 },
+    });
+    const orig = (client as { from: (t: string) => unknown }).from.bind(client);
+    (client as { from: (t: string) => unknown }).from = (t: string) => {
+      if (t === 'agent_configs') cfgReads += 1;
+      return orig(t);
+    };
+    const out = await runSchedules(client);
+    expect(out.ran).toBe(2);
+    expect(cfgReads).toBe(1);
+  });
+
+  it('clears a stale paused_reason in the claim update', async () => {
+    const { client, writes } = fakeClient([sched()]);
+    await runSchedules(client);
+    const claim = schedUpdates(writes).find((w) => 'next_run_at' in w.patch)!;
+    expect(claim.patch).toHaveProperty('paused_reason', null);
   });
 
   it('keeps looping when one schedule throws', async () => {
