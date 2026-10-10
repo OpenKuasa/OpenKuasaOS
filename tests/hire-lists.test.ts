@@ -52,6 +52,9 @@ describe('candidates board', () => {
     expect(model.total).toBe(model.inPipeline + model.hired);
     expect(model.stages.every((s) => s.candidates.length <= 50)).toBe(true);
     expect(model.funnel.map((f) => f.value)).toEqual([248, 96, 38, 4, 2]);
+    expect(model.stages.reduce((sum, s) => sum + s.count, 0)).toBe(model.total);
+    expect(model.stages.find((s) => s.key === 'offer')?.count).toBe(2);
+    expect(model.stages.find((s) => s.key === 'hired')?.count).toBe(2);
   });
 });
 
@@ -92,6 +95,15 @@ describe('talent pool', () => {
     expect(model.size).toBeGreaterThanOrEqual(94);
     expect(model.rows.length).toBeLessThanOrEqual(50);
     expect(model.rows.every((r) => ['Available', 'Shortlisted', 'Passive', 'Re-engaged'].includes(r.status))).toBe(true);
+  });
+
+  it('totals the whole pool by status, headline and source', async () => {
+    const model = await buildPoolModel(data);
+    const sum = (list: { value: number }[]) => list.reduce((a, b) => a + b.value, 0);
+    expect(model.statusCounts.map((s) => s.key)).toEqual(['Available', 'Shortlisted', 'Passive', 'Re-engaged']);
+    expect(sum(model.statusCounts)).toBe(model.size);
+    expect(sum(model.byTitle)).toBe(model.size);
+    expect(sum(model.bySource)).toBe(model.size);
   });
 
   const cand = (id: string, pool_status: Candidate['pool_status']): Candidate => ({
@@ -140,6 +152,18 @@ describe('talent pool', () => {
     });
   });
 
+  it('counts Shortlisted and leaves out none over the whole pool', async () => {
+    const model = await buildPoolModel(small);
+    expect(model.statusCounts).toEqual([
+      { key: 'Available', value: 2 },
+      { key: 'Shortlisted', value: 3 },
+      { key: 'Passive', value: 1 },
+      { key: 'Re-engaged', value: 0 },
+    ]);
+    expect(model.byTitle).toEqual([{ label: '—', value: 6 }]);
+    expect(model.bySource).toEqual([{ label: 'Unknown', value: 6 }]);
+  });
+
   it('rates by the best application, and null when none is rated', async () => {
     const byId = Object.fromEntries((await buildPoolModel(small)).rows.map((r) => [r.id, r.rating]));
     expect(byId.rated).toBe(5);
@@ -168,7 +192,7 @@ describe('an empty workspace', () => {
     const board = await buildBoardModel(EMPTY, NOW);
     expect(board).toMatchObject({ isEmpty: true, total: 0, hired: 0, inPipeline: 0, interviewing: 0, offers: 0 });
     expect(board.stages).toHaveLength(5);
-    expect(board.stages.every((s) => s.candidates.length === 0)).toBe(true);
+    expect(board.stages.every((s) => s.candidates.length === 0 && s.count === 0)).toBe(true);
     expect(board.funnel).toHaveLength(5);
     expect(board.funnel.every((f) => f.value === 0)).toBe(true);
     expect(board.trend).toHaveLength(8);
@@ -183,7 +207,8 @@ describe('an empty workspace', () => {
     expect(interviews.weekLoad).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((label) => ({ label, count: 0 })));
 
     const pool = await buildPoolModel(EMPTY);
-    expect(pool).toMatchObject({ isEmpty: true, size: 0, rows: [] });
+    expect(pool).toMatchObject({ isEmpty: true, size: 0, rows: [], byTitle: [], bySource: [] });
+    expect(pool.statusCounts.map((s) => [s.key, s.value])).toEqual([['Available', 0], ['Shortlisted', 0], ['Passive', 0], ['Re-engaged', 0]]);
   });
 
   it('has only finite numbers in every empty model', async () => {

@@ -124,6 +124,8 @@ export type BoardModel = {
   stages: {
     key: ApplicationStage;
     name: string;
+    /** Live applications in this stage, over all applications (the list below is cut at ROWS_SHOWN). */
+    count: number;
     candidates: { id: string; name: string; role: string; source: string; rating: number; lastTouch: string; active: boolean }[];
   }[];
   total: number;
@@ -146,6 +148,7 @@ export async function buildBoardModel(data: HireData, now: Date): Promise<BoardM
     stages: APPLICATION_STAGES.map((key) => ({
       key,
       name: STAGE_LABEL[key],
+      count: board[key],
       candidates: groups[key].slice(0, ROWS_SHOWN).map((a) => ({
         id: a.id,
         name: a.candidate_name,
@@ -255,7 +258,20 @@ export type PoolModel = {
     id: string; name: string; title: string; skills: string[]; location: string; source: string;
     rating: number | null; status: 'Available' | 'Shortlisted' | 'Passive' | 'Re-engaged';
   }[];
+  /** The whole pool by status: always the four keys, in this order. */
+  statusCounts: { key: 'Available' | 'Shortlisted' | 'Passive' | 'Re-engaged'; value: number }[];
+  /** The whole pool by headline, largest first. */
+  byTitle: { label: string; value: number }[];
+  /** The whole pool by source, largest first. */
+  bySource: { label: string; value: number }[];
 };
+
+/** Groups `items` by `pick`, largest group first (ties keep first-seen order). */
+function tally<T>(items: T[], pick: (item: T) => string): { label: string; value: number }[] {
+  const counts = new Map<string, number>();
+  for (const item of items) counts.set(pick(item), (counts.get(pick(item)) ?? 0) + 1);
+  return [...counts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+}
 
 export async function buildPoolModel(data: HireData): Promise<PoolModel> {
   const [candidates, apps] = await Promise.all([data.listCandidates(), data.listApplications()]);
@@ -267,6 +283,9 @@ export async function buildPoolModel(data: HireData): Promise<PoolModel> {
     if (a.outcome === 'active' && ['interview', 'offer', 'hired'].includes(a.stage)) shortlisted.add(a.candidate_id);
     if (a.rating !== null) rating.set(a.candidate_id, Math.max(rating.get(a.candidate_id) ?? 0, a.rating));
   }
+  const statusOf = (c: (typeof pool)[number]) =>
+    shortlisted.has(c.id) ? ('Shortlisted' as const) : POOL_LABEL[c.pool_status as Exclude<PoolStatus, 'none'>];
+  const STATUS_KEYS = ['Available', 'Shortlisted', 'Passive', 'Re-engaged'] as const;
   return {
     isEmpty: pool.length === 0,
     size: pool.length,
@@ -278,7 +297,10 @@ export async function buildPoolModel(data: HireData): Promise<PoolModel> {
       location: c.location ?? '—',
       source: c.source ?? 'Unknown',
       rating: rating.get(c.id) ?? null,
-      status: shortlisted.has(c.id) ? 'Shortlisted' : POOL_LABEL[c.pool_status as Exclude<PoolStatus, 'none'>],
+      status: statusOf(c),
     })),
+    statusCounts: STATUS_KEYS.map((key) => ({ key, value: pool.filter((c) => statusOf(c) === key).length })),
+    byTitle: tally(pool, (c) => c.headline ?? '—'),
+    bySource: tally(pool, (c) => c.source ?? 'Unknown'),
   };
 }

@@ -99,7 +99,7 @@ export default async function ApplicationsScreen() {
         </BentoCard>
         <BentoCard
           title="Applications by job"
-          subtitle="Open roles"
+          subtitle="Top roles"
           icon={BarChart3}
           className="col-span-2 md:col-span-8"
         >
@@ -127,64 +127,64 @@ export default async function ApplicationsScreen() {
             <Muted>No applications yet</Muted>
           ) : (
           <>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Job</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Applied</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {model.rows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <LiveDot active={r.status !== 'Rejected'} />
-                        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                          {r.name.charAt(0)}
-                        </span>
-                        <span className="whitespace-nowrap font-medium">
-                          {r.name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">{r.job}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{r.source}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_STYLES[r.status],
-                        )}
-                      >
-                        {r.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {r.applied}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead>Candidate</TableHead>
+                    <TableHead>Job</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Applied</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span className="text-xs text-muted-foreground">
-              {model.total > model.rows.length
-                ? `Showing the newest ${model.rows.length} of ${model.total}`
-                : `Showing ${model.rows.length} applications`}
-            </span>
-            <span className="flex items-center gap-2">
-              <CircleDot className="size-4" />
-              {countOf('New') ?? 0} new
-            </span>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {model.rows.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <LiveDot active={r.status !== 'Rejected'} />
+                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                            {r.name.charAt(0)}
+                          </span>
+                          <span className="whitespace-nowrap font-medium">
+                            {r.name}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{r.job}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{r.source}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-xs font-medium',
+                            STATUS_STYLES[r.status],
+                          )}
+                        >
+                          {r.status}
+                        </span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {r.applied}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
+                {model.total > model.rows.length
+                  ? `Showing the newest ${model.rows.length} of ${model.total}`
+                  : `Showing ${model.rows.length} applications`}
+              </span>
+              <span className="flex items-center gap-2">
+                <CircleDot className="size-4" />
+                {countOf('New') ?? 0} new
+              </span>
+            </div>
           </>
           )}
         </BentoCard>

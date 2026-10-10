@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { ROWS_SHOWN, buildBoardModel, type BoardModel } from '@/lib/hire/lists';
+import { buildBoardModel, type BoardModel } from '@/lib/hire/lists';
 import { FUNNEL_COLOR, LOAD_FAILED, Muted, loadHire } from '@/screens/hire/parts';
 
 type Candidate = BoardModel['stages'][number]['candidates'][number];
@@ -93,7 +93,7 @@ export default async function CandidatesScreen() {
     <ScreenContainer>
       <PageHeader
         title="Candidates"
-        subtitle="Move candidates through your hiring pipeline, Saudara."
+        subtitle="Your hiring pipeline by stage, Saudara."
         actions={
           <>
             <Button variant="outline" size="sm" disabled title="Coming soon">
@@ -164,18 +164,20 @@ export default async function CandidatesScreen() {
           <Input
             placeholder="Search candidates across all stages…"
             className="pl-9"
+            disabled
+            title="Coming soon"
           />
         </div>
-        <Select defaultValue="all">
-          <SelectTrigger className="w-44">
+        <Select defaultValue="all" disabled>
+          <SelectTrigger className="w-44" title="Coming soon">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All jobs</SelectItem>
           </SelectContent>
         </Select>
-        <Select defaultValue="all-sources">
-          <SelectTrigger className="w-44">
+        <Select defaultValue="all-sources" disabled>
+          <SelectTrigger className="w-44" title="Coming soon">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -200,9 +202,7 @@ export default async function CandidatesScreen() {
                 <span className="text-sm font-semibold">{stage.name}</span>
                 <span className="ml-auto flex items-center gap-1.5 rounded-full bg-background px-2 text-xs text-muted-foreground">
                   <Users className="size-3" />
-                  {stage.candidates.length >= ROWS_SHOWN
-                    ? `${ROWS_SHOWN}+`
-                    : stage.candidates.length}
+                  {stage.count}
                 </span>
               </div>
               <div className="space-y-2">
@@ -214,6 +214,11 @@ export default async function CandidatesScreen() {
                   ))
                 )}
               </div>
+              {stage.count > stage.candidates.length ? (
+                <p className="mt-2 px-2 text-xs text-muted-foreground">
+                  Showing the newest {stage.candidates.length} of {stage.count}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>

@@ -116,7 +116,13 @@ export default async function InterviewsScreen() {
         {/* Upcoming list + week load */}
         <BentoCard
           title="Upcoming interviews"
-          subtitle={model ? `${model.scheduled} scheduled` : undefined}
+          subtitle={
+            model
+              ? model.scheduled > upcoming.length
+                ? `${model.scheduled} scheduled, showing the first ${upcoming.length}`
+                : `${model.scheduled} scheduled`
+              : undefined
+          }
           icon={CalendarClock}
           className="col-span-2 md:col-span-8"
         >
@@ -132,7 +138,7 @@ export default async function InterviewsScreen() {
         </BentoCard>
         <BentoCard
           title="Next 7 days"
-          subtitle="Interviews by weekday (Mon–Fri)"
+          subtitle="Weekdays only"
           icon={BarChart3}
           className="col-span-2 md:col-span-4"
         >
@@ -155,70 +161,70 @@ export default async function InterviewsScreen() {
             <Muted>No interviews yet</Muted>
           ) : (
           <>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Interviewer</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {model.rows.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <LiveDot active={r.status === 'Scheduled'} />
-                        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                          {r.name.charAt(0)}
-                        </span>
-                        <span className="whitespace-nowrap font-medium">
-                          {r.name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">{r.role}</TableCell>
-                    <TableCell className="whitespace-nowrap">{r.date}</TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {r.time}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {r.interviewer}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{r.type}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={cn(
-                          'rounded-full px-2 py-0.5 text-xs font-medium',
-                          STATUS_STYLES[r.status],
-                        )}
-                      >
-                        {r.status}
-                      </span>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead>Candidate</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Interviewer</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              {model.rows.length >= ROWS_SHOWN
-                ? `Showing the first ${model.rows.length} interviews`
-                : `Showing ${model.rows.length} interviews`}
-            </span>
-            <span className="flex items-center gap-2">
-              <CalendarCheck className="size-4" />
-              {model.completed} completed
-            </span>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {model.rows.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <LiveDot active={r.status === 'Scheduled'} />
+                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                            {r.name.charAt(0)}
+                          </span>
+                          <span className="whitespace-nowrap font-medium">
+                            {r.name}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{r.role}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.date}</TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {r.time}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {r.interviewer}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{r.type}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-xs font-medium',
+                            STATUS_STYLES[r.status],
+                          )}
+                        >
+                          {r.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
+              <span>
+                {model.rows.length === ROWS_SHOWN
+                  ? `Showing up to the first ${ROWS_SHOWN}`
+                  : `Showing ${model.rows.length} interviews`}
+              </span>
+              <span className="flex items-center gap-2">
+                <CalendarCheck className="size-4" />
+                {model.completed} completed
+              </span>
+            </div>
           </>
           )}
         </BentoCard>

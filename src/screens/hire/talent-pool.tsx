@@ -34,25 +34,16 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { buildPoolModel, type PoolModel } from '@/lib/hire/lists';
-import { LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire } from '@/screens/hire/parts';
+import { LOAD_FAILED, Muted, loadHire } from '@/screens/hire/parts';
 
 type Candidate = PoolModel['rows'][number];
 type Status = Candidate['status'];
 
 const SKILL_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'];
 
-/** Rows grouped by `pick`, biggest first. */
-function tally(rows: Candidate[], pick: (row: Candidate) => string): { label: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const row of rows) counts.set(pick(row), (counts.get(pick(row)) ?? 0) + 1);
-  return [...counts.entries()]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count);
-}
-
 /** At most `max` slices: the biggest, with the rest folded into 'Other'. */
-function topSlices(groups: { label: string; count: number }[], max: number): Slice[] {
-  const slices = groups.map((g) => ({ key: g.label, label: g.label, value: g.count }));
+function topSlices(groups: { label: string; value: number }[], max: number): Slice[] {
+  const slices = groups.map((g) => ({ key: g.label, label: g.label, value: g.value }));
   const kept =
     slices.length <= max
       ? slices
@@ -70,7 +61,6 @@ function topSlices(groups: { label: string; count: number }[], max: number): Sli
 const SOURCE_SERIES: Series[] = [
   { key: 'count', label: 'Candidates', color: 'var(--chart-2)' },
 ];
-
 
 const STATUS_TONE: Record<Status, string> = {
   Available: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
@@ -121,8 +111,9 @@ function Rating({ value }: { value: number | null }) {
 export default async function TalentPoolScreen() {
   const { model } = await loadHire('talent-pool', (data) => buildPoolModel(data));
   const capped = model ? model.size > model.rows.length : false;
-  const sample = capped && model ? `Newest ${model.rows.length} of ${model.size}` : 'Across the pool';
-  const roleSlices = topSlices(tally(model?.rows ?? [], (r) => r.title), 4);
+  const roleSlices = topSlices(model?.byTitle ?? [], 4);
+  const statusCount = (key: Status) =>
+    model ? (model.statusCounts.find((s) => s.key === key)?.value ?? 0) : '—';
 
   return (
     <ScreenContainer>
@@ -139,7 +130,7 @@ export default async function TalentPoolScreen() {
       />
 
       <BentoGrid>
-        {/* KPI row: only the pool size is counted over every candidate */}
+        {/* KPI row: every figure is counted over the whole pool */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Talent pool size"
@@ -147,45 +138,45 @@ export default async function TalentPoolScreen() {
             onPrimary
           />
         </BentoCard>
-        <BentoCard title="Shortlisted" className="col-span-1 md:col-span-3">
-          {NOT_AVAILABLE}
+        <BentoCard className="col-span-1 md:col-span-3">
+          <BentoStat label="Available" value={statusCount('Available')} />
         </BentoCard>
-        <BentoCard title="Passive" className="col-span-1 md:col-span-3">
-          {NOT_AVAILABLE}
+        <BentoCard className="col-span-1 md:col-span-3">
+          <BentoStat label="Shortlisted" value={statusCount('Shortlisted')} />
         </BentoCard>
-        <BentoCard title="Re-engaged" className="col-span-1 md:col-span-3">
-          {NOT_AVAILABLE}
+        <BentoCard className="col-span-1 md:col-span-3">
+          <BentoStat label="Passive" value={statusCount('Passive')} />
         </BentoCard>
 
         {/* Skill mix + source breakdown */}
         <BentoCard
           title="Talent by skill / role"
-          subtitle={sample}
+          subtitle="Across the pool"
           icon={PieChart}
           className="col-span-2 md:col-span-4"
         >
-          {!model ? LOAD_FAILED : model.rows.length === 0 ? (
+          {!model ? LOAD_FAILED : model.size === 0 ? (
             <Muted>No one in the talent pool yet</Muted>
           ) : (
             <DonutStat
               data={roleSlices}
               height={240}
-              centerValue={model.rows.length.toLocaleString()}
+              centerValue={model.size.toLocaleString()}
               centerLabel="candidates"
             />
           )}
         </BentoCard>
         <BentoCard
           title="Candidates by source"
-          subtitle={capped ? sample : 'Where talent comes from'}
+          subtitle="Where talent comes from"
           icon={BarChart3}
           className="col-span-2 md:col-span-8"
         >
-          {!model ? LOAD_FAILED : model.rows.length === 0 ? (
+          {!model ? LOAD_FAILED : model.size === 0 ? (
             <Muted>No one in the talent pool yet</Muted>
           ) : (
             <BarGroup
-              data={tally(model.rows, (r) => r.source).slice(0, 6)}
+              data={model.bySource.slice(0, 6).map((r) => ({ label: r.label, count: r.value }))}
               series={SOURCE_SERIES}
               horizontal
               height={240}
@@ -204,25 +195,26 @@ export default async function TalentPoolScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search by name or skill…" className="h-8 pl-8 text-sm" />
+              <Input
+                placeholder="Search by name or skill…"
+                className="h-8 pl-8 text-sm"
+                disabled
+                title="Coming soon"
+              />
             </div>
-            <Select defaultValue="all">
-              <SelectTrigger size="sm" className="w-full sm:w-44">
+            <Select defaultValue="all" disabled>
+              <SelectTrigger size="sm" title="Coming soon" className="w-full sm:w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All roles</SelectItem>
-                <SelectItem value="engineering">Software Engineer</SelectItem>
-                <SelectItem value="sales">Sales Executive</SelectItem>
-                <SelectItem value="account">Account Manager</SelectItem>
-                <SelectItem value="operations">Operations</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled title="Coming soon">
               <Filter className="size-4" />
               Filter
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" disabled title="Coming soon">
               All sources
               <ChevronDown className="size-4" />
             </Button>
@@ -231,78 +223,78 @@ export default async function TalentPoolScreen() {
             <Muted>No one in the talent pool yet</Muted>
           ) : (
           <>
-          <div className="mt-3 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead>Candidate</TableHead>
-                  <TableHead>Skills</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Rating</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {model.rows.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                          {c.name.charAt(0)}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{c.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {c.title}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex max-w-[220px] flex-wrap gap-1">
-                        {c.skills.map((s) => (
-                          <Badge key={s} variant="secondary">
-                            {s}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="size-3.5" />
-                        {c.location}
-                      </span>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-sm">
-                      {c.source}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <Rating value={c.rating} />
-                    </TableCell>
-                    <TableCell>
-                      <StatusPill status={c.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" disabled title="Coming soon">
-                        Move to pipeline
-                      </Button>
-                    </TableCell>
+            <div className="mt-3 overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead>Candidate</TableHead>
+                    <TableHead>Skills</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Rating</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-            {capped ? (
-              <span className="text-xs text-muted-foreground">
-                Showing the newest {model.rows.length} of {model.size.toLocaleString()}
-              </span>
-            ) : (
-              `Showing ${model.rows.length} candidates`
-            )}
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {model.rows.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                            {c.name.charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{c.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {c.title}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex max-w-[220px] flex-wrap gap-1">
+                          {c.skills.map((s) => (
+                            <Badge key={s} variant="secondary">
+                              {s}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <MapPin className="size-3.5" />
+                          {c.location}
+                        </span>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {c.source}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <Rating value={c.rating} />
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill status={c.status} />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" disabled title="Coming soon">
+                          Move to pipeline
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="border-t px-4 py-3 text-sm text-muted-foreground">
+              {capped ? (
+                <span className="text-xs text-muted-foreground">
+                  Showing the newest {model.rows.length} of {model.size.toLocaleString()}
+                </span>
+              ) : (
+                `Showing ${model.rows.length} candidates`
+              )}
+            </div>
           </>
           )}
         </BentoCard>
