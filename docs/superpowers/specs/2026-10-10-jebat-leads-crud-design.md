@@ -55,7 +55,7 @@ Slice 3 of 4, re-scoped. Entities: `leads` (writes + `promoted_contact_id`). Cro
 | Forms | **Out — owned by another contributor** | `forms` CRUD is merged; `form_submissions` + public page are explicitly their next work. Building it here duplicates/collides. |
 | Leads vs contacts | **Two separate surfaces + one-way promote handoff** | Ad funnel (high-volume, mostly never convert) vs. curated contact book are different jobs; merging pollutes the CRM and couples Jebat to Kasturi's schema. The handoff is the missing piece. |
 | Promote implementation | **Reuse Kasturi's `createCrmContact(client, payload)`** | Don't duplicate `crm_contacts` write logic or couple to its table; depend on its public create fn. RLS (`is_org_writer` on `crm_contacts`) already guards it; the promoter is a writer in the same org — no new grant. |
-| Promote idempotency | **Nullable `leads.promoted_contact_id uuid` (no cross-schema FK)** | Marks a lead promoted + stores the contact id for a "Promoted ✓" badge and double-promote prevention, without a hard reach→crm FK (keeps module schemas decoupled); a dangling id is harmless (display-only). |
+| Promote idempotency | **Nullable `leads.promoted_contact_id uuid` (no cross-schema FK)** | Marks a lead promoted + stores the contact id for a "Promoted ✓" badge and double-promote prevention, without a hard reach→crm FK (keeps module schemas decoupled). If the CRM contact is later deleted, promote re-checks that the stored contact still exists and allows re-promotion — no permanently-stuck "Promoted ✓" (see §4.2). |
 | Lead extension | **No `company`/`score`/`status` on reach `leads`** | Those live on `crm_contacts`; adding them duplicates the CRM. reach `leads` stays the thin ad-funnel record. |
 | Contacts screen | **Replace static `/reach/contacts` with a live reach-native Lead Funnel** | Fixes an honesty bug (prod shows fabricated CRM-shaped numbers); the CRM-shared `contacts.tsx` is left for `/crm/contacts`. |
 | Everything else | **Reuse slice-2 machinery verbatim** | Capability layer, two-layer RLS, approval card, parity/all-gated tests, honesty states, `id`-in-reads. |
@@ -89,7 +89,7 @@ grant delete on public.leads to authenticated;
 - `tags: [lead.channel]` (plus `lead.source` when present) — keeps the acquisition channel visible in the CRM.
 - `org_id: ctx.orgId`; `owner_user_id`: the promoting user when the surface has it (server action passes `viewer.userId`; omit otherwise).
 - Then `update leads set promoted_contact_id = <new contact id> where id = lead.id and org_id = ctx.orgId`.
-- **Idempotent:** if `lead.promoted_contact_id` is already set, return `{ ok:false, error:'Already promoted to a contact.' }` without inserting.
+- **Idempotent:** if `lead.promoted_contact_id` is set **and that `crm_contacts` row still exists** (looked up scoped to the org), return `{ ok:false, error:'Already promoted to a contact.' }` without inserting. If the stored contact was deleted in CRM, re-promote (create a fresh contact + re-stamp), so a lead is never permanently stuck as promoted.
 
 ---
 
