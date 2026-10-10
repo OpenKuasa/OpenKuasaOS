@@ -12,7 +12,10 @@ import {
 } from 'react';
 import {
   Check,
+  Copy,
+  ExternalLink,
   FileText,
+  Inbox,
   MoreHorizontal,
   Pause,
   Pencil,
@@ -20,7 +23,9 @@ import {
   Plus,
   Search,
   Trash2,
+  X,
 } from 'lucide-react';
+import Link from 'next/link';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoCard, BentoGrid } from '@/components/bento/bento';
@@ -66,7 +71,8 @@ import {
   parseFormFields,
   slugifyFormName,
 } from '@/lib/reach/forms';
-import type { Form, FormStatus } from '@/lib/reach/types';
+import { formatSubmissionTime, publicFormUrl } from '@/lib/reach/form-submissions';
+import type { Form, FormStatus, FormSubmission } from '@/lib/reach/types';
 
 /** What every lead form action answers with. */
 export type LeadFormResult = { ok: boolean; error?: string };
@@ -83,7 +89,19 @@ export type LeadFormActions = {
   remove: (input: { id: string }) => Promise<LeadFormResult>;
 };
 
+/**
+ * Reading and removing what visitors sent. Any member may read; `remove` is
+ * handed only to people who may change data.
+ */
+export type LeadFormSubmissionActions = {
+  list: (input: {
+    formId: string;
+  }) => Promise<{ ok: true; data: FormSubmission[] } | { ok: false; error: string }>;
+  remove?: (input: { id: string }) => Promise<LeadFormResult>;
+};
+
 const FALLBACK_ERROR = 'That change could not be saved. Please try again.';
+const CONTACTS_PATH = '/crm/contacts';
 /** Radix selects cannot hold an empty value, so "all" needs one of its own. */
 const ALL = '__all__';
 
@@ -101,12 +119,22 @@ function StatusDot({ status }: { status: FormStatus }) {
 export function LeadFormsView({
   forms,
   actions,
+  publicOrigin,
+  submissions,
   top,
   bottom,
 }: {
   forms: Form[];
   /** Absent for viewers and demo guests, who can only read. */
   actions?: LeadFormActions;
+  /**
+   * The address this site is reached at, such as https://example.com. With it,
+   * an active form shows its public link. Absent in the demo, where the forms
+   * are samples with no page behind them.
+   */
+  publicOrigin?: string;
+  /** Absent in the demo, which has counts but no stored submissions. */
+  submissions?: LeadFormSubmissionActions;
   /** KPI cards and charts shown above the table. */
   top?: ReactNode;
   /** Charts shown below the table. */
@@ -116,6 +144,7 @@ export function LeadFormsView({
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FormFilters>(NO_FORM_FILTERS);
 
   // One-click row changes (activate, pause) report here; the card and the
@@ -126,6 +155,7 @@ export function LeadFormsView({
 
   const editing = editingId ? (forms.find((f) => f.id === editingId) ?? null) : null;
   const formOpen = canEdit && (creating || editing != null);
+  const viewing = viewingId ? (forms.find((f) => f.id === viewingId) ?? null) : null;
 
   const categories = useMemo(() => formCategoriesInUse(forms), [forms]);
   const suggestions = useMemo(() => formCategorySuggestions(forms), [forms]);
@@ -142,6 +172,7 @@ export function LeadFormsView({
   const createRef = useRef<HTMLButtonElement>(null);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
   const menuButtons = useRef(new Map<string, HTMLButtonElement>());
+  const viewButtons = useRef(new Map<string, HTMLButtonElement>());
   // A row whose "⋯" button should take focus as soon as it is back on screen.
   const focusMenuWhenBack = useRef<string | null>(null);
   // A menu holds on to focus until it has closed, so what it opened is focused then.
@@ -214,6 +245,12 @@ export function LeadFormsView({
     else focusMenu(id);
   };
 
+  const closeSubmissions = () => {
+    const backTo = viewingId;
+    setViewingId(null);
+    if (backTo) viewButtons.current.get(backTo)?.focus();
+  };
+
   const changeStatus = (form: Form, status: FormStatus) => {
     // One change at a time; the menu button stays enabled so focus can return to it.
     if (!actions || rowPending) return;
@@ -249,6 +286,16 @@ export function LeadFormsView({
               editing ? actions.update({ id: editing.id, ...input }) : actions.create(input)
             }
             onClose={closeForm}
+          />
+        ) : null}
+
+        {viewing && submissions ? (
+          <SubmissionsCard
+            // Another form starts from its own list.
+            key={viewing.id}
+            form={viewing}
+            submissions={submissions}
+            onClose={closeSubmissions}
           />
         ) : null}
 
@@ -353,8 +400,19 @@ export function LeadFormsView({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                        /{f.slug}
+                      <TableCell>
+                        <p className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                          /{f.slug}
+                        </p>
+                        {publicOrigin ? (
+                          f.status === 'active' ? (
+                            <PublicLink form={f} url={publicFormUrl(publicOrigin, f.id)} />
+                          ) : (
+                            <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                              Activate this form to get its link.
+                            </p>
+                          )
+                        ) : null}
                       </TableCell>
                       <TableCell>
                         <span className="inline-flex items-center gap-2 whitespace-nowrap text-sm">
@@ -366,7 +424,25 @@ export function LeadFormsView({
                         {f.views_count.toLocaleString('en-US')}
                       </TableCell>
                       <TableCell className="whitespace-nowrap tabular-nums">
-                        {f.submissions_count.toLocaleString('en-US')}
+                        <span className="inline-flex items-center gap-2">
+                          {f.submissions_count.toLocaleString('en-US')}
+                          {submissions ? (
+                            <Button
+                              ref={(button) => {
+                                if (button) viewButtons.current.set(f.id, button);
+                                else viewButtons.current.delete(f.id);
+                              }}
+                              type="button"
+                              variant="outline"
+                              size="xs"
+                              aria-label={`View submissions for ${f.name}`}
+                              aria-expanded={viewingId === f.id}
+                              onClick={() => setViewingId(f.id)}
+                            >
+                              View
+                            </Button>
+                          ) : null}
+                        </span>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {formatFormDate(f.created_at)}
@@ -723,5 +799,268 @@ function DeleteFormRow({
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+/** An active form's public link, with a way to copy it and a way to open it. */
+function PublicLink({ form, url }: { form: Form; url: string }) {
+  const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const copy = async () => {
+    let result: 'yes' | 'failed' = 'yes';
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // No clipboard access (an insecure page, or permission refused).
+      result = 'failed';
+    }
+    setCopied(result);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setCopied(null), 2500);
+  };
+
+  return (
+    <div className="mt-1 flex max-w-xs flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="min-w-0 max-w-full select-all truncate font-mono text-xs" title={url}>
+        {url}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          aria-label={`Copy link to ${form.name}`}
+          onClick={copy}
+        >
+          {copied === 'yes' ? <Check /> : <Copy />}
+          {copied === 'yes' ? 'Copied' : 'Copy link'}
+        </Button>
+        <Button asChild variant="outline" size="xs">
+          {/* A plain link: opening it is a real visit, never fetched ahead. */}
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${form.name} in a new tab`}
+          >
+            <ExternalLink />
+            Open
+          </a>
+        </Button>
+      </span>
+      <span
+        role="status"
+        className={copied === 'failed' ? 'w-full text-xs whitespace-normal text-destructive' : 'sr-only'}
+      >
+        {copied === 'yes'
+          ? 'Link copied.'
+          : copied === 'failed'
+            ? 'The link could not be copied. Select it and copy it yourself.'
+            : ''}
+      </span>
+    </div>
+  );
+}
+
+type SubmissionsState =
+  | { status: 'loading' }
+  | { status: 'failed'; error: string }
+  | { status: 'ready'; rows: FormSubmission[] };
+
+/** The card above the table: what visitors sent through one form, newest first. */
+function SubmissionsCard({
+  form,
+  submissions,
+  onClose,
+}: {
+  form: Form;
+  submissions: LeadFormSubmissionActions;
+  onClose: () => void;
+}) {
+  const { list, remove } = submissions;
+  const [state, setState] = useState<SubmissionsState>({ status: 'loading' });
+  const [, startLoad] = useTransition();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pending, startDelete] = useTransition();
+  const [failure, setFailure] = useState<string | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const started = useRef(false);
+
+  const load = () =>
+    startLoad(async () => {
+      setState({ status: 'loading' });
+      const result = await list({ formId: form.id });
+      setState(
+        result.ok
+          ? { status: 'ready', rows: result.data }
+          : { status: 'failed', error: result.error },
+      );
+    });
+
+  // The card appears with the Close button focused, and reads its list then.
+  const mounted = (button: HTMLButtonElement | null) => {
+    closeRef.current = button;
+    if (!button || started.current) return;
+    started.current = true;
+    button.focus();
+    load();
+  };
+
+  const confirmDelete = (id: string) => {
+    if (!remove) return;
+    setFailure(null);
+    startDelete(async () => {
+      const result = await remove({ id });
+      if (!result.ok) {
+        setFailure(result.error ?? FALLBACK_ERROR);
+        return;
+      }
+      setDeletingId(null);
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'ready', rows: current.rows.filter((row) => row.id !== id) }
+          : current,
+      );
+      // Its buttons are gone with it.
+      closeRef.current?.focus();
+    });
+  };
+
+  const rows = state.status === 'ready' ? state.rows : [];
+
+  return (
+    <BentoCard
+      title="Submissions"
+      subtitle={`The latest from ${form.name}`}
+      icon={Inbox}
+      className="col-span-2 md:col-span-12"
+      action={
+        <Button ref={mounted} type="button" variant="outline" size="sm" onClick={onClose}>
+          <X className="size-4" />
+          Close
+        </Button>
+      }
+    >
+      <div aria-live="polite" aria-busy={state.status === 'loading'}>
+        {state.status === 'loading' ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Loading submissions…</p>
+        ) : state.status === 'failed' ? (
+          <div className="flex flex-col items-center gap-3 py-6">
+            <p role="alert" className="text-sm text-destructive">
+              {state.error}
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={load}>
+              Try again
+            </Button>
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No submissions to show for this form yet.
+          </p>
+        ) : (
+          <ul className="divide-y">
+            {rows.map((row) => (
+              <li key={row.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <p className="min-w-0 break-words font-medium">{row.name || 'No name'}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatSubmissionTime(row.created_at)}
+                  </p>
+                </div>
+                <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                  <div className="flex min-w-0 gap-2">
+                    <dt className="shrink-0 text-muted-foreground">Email</dt>
+                    <dd className="min-w-0 break-all">{row.email || '—'}</dd>
+                  </div>
+                  <div className="flex min-w-0 gap-2">
+                    <dt className="shrink-0 text-muted-foreground">Phone</dt>
+                    <dd className="min-w-0 break-all">{row.phone || '—'}</dd>
+                  </div>
+                  <div className="flex min-w-0 gap-2 sm:col-span-2">
+                    <dt className="shrink-0 text-muted-foreground">Message</dt>
+                    <dd className="min-w-0 whitespace-pre-wrap break-words">
+                      {row.message || '—'}
+                    </dd>
+                  </div>
+                </dl>
+                {remove && deletingId === row.id ? (
+                  <div
+                    role="group"
+                    aria-label={`Delete the submission from ${row.name || row.email}`}
+                    className="flex flex-wrap items-center gap-3 rounded-lg bg-destructive/5 px-3 py-2"
+                  >
+                    <p className="min-w-48 flex-1 text-sm">
+                      Delete this submission? The contact it made stays in Kasturi. This cannot be
+                      undone.
+                    </p>
+                    {failure && !pending ? (
+                      <p role="alert" className="text-sm text-destructive">
+                        {failure}
+                      </p>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => confirmDelete(row.id)}
+                      disabled={pending}
+                    >
+                      <Trash2 className="size-4" />
+                      {pending ? 'Deleting…' : 'Delete submission'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      // The question opens with the safe answer focused.
+                      autoFocus
+                      onClick={() => setDeletingId(null)}
+                      disabled={pending}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {row.contact_id ? (
+                      <Button asChild variant="outline" size="xs">
+                        <Link
+                          href={CONTACTS_PATH}
+                          aria-label={`Find ${row.name || row.email} in Kasturi contacts`}
+                        >
+                          <ExternalLink />
+                          Contact in Kasturi
+                        </Link>
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        Its contact has been deleted.
+                      </span>
+                    )}
+                    {remove ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="text-destructive hover:text-destructive"
+                        aria-label={`Delete the submission from ${row.name || row.email}`}
+                        onClick={() => {
+                          setFailure(null);
+                          setDeletingId(row.id);
+                        }}
+                      >
+                        <Trash2 />
+                        Delete
+                      </Button>
+                    ) : null}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </BentoCard>
   );
 }

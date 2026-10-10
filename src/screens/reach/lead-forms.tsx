@@ -1,3 +1,4 @@
+import { headers } from 'next/headers';
 import { BarChart3, Filter, PieChart, TrendingUp } from 'lucide-react';
 import { BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -9,10 +10,16 @@ import {
   type Series,
   type Slice,
 } from '@/components/charts';
-import { LeadFormsView, type LeadFormActions } from '@/components/reach/lead-forms-view';
+import {
+  LeadFormsView,
+  type LeadFormActions,
+  type LeadFormSubmissionActions,
+} from '@/components/reach/lead-forms-view';
 import {
   createFormAction,
   deleteFormAction,
+  deleteFormSubmissionAction,
+  listFormSubmissionsAction,
   setFormStatusAction,
   updateFormAction,
 } from '@/app/(app)/reach/actions';
@@ -22,14 +29,23 @@ import { createSeedReachData } from '@/lib/reach/seed';
 import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
 import { can } from '@/lib/auth/permissions';
 import { formKpis } from '@/lib/reach/forms';
+import {
+  type SubmissionsTrendPoint,
+  originFromHeaders,
+  submissionsToday,
+  submissionsTrend,
+  submissionsTrendStart,
+} from '@/lib/reach/form-submissions';
 import type { Form, ReachData } from '@/lib/reach/types';
 
 /*
  * ---- demo-only values: no live source yet (shown only to demo viewers) ----
  *
- * These need per-submission data (when each submission came in, from where, and
- * how far a visitor got), which does not exist until the public form page and
- * form_submissions do. A real workspace is shown none of them.
+ * The demo workspace's forms are samples with no public page behind them, so
+ * it has counts but no submissions to count from. A real workspace gets "New
+ * today" and "Submissions over time" from its own submissions (below), and is
+ * not shown the rest: a form start is not recorded, and a submission does not
+ * say which channel it came from.
  */
 
 /* KPI sparkline trends ------------------------------------------------ */
@@ -100,6 +116,26 @@ function topForms(forms: Form[]) {
     .map((f) => ({ label: f.name, contacts: f.submissions_count }));
 }
 
+/** What a real workspace's own submissions add to the screen. */
+type SubmissionFigures = { today: number; trend: SubmissionsTrendPoint[] };
+
+/**
+ * "New today" and the 14-day trend, counted from when each submission came in.
+ * Null when they cannot be read (a provider with no submissions, or a database
+ * that does not have the table yet): the screen then shows what it showed
+ * before, rather than failing.
+ */
+async function loadSubmissionFigures(data: ReachData, now: Date): Promise<SubmissionFigures | null> {
+  if (!data.listFormSubmissionTimes) return null;
+  try {
+    const times = await data.listFormSubmissionTimes(submissionsTrendStart(now));
+    return { today: submissionsToday(times, now), trend: submissionsTrend(times, now) };
+  } catch (error) {
+    console.error('[lead-forms] reading submissions failed:', error);
+    return null;
+  }
+}
+
 /**
  * The workspace's reach data. With no Supabase project configured there is no
  * client to build (building one throws), so the sample forms are read directly.
@@ -117,7 +153,11 @@ async function loadReachData(): Promise<ReachData> {
  * provider, and both write through the reach capabilities.
  */
 export default async function LeadFormsScreen() {
-  const [data, viewer] = await Promise.all([loadReachData(), getViewer()]);
+  const [data, viewer, requestHeaders] = await Promise.all([
+    loadReachData(),
+    getViewer(),
+    headers(),
+  ]);
   const forms: Form[] = await data.listForms();
   const kpis = formKpis(forms);
   const isDemo = viewer.isDemo;
@@ -130,6 +170,18 @@ export default async function LeadFormsScreen() {
         remove: deleteFormAction,
       }
     : undefined;
+
+  // A real workspace's forms have public pages; the demo's are samples.
+  const figures = isDemo ? null : await loadSubmissionFigures(data, new Date());
+  const publicOrigin = isDemo
+    ? undefined
+    : (originFromHeaders((name) => requestHeaders.get(name)) ?? undefined);
+  const submissions: LeadFormSubmissionActions | undefined = isDemo
+    ? undefined
+    : {
+        list: listFormSubmissionsAction,
+        remove: canEdit ? deleteFormSubmissionAction : undefined,
+      };
 
   const totalForms = kpis.total_forms.toLocaleString('en-US');
   const totalLeads = kpis.total_leads.toLocaleString('en-US');
@@ -196,6 +248,31 @@ export default async function LeadFormsScreen() {
         <FunnelFlow data={FUNNEL} height={240} />
       </BentoCard>
     </>
+  ) : figures ? (
+    <>
+      <BentoCard tone="primary" className="col-span-1 md:col-span-3">
+        <BentoStat label="Total forms" value={totalForms} onPrimary />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-3">
+        <BentoStat label="Total leads" value={totalLeads} />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-3">
+        <BentoStat label="Conversion" value={kpis.conversion} />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-3">
+        <BentoStat label="New today" value={figures.today.toLocaleString('en-US')} />
+      </BentoCard>
+
+      {/* No funnel beside it: a form start is not recorded. */}
+      <BentoCard
+        title="Submissions over time"
+        subtitle="Last 14 days"
+        icon={TrendingUp}
+        className="col-span-2 md:col-span-12"
+      >
+        <AreaTrend data={figures.trend} series={SUBMISSIONS_SERIES} height={240} />
+      </BentoCard>
+    </>
   ) : (
     <>
       <BentoCard tone="primary" className="col-span-2 md:col-span-4">
@@ -239,5 +316,14 @@ export default async function LeadFormsScreen() {
     </BentoCard>
   ) : null;
 
-  return <LeadFormsView forms={forms} actions={actions} top={top} bottom={bottom} />;
+  return (
+    <LeadFormsView
+      forms={forms}
+      actions={actions}
+      publicOrigin={publicOrigin}
+      submissions={submissions}
+      top={top}
+      bottom={bottom}
+    />
+  );
 }
