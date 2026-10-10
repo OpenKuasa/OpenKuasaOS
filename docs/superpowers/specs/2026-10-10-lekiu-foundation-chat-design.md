@@ -54,7 +54,7 @@ of the fictional company, read-only.
 
 ### 2.1 In scope
 
-1. **23 HR tables** with two-tier RLS (§4), one migration file per area.
+1. **24 HR tables** with two-tier RLS (§4), one migration file per area.
 2. **The `PeopleData` seam** (`src/lib/people/`): types, seed, Supabase provider, per-area
    derivation modules.
 3. **All 27 Lekiu screens on the seam**, with empty states.
@@ -500,7 +500,7 @@ openkuasa.com.
 
 | Risk | Handling |
 |---|---|
-| The slice is large (23 tables, 27 screens) | One migration per area; screens converted area by area in the plan, each with its tests |
+| The slice is large (24 tables, 27 screens) | One migration per area; screens converted area by area in the plan, each with its tests |
 | An RLS mistake exposes pay | The two-session check in §8 is a required step before merge |
 | The `ensure_rls` event trigger on the live database | Checked: it enables RLS on new tables and adds no policy (the reach tables' `mfa_required` was created by their own migrations), so these migrations create `mfa_required` the same way |
 | Demo guests reading "personal" tables | Covered by `is_demo_org`; the RLS check includes a demo guest reading the demo workspace and nothing else |
