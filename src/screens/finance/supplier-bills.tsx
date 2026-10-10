@@ -1,325 +1,119 @@
-import { Plus, Search, ChartColumn, PieChart, FileText } from 'lucide-react';
-import { ScreenContainer } from '@/components/screen/screen-container';
-import { PageHeader } from '@/components/screen/page-header';
-import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
-  BarGroup,
-  DonutStat,
-  Sparkline,
-  type Series,
-} from '@/components/charts';
-import { LiveDot } from '@/components/ui/live-dot';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+  deleteBillAction,
+  getBillAction,
+  postBillAction,
+  recordPaymentOutAction,
+  saveAndPostBillAction,
+  saveBillAction,
+  voidBillAction,
+} from '@/app/(app)/finance/actions';
+import { type BillActions, BillsView } from '@/components/finance/bills-view';
+import { can } from '@/lib/auth/permissions';
+import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
+import { type BillDisplayStatus, type BillListRow, listBills } from '@/lib/finance/bills';
+import { listContacts } from '@/lib/finance/contacts';
+import { type PaymentOutRow, listAccounts, listPaymentsOut } from '@/lib/finance/money';
+import { listProducts } from '@/lib/finance/products';
+import { billsView, todayUtc } from '@/lib/finance/purchase-views';
+import { createClient } from '@/lib/supabase/server';
 
-import {
-  loadBillsView,
-  type Bill,
-  type BillStatus,
-  type BillsView,
-} from '@/lib/finance/purchases';
+/* ---- sample data (Rimba Ventures Sdn Bhd), shown when there is no database ---- */
 
-/* ---- sample data (Rimba Ventures Sdn Bhd) -------------------------- */
-/* Shown when Supabase is not configured or nobody is signed in. */
+/** The sample is a fixed month, so its figures do not drain away as the calendar moves on. */
+const SAMPLE_TODAY = '2026-10-10';
 
-const COLUMNS = ['No.', 'Date', 'Supplier', 'Due', 'Total', 'Balance', 'Status'];
+const sample = (
+  n: number,
+  bill_date: string,
+  supplier_name: string,
+  due_date: string,
+  total: number,
+  display_status: BillDisplayStatus,
+): BillListRow => ({
+  id: `sample-${n}`,
+  bill_no: display_status === 'draft' ? null : `BILL-${String(n).padStart(4, '0')}`,
+  supplier_id: supplier_name,
+  supplier_name,
+  bill_date,
+  due_date,
+  total,
+  paid: display_status === 'paid' ? total : 0,
+  balance: display_status === 'paid' ? 0 : total,
+  display_status,
+});
 
-const BILLS: Bill[] = [
-  {
-    id: 'BILL-0232',
-    billNo: 'BILL-0232',
-    date: '08 Oct 2026',
-    supplier: 'Nusantara Logistics',
-    due: '13 Oct 2026',
-    total: 'RM 2,600.00',
-    balance: 'RM 2,600.00',
-    status: 'Pending',
-  },
-  {
-    id: 'BILL-0231',
-    billNo: 'BILL-0231',
-    date: '05 Oct 2026',
-    supplier: 'Lim Hardware Sdn Bhd',
-    due: '04 Nov 2026',
-    total: 'RM 3,200.00',
-    balance: 'RM 3,200.00',
-    status: 'Pending',
-  },
-  {
-    id: 'BILL-0230',
-    billNo: 'BILL-0230',
-    date: '30 Sep 2026',
-    supplier: 'Printhub Enterprise',
-    due: '30 Oct 2026',
-    total: 'RM 1,450.00',
-    balance: 'RM 0.00',
-    status: 'Paid',
-  },
-  {
-    id: 'BILL-0229',
-    billNo: 'BILL-0229',
-    date: '22 Sep 2026',
-    supplier: 'Suria Utilities Sdn Bhd',
-    due: '06 Oct 2026',
-    total: 'RM 1,800.00',
-    balance: 'RM 1,800.00',
-    status: 'Overdue',
-  },
-  {
-    id: 'BILL-0228',
-    billNo: 'BILL-0228',
-    date: '18 Sep 2026',
-    supplier: 'Syarikat Maju Jaya',
-    due: '18 Oct 2026',
-    total: 'RM 4,300.00',
-    balance: 'RM 4,300.00',
-    status: 'Pending',
-  },
-  {
-    id: 'BILL-0227',
-    billNo: 'BILL-0227',
-    date: '10 Sep 2026',
-    supplier: 'Unifi Business (TM)',
-    due: '10 Oct 2026',
-    total: 'RM 299.00',
-    balance: 'RM 0.00',
-    status: 'Paid',
-  },
-  {
-    id: 'BILL-0226',
-    billNo: 'BILL-0226',
-    date: '07 Oct 2026',
-    supplier: 'Kedai Kertas Ah Seng',
-    due: '06 Nov 2026',
-    total: 'RM 780.00',
-    balance: 'RM 780.00',
-    status: 'Draft',
-  },
+const SAMPLE_BILLS: BillListRow[] = [
+  sample(232, '2026-10-08', 'Nusantara Logistics', '2026-10-13', 2600, 'pending'),
+  sample(233, '2026-10-07', 'Kedai Kertas Ah Seng', '2026-11-06', 780, 'draft'),
+  sample(231, '2026-10-05', 'Lim Hardware Sdn Bhd', '2026-11-04', 3200, 'pending'),
+  sample(230, '2026-09-30', 'Printhub Enterprise', '2026-10-30', 1450, 'paid'),
+  sample(229, '2026-09-22', 'Suria Utilities Sdn Bhd', '2026-10-06', 1800, 'overdue'),
+  sample(228, '2026-09-18', 'Syarikat Maju Jaya', '2026-10-18', 4300, 'pending'),
+  sample(227, '2026-09-10', 'Unifi Business (TM)', '2026-10-10', 299, 'paid'),
 ];
 
-const SAMPLE: BillsView = {
-  stats: [
-    { label: 'Total payable', value: 'RM 12.7k', delta: '+RM 2.6k', deltaTone: 'up', spark: [9.8, 10.5, 11.2, 10.9, 11.8, 12.0, 12.4, 12.7] },
-    { label: 'Due this week', value: 'RM 2,600', delta: '1 bill', deltaTone: 'flat', spark: [1.2, 2.0, 1.6, 2.8, 2.2, 2.6, 2.4, 2.6] },
-    { label: 'Overdue', value: 'RM 1,800', delta: '1 bill', deltaTone: 'down', spark: [0.5, 0.8, 1.1, 0.9, 1.3, 1.5, 1.7, 1.8] },
-    { label: 'Paid (MTD)', value: 'RM 12.1k', delta: '+9%', deltaTone: 'up', spark: [8.0, 9.0, 10.0, 11.0, 11.5, 12.0, 12.1, 12.1] },
-  ],
-  /** Outstanding balance by supplier (RM). */
-  bySupplier: [
-    { label: 'Maju Jaya', value: 4300 },
-    { label: 'Lim Hardware', value: 3200 },
-    { label: 'Nusantara', value: 2600 },
-    { label: 'TNB', value: 1800 },
-    { label: 'Ah Seng', value: 780 },
-  ],
-  /** Bills by status — sums to 7. */
-  byStatus: [
-    { key: 'pending', label: 'Pending', value: 3, color: 'var(--chart-1)' },
-    { key: 'paid', label: 'Paid', value: 2, color: 'var(--chart-2)' },
-    { key: 'overdue', label: 'Overdue', value: 1, color: 'var(--chart-4)' },
-    { key: 'draft', label: 'Draft', value: 1, color: 'var(--chart-3)' },
-  ],
-  bills: BILLS,
-  billCount: 231,
-};
+const samplePayment = (n: number, txn_date: string, bill: BillListRow): PaymentOutRow => ({
+  allocation_id: `sample-payment-${n}`,
+  transaction_id: `sample-payment-${n}`,
+  number: `PV-${String(n).padStart(4, '0')}`,
+  txn_date,
+  method: 'bank_transfer',
+  amount: bill.total,
+  transaction_amount: bill.total,
+  status: 'posted',
+  reference: null,
+  account_id: 'bank',
+  account_name: 'Main Bank',
+  bill_id: bill.id,
+  bill_no: bill.bill_no,
+  supplier_name: bill.supplier_name,
+});
 
-const STATUS_STYLES: Record<BillStatus, string> = {
-  Paid: 'bg-emerald-500/15 text-emerald-600',
-  Pending: 'bg-amber-500/15 text-amber-600',
-  Overdue: 'bg-red-500/15 text-red-600',
-  Draft: 'bg-muted text-muted-foreground',
-};
-
-function StatusPill({ status }: { status: BillStatus }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
-        STATUS_STYLES[status],
-      )}
-    >
-      {status}
-    </span>
-  );
-}
-
-const SPARK_COLORS = ['var(--primary-foreground)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-2)'];
-
-const SUPPLIER_SERIES: Series[] = [
-  { key: 'value', label: 'Outstanding (RM)', color: 'var(--chart-1)' },
+const SAMPLE_PAYMENTS: PaymentOutRow[] = [
+  samplePayment(118, '2026-10-06', SAMPLE_BILLS[3]),
+  samplePayment(117, '2026-10-04', SAMPLE_BILLS[6]),
 ];
 
-/* ------------------------------------------------------------------ */
+const ACTIONS: BillActions = {
+  save: saveBillAction,
+  saveAndPost: saveAndPostBillAction,
+  post: postBillAction,
+  voidBill: voidBillAction,
+  remove: deleteBillAction,
+  get: getBillAction,
+  recordPayment: recordPaymentOutAction,
+};
 
 export default async function SupplierBillsScreen() {
-  const view = (await loadBillsView()) ?? SAMPLE;
-  const billTotal = view.byStatus.reduce((n, s) => n + s.value, 0);
-
+  if (!hasSupabaseEnv()) {
+    return <BillsView rows={SAMPLE_BILLS} view={billsView(SAMPLE_BILLS, SAMPLE_PAYMENTS, SAMPLE_TODAY)} />;
+  }
+  const viewer = await getViewer();
+  const ctx = { client: await createClient(), orgId: viewer.orgId };
+  const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
+  // The forms offer suppliers, products and accounts; a viewer has no form, so none of them is read for them.
+  const [rows, payments, contacts, products, accounts] = await Promise.all([
+    listBills(ctx),
+    listPaymentsOut(ctx),
+    canEdit ? listContacts(ctx) : [],
+    canEdit ? listProducts(ctx) : [],
+    canEdit ? listAccounts(ctx) : [],
+  ]);
   return (
-    <ScreenContainer>
-      <PageHeader
-        title="Supplier Bills"
-        subtitle="Bills payable to your suppliers, Saudara."
-        actions={
-          <Button size="sm">
-            <Plus className="size-4" />
-            New Bill
-          </Button>
-        }
-      />
-
-      <BentoGrid>
-        {/* KPI row */}
-        {view.stats.map((s, i) => (
-          <BentoCard
-            key={s.label}
-            tone={i === 0 ? 'primary' : 'default'}
-            className="col-span-1 md:col-span-3"
-          >
-            <BentoStat
-              label={s.label}
-              value={s.value}
-              delta={s.delta}
-              deltaTone={s.deltaTone}
-              onPrimary={i === 0}
-              chart={
-                s.spark && <Sparkline data={s.spark} color={SPARK_COLORS[i]} height={36} />
-              }
-            />
-          </BentoCard>
-        ))}
-
-        {/* Payable by supplier + status mix */}
-        <BentoCard
-          title="Payable by supplier"
-          subtitle="Outstanding balance"
-          icon={ChartColumn}
-          className="col-span-2 md:col-span-8"
-        >
-          <BarGroup
-            data={view.bySupplier}
-            series={SUPPLIER_SERIES}
-            horizontal
-            height={220}
-          />
-        </BentoCard>
-        <BentoCard
-          title="Bills by status"
-          subtitle="Current book"
-          icon={PieChart}
-          className="col-span-2 md:col-span-4"
-        >
-          <DonutStat
-            data={view.byStatus}
-            height={220}
-            centerValue={String(billTotal)}
-            centerLabel="bills"
-          />
-        </BentoCard>
-
-        {/* Bills table */}
-        <BentoCard
-          title="Recent bills"
-          subtitle="Latest activity from suppliers"
-          icon={FileText}
-          flush
-          action={
-            <Button variant="outline" size="sm">
-              View all
-            </Button>
-          }
-          className="col-span-2 md:col-span-12"
-        >
-          <div className="flex flex-wrap items-center gap-2 px-4">
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search bills or suppliers…" className="w-full pl-9" />
-            </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="mt-3 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  {COLUMNS.map((c) => (
-                    <TableHead key={c} className="whitespace-nowrap">
-                      {c}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {view.bills.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={COLUMNS.length}
-                      className="py-8 text-center text-muted-foreground"
-                    >
-                      No supplier bills yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {view.bills.map((b) => (
-                  <TableRow key={b.id}>
-                    <TableCell className="font-medium">{b.billNo}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {b.date}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">{b.supplier}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {b.due}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {b.total}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {b.balance}
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <LiveDot active={b.status === 'Paid'} />
-                        <StatusPill status={b.status} />
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              Showing {view.bills.length} of {view.billCount} bills
-            </span>
-          </div>
-        </BentoCard>
-      </BentoGrid>
-    </ScreenContainer>
+    <BillsView
+      rows={rows}
+      view={billsView(rows, payments, todayUtc())}
+      writer={
+        canEdit
+          ? {
+              actions: ACTIONS,
+              suppliers: contacts.filter((c) => c.is_supplier && c.active),
+              products: products.filter((p) => p.active),
+              accounts,
+              payments,
+            }
+          : undefined
+      }
+    />
   );
 }
