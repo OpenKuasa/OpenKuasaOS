@@ -244,7 +244,10 @@ export function mapCrmContact(row: CrmContactRow, ownerName: string | null = nul
  * visitor). A name that cannot be read (no profile, or the lookup fails) is
  * shown as blank and never fails the page.
  */
-async function ownerNames(client: SupabaseClient, rows: CrmContactRow[]) {
+export async function ownerNames(
+  client: SupabaseClient,
+  rows: { owner_user_id: string | null }[],
+) {
   const names = new Map<string, string>();
   const ids = [
     ...new Set(rows.map((r) => r.owner_user_id).filter((id): id is string => !!id)),

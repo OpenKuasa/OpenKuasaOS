@@ -1,95 +1,228 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, test, vi } from 'vitest';
-import { listCrmDeals } from '@/lib/crm/deals';
+import { contactLabel, listCrmDealContacts, listCrmDeals, mapCrmDeal } from '@/lib/crm/deals';
 
-function createQuery(rows: unknown[], error: unknown = null) {
+type Result = { data: unknown[] | null; count?: number | null; error: unknown };
+
+function createClient(rows: Result, profiles: Result = { data: [], error: null }) {
   const query = {
     select: vi.fn(() => query),
     eq: vi.fn(() => query),
     order: vi.fn(() => query),
-    limit: vi.fn(async () => ({ data: rows, error })),
+    limit: vi.fn(async () => rows),
   };
-  return query;
+  const profilesQuery = {
+    select: vi.fn(() => profilesQuery),
+    in: vi.fn(async () => profiles),
+  };
+  const from = vi.fn((table: string) => (table === 'profiles' ? profilesQuery : query));
+  return { client: { from } as unknown as SupabaseClient, from, query, profilesQuery };
 }
 
+const ROW = {
+  id: 'deal-1',
+  title: 'POS rollout',
+  value_cents: 1800000,
+  tag: 'Inbound',
+  status: 'open',
+  contact_id: 'contact-1',
+  pipeline_id: 'pipeline-1',
+  stage_id: 'stage-1',
+  expected_close_date: '2026-10-20',
+  won_at: null,
+  lost_at: null,
+  lost_reason: null,
+  owner_user_id: 'user-1',
+  last_activity_at: '2026-10-09T10:00:00.000Z',
+  created_at: '2026-10-01T02:00:00.000Z',
+  crm_contacts: { company: 'Seri Mutiara Enterprise', first_name: 'Aisyah', last_name: 'Rahim' },
+};
+
 describe('listCrmDeals', () => {
-  test('reads org deals and groups them by stage for the board', async () => {
-    const rows = [
+  test('reads the org deals with their contact and owner name', async () => {
+    const { client, from, query, profilesQuery } = createClient(
+      { data: [ROW], count: 12, error: null },
       {
-        id: 'deal-1',
-        title: 'POS rollout',
-        value_cents: 1800000,
-        currency: 'MYR',
-        tag: 'Inbound',
-        status: 'open',
-        last_activity_at: '2026-10-09T10:00:00.000Z',
-        owner_user_id: null,
-        crm_contacts: { company: 'Seri Mutiara Enterprise', first_name: 'Aisyah', last_name: 'Rahim' },
-        crm_pipeline_stages: { id: 'stage-1', name: 'Lead', position: 1 },
+        data: [{ user_id: 'user-1', full_name: 'Faiz Hakim', email: 'faiz@example.com' }],
+        error: null,
       },
-      {
-        id: 'deal-2',
-        title: 'Annual CRM retainer',
-        value_cents: 3600000,
-        currency: 'MYR',
-        tag: null,
-        status: 'open',
-        last_activity_at: null,
-        owner_user_id: null,
-        crm_contacts: { company: 'Delima Properties', first_name: 'Nurul', last_name: 'Huda' },
-        crm_pipeline_stages: { id: 'stage-2', name: 'Negotiation', position: 2 },
-      },
-    ];
-    const query = createQuery(rows);
-    const client = { from: vi.fn(() => query) };
+    );
 
-    const result = await listCrmDeals(client as never, 'org-1');
+    const result = await listCrmDeals(client, 'org-1', 50);
 
-    expect(client.from).toHaveBeenCalledWith('crm_deals');
+    expect(from).toHaveBeenCalledWith('crm_deals');
+    // Columns of crm_deals in the Kasturi schema migration, plus the contact.
+    expect(query.select).toHaveBeenCalledWith(
+      'id,title,value_cents,tag,status,contact_id,pipeline_id,stage_id,expected_close_date,won_at,lost_at,lost_reason,owner_user_id,last_activity_at,created_at,crm_contacts(company,first_name,last_name)',
+      { count: 'exact' },
+    );
     expect(query.eq).toHaveBeenCalledWith('org_id', 'org-1');
     expect(query.order).toHaveBeenCalledWith('created_at', { ascending: false });
-    expect(result.totalDeals).toBe(2);
-    expect(result.pipelineValue).toBe(54000);
-    expect(result.stages).toEqual([
-      {
-        name: 'Lead',
-        dot: 'bg-primary',
-        deals: [
-          {
-            id: 'deal-1',
-            company: 'Seri Mutiara Enterprise',
-            summary: 'POS rollout',
-            value: 18000,
-            owner: 'Unassigned',
-            lastTouch: '9 Oct 2026',
+    expect(query.limit).toHaveBeenCalledWith(50);
+    expect(profilesQuery.in).toHaveBeenCalledWith('user_id', ['user-1']);
+    expect(result).toEqual({
+      total: 12,
+      deals: [
+        {
+          id: 'deal-1',
+          title: 'POS rollout',
+          company: 'Seri Mutiara Enterprise',
+          contactName: 'Aisyah Rahim',
+          value: 18000,
+          owner: 'Faiz Hakim',
+          tag: 'Inbound',
+          status: 'open',
+          pipelineId: 'pipeline-1',
+          stageId: 'stage-1',
+          lastTouch: '9 Oct 2026',
+          expectedClose: '2026-10-20',
+          createdAt: '2026-10-01T02:00:00.000Z',
+          wonAt: null,
+          lostAt: null,
+          lostReason: null,
+          form: {
+            title: 'POS rollout',
+            contactId: 'contact-1',
+            contactLabel: 'Seri Mutiara Enterprise — Aisyah Rahim',
+            stageId: 'stage-1',
+            value: '18000',
             tag: 'Inbound',
+            expectedCloseDate: '2026-10-20',
           },
-        ],
-      },
+        },
+      ],
+    });
+  });
+
+  test('loads 500 deals unless told otherwise', async () => {
+    const { client, query } = createClient({ data: [], count: 0, error: null });
+
+    await listCrmDeals(client, 'org-1');
+
+    expect(query.limit).toHaveBeenCalledWith(500);
+  });
+
+  test('returns no deals for an empty workspace without looking up owners', async () => {
+    const { client, from } = createClient({ data: [], count: 0, error: null });
+
+    await expect(listCrmDeals(client, 'org-2')).resolves.toEqual({ deals: [], total: 0 });
+    expect(from).not.toHaveBeenCalledWith('profiles');
+  });
+
+  test('shows a deal nobody owns, or whose owner cannot be read, as Unassigned', async () => {
+    const { client } = createClient(
       {
-        name: 'Negotiation',
-        dot: 'bg-amber-500',
-        deals: [
-          {
-            id: 'deal-2',
-            company: 'Delima Properties',
-            summary: 'Annual CRM retainer',
-            value: 36000,
-            owner: 'Unassigned',
-            lastTouch: '—',
-          },
+        data: [
+          { ...ROW, id: 'deal-1', owner_user_id: null },
+          { ...ROW, id: 'deal-2', owner_user_id: 'user-9' },
         ],
+        count: 2,
+        error: null,
       },
+      { data: null, error: new Error('profiles unavailable') },
+    );
+
+    const { deals } = await listCrmDeals(client, 'org-1');
+
+    expect(deals.map((deal) => deal.owner)).toEqual(['Unassigned', 'Unassigned']);
+  });
+
+  test('falls back to the number of rows when the count is missing', async () => {
+    const { client } = createClient({ data: [{ ...ROW, owner_user_id: null }], error: null });
+
+    await expect(listCrmDeals(client, 'org-1')).resolves.toMatchObject({ total: 1 });
+  });
+
+  test('rethrows a database error', async () => {
+    const failure = new Error('42P01');
+    const { client } = createClient({ data: null, error: failure });
+
+    await expect(listCrmDeals(client, 'org-1')).rejects.toBe(failure);
+  });
+});
+
+describe('mapCrmDeal', () => {
+  test('fills in for empty columns and a missing contact', () => {
+    const deal = mapCrmDeal({
+      ...ROW,
+      title: null,
+      value_cents: null,
+      tag: '  ',
+      status: null,
+      expected_close_date: null,
+      last_activity_at: null,
+      crm_contacts: null,
+    });
+
+    expect(deal.title).toBe('Untitled deal');
+    expect(deal.company).toBe('Unknown contact');
+    expect(deal.contactName).toBe('');
+    expect(deal.value).toBe(0);
+    expect(deal.owner).toBe('Unassigned');
+    expect(deal).not.toHaveProperty('tag');
+    expect(deal.status).toBe('open');
+    expect(deal.lastTouch).toBe('—');
+    expect(deal.form).toMatchObject({ title: '', value: '0', tag: '  ', expectedCloseDate: '' });
+  });
+
+  test('heads the card with the name when the contact has no company', () => {
+    const deal = mapCrmDeal({
+      ...ROW,
+      crm_contacts: { company: null, first_name: 'Nurul', last_name: 'Huda' },
+    });
+
+    expect(deal.company).toBe('Nurul Huda');
+    expect(deal.contactName).toBe('Nurul Huda');
+    expect(deal.form?.contactLabel).toBe('Nurul Huda');
+  });
+
+  test('keeps sen in the value and in what the edit form is prefilled with', () => {
+    const deal = mapCrmDeal({ ...ROW, value_cents: 1800050, status: 'won' });
+
+    expect(deal.value).toBe(18000.5);
+    expect(deal.form?.value).toBe('18000.50');
+    expect(deal.status).toBe('won');
+  });
+});
+
+describe('contactLabel', () => {
+  test('joins company and name, or uses whichever there is', () => {
+    expect(contactLabel('Rimba Ventures', 'Aisyah', 'Rahim')).toBe('Rimba Ventures — Aisyah Rahim');
+    expect(contactLabel(null, 'Aisyah', null)).toBe('Aisyah');
+    expect(contactLabel(' ', 'Aisyah', 'Rahim')).toBe('Aisyah Rahim');
+    expect(contactLabel('Rimba Ventures', null, null)).toBe('Rimba Ventures');
+    expect(contactLabel(null, null, null)).toBe('Unnamed contact');
+  });
+});
+
+describe('listCrmDealContacts', () => {
+  test('lists the org contacts as labelled choices, A to Z', async () => {
+    const { client, from, query } = createClient({
+      data: [
+        { id: 'c-1', company: 'Teratak Kopi', first_name: 'Faiz', last_name: 'Hakim' },
+        { id: 'c-2', company: null, first_name: 'aisyah', last_name: null },
+        { id: 'c-3', company: 'Bumi Hijau', first_name: 'Ahmad', last_name: 'Zaki' },
+      ],
+      error: null,
+    });
+
+    const choices = await listCrmDealContacts(client, 'org-1');
+
+    expect(from).toHaveBeenCalledWith('crm_contacts');
+    expect(query.select).toHaveBeenCalledWith('id,company,first_name,last_name');
+    expect(query.eq).toHaveBeenCalledWith('org_id', 'org-1');
+    expect(query.limit).toHaveBeenCalledWith(1000);
+    expect(choices).toEqual([
+      { id: 'c-2', label: 'aisyah' },
+      { id: 'c-3', label: 'Bumi Hijau — Ahmad Zaki' },
+      { id: 'c-1', label: 'Teratak Kopi — Faiz Hakim' },
     ]);
   });
 
-  test('returns an empty board when no deals exist', async () => {
-    const query = createQuery([]);
-    const client = { from: vi.fn(() => query) };
+  test('rethrows a database error', async () => {
+    const failure = new Error('42501');
+    const { client } = createClient({ data: null, error: failure });
 
-    await expect(listCrmDeals(client as never, 'org-2')).resolves.toEqual({
-      stages: [],
-      totalDeals: 0,
-      pipelineValue: 0,
-    });
+    await expect(listCrmDealContacts(client, 'org-1')).rejects.toBe(failure);
   });
 });

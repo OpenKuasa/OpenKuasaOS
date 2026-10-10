@@ -19,3 +19,15 @@ export type CrmContactActions = {
   /** Takes `payload`: JSON of `{ table, mapping }` from the import card. */
   importContacts: CrmFormAction;
 };
+
+/** The writes the Deals page offers. Absent for people who can only read. */
+export type CrmDealActions = {
+  /** Creates a deal, or updates one when the form carries `dealId`. */
+  save: CrmFormAction;
+  /** Takes `dealId` and `stageId`. */
+  move: CrmFormAction;
+  /** Takes `dealId` and an optional `lostReason`. */
+  markLost: CrmFormAction;
+  reopen: CrmFormAction;
+  remove: CrmFormAction;
+};
