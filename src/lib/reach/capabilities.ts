@@ -6,7 +6,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import type { Campaign } from './types';
+import type { Campaign, Creative } from './types';
 
 export type ReachWriteContext = { client: SupabaseClient; orgId: string };
 export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -90,5 +90,82 @@ export async function deleteCampaign(
     .maybeSingle();
   if (error) return { ok: false, error: WRITE_FAILED };
   if (!data) return { ok: false, error: 'That campaign was not found.' };
+  return { ok: true, data: { id: data.id } };
+}
+
+const creativeType = z.enum(['image', 'video', 'copy']);
+const creativeStatus = z.enum(['draft', 'active', 'archived']);
+
+export const createCreativeInput = z.object({
+  name: z.string().trim().min(1).max(120),
+  type: creativeType,
+  channel,
+  status: creativeStatus.default('draft'),
+  campaign_id: z.string().uuid().nullable().default(null),
+  body: z.string().trim().max(2000).nullable().default(null),
+  ctr: z.number().min(0).max(100).nullable().default(null),
+});
+export const updateCreativeInput = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(120).optional(),
+  type: creativeType.optional(),
+  channel: channel.optional(),
+  status: creativeStatus.optional(),
+  campaign_id: z.string().uuid().nullable().optional(),
+  body: z.string().trim().max(2000).nullable().optional(),
+  ctr: z.number().min(0).max(100).nullable().optional(),
+});
+export const deleteCreativeInput = z.object({ id: z.string().uuid() });
+
+const CREATIVE_COLS = 'id,campaign_id,name,type,channel,status,body,ctr,created_at';
+
+export async function createCreative(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof createCreativeInput>,
+): Promise<CapResult<Creative>> {
+  const values = createCreativeInput.parse(input);
+  const { data, error } = await ctx.client
+    .from('creatives')
+    .insert({ ...values, org_id: ctx.orgId })
+    .select(CREATIVE_COLS)
+    .single();
+  if (error || !data) return { ok: false, error: WRITE_FAILED };
+  return { ok: true, data: data as Creative };
+}
+
+export async function updateCreative(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof updateCreativeInput>,
+): Promise<CapResult<Creative>> {
+  const { id, ...fields } = updateCreativeInput.parse(input);
+  if (Object.values(fields).every((v) => v === undefined)) {
+    return { ok: false, error: 'Nothing to update.' };
+  }
+  const { data, error } = await ctx.client
+    .from('creatives')
+    .update(fields)
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select(CREATIVE_COLS)
+    .maybeSingle();
+  if (error) return { ok: false, error: WRITE_FAILED };
+  if (!data) return { ok: false, error: 'That creative was not found.' };
+  return { ok: true, data: data as Creative };
+}
+
+export async function deleteCreative(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof deleteCreativeInput>,
+): Promise<CapResult<{ id: string }>> {
+  const { id } = deleteCreativeInput.parse(input);
+  const { data, error } = await ctx.client
+    .from('creatives')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select('id')
+    .maybeSingle();
+  if (error) return { ok: false, error: WRITE_FAILED };
+  if (!data) return { ok: false, error: 'That creative was not found.' };
   return { ok: true, data: { id: data.id } };
 }

@@ -9,12 +9,18 @@ import {
   type ReachWriteContext,
   createCampaign,
   createCampaignInput,
+  createCreative,
+  createCreativeInput,
   deleteCampaign,
   deleteCampaignInput,
+  deleteCreative,
+  deleteCreativeInput,
   setCampaignStatus,
   setCampaignStatusInput,
   updateCampaign,
   updateCampaignInput,
+  updateCreative,
+  updateCreativeInput,
 } from '@/lib/reach/capabilities';
 import type { ZodType } from 'zod';
 
@@ -40,7 +46,11 @@ async function run<I, O>(
   const parsed = schema.safeParse(input);
   if (!parsed.success) return INVALID;
   const result = await fn(ctx, parsed.data);
-  if (result.ok) revalidatePath('/reach/ad-studio');
+  if (result.ok) {
+    revalidatePath('/reach/ad-studio');
+    revalidatePath('/reach/creative-bank');
+    revalidatePath('/reach/ad-settings');
+  }
   return result;
 }
 
@@ -55,4 +65,13 @@ export async function setCampaignStatusAction(input: unknown) {
 }
 export async function deleteCampaignAction(input: unknown) {
   return run(deleteCampaignInput, input, deleteCampaign);
+}
+export async function createCreativeAction(input: unknown) {
+  return run(createCreativeInput, input, createCreative);
+}
+export async function updateCreativeAction(input: unknown) {
+  return run(updateCreativeInput, input, updateCreative);
+}
+export async function deleteCreativeAction(input: unknown) {
+  return run(deleteCreativeInput, input, deleteCreative);
 }

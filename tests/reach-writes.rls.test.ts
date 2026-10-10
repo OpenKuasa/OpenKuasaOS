@@ -94,3 +94,32 @@ testWithSupabase('a viewer (demo member) cannot write', async () => {
   expect(error?.code).toBe('42501'); // is_org_writer false for a viewer
   await v.auth.signOut();
 });
+
+testWithSupabase('deleting a campaign unlinks its creatives (on delete set null)', async () => {
+  const camp = await owner.c
+    .from('campaigns')
+    .insert({ org_id: owner.orgId, name: 'LinkedCamp', channel: 'facebook' })
+    .select('id')
+    .single();
+  expect(camp.error, camp.error?.message).toBeNull();
+  const cr = await owner.c
+    .from('creatives')
+    .insert({ org_id: owner.orgId, campaign_id: camp.data!.id, name: 'linked', type: 'image', channel: 'facebook' })
+    .select('id')
+    .single();
+  expect(cr.error, cr.error?.message).toBeNull();
+  const del = await owner.c.from('campaigns').delete().eq('id', camp.data!.id).select('id');
+  expect(del.error, del.error?.message).toBeNull();
+  expect(del.data).toHaveLength(1);
+  const after = await owner.c.from('creatives').select('campaign_id').eq('id', cr.data!.id).single();
+  expect(after.error, after.error?.message).toBeNull();
+  expect(after.data!.campaign_id).toBeNull(); // survived, unlinked
+  await owner.c.from('creatives').delete().eq('id', cr.data!.id);
+});
+
+testWithSupabase('a different org cannot create a creative in the owner org', async () => {
+  const { error } = await other.c
+    .from('creatives')
+    .insert({ org_id: owner.orgId, name: 'x', type: 'copy', channel: 'whatsapp' });
+  expect(error?.code).toBe('42501');
+});

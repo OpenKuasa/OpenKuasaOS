@@ -15,12 +15,18 @@ import {
   type ReachWriteContext,
   createCampaign as capCreateCampaign,
   createCampaignInput,
+  createCreative as capCreateCreative,
+  createCreativeInput,
   deleteCampaign as capDeleteCampaign,
   deleteCampaignInput,
+  deleteCreative as capDeleteCreative,
+  deleteCreativeInput,
   setCampaignStatus as capSetCampaignStatus,
   setCampaignStatusInput,
   updateCampaign as capUpdateCampaign,
   updateCampaignInput,
+  updateCreative as capUpdateCreative,
+  updateCreativeInput,
 } from '@/lib/reach/capabilities';
 import {
   type Appointment,
@@ -404,6 +410,21 @@ export function createReachTools(
       description: 'Delete a campaign by id. This cannot be undone and needs approval.',
       inputSchema: deleteCampaignInput,
       execute: async (input) => capDeleteCampaign(ctx, input),
+    }),
+    createCreative: tool({
+      description: 'Create a new ad creative (image/video/copy). Needs approval.',
+      inputSchema: createCreativeInput,
+      execute: async (input) => capCreateCreative(ctx, input),
+    }),
+    updateCreative: tool({
+      description: 'Edit a creative by id. Needs approval.',
+      inputSchema: updateCreativeInput,
+      execute: async (input) => capUpdateCreative(ctx, input),
+    }),
+    deleteCreative: tool({
+      description: 'Delete a creative by id. Cannot be undone; needs approval.',
+      inputSchema: deleteCreativeInput,
+      execute: async (input) => capDeleteCreative(ctx, input),
     }),
   };
 }
