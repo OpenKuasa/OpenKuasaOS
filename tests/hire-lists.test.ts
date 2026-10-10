@@ -18,6 +18,7 @@ const EMPTY: HireData = {
   listCandidates: async () => [],
   listApplications: async () => [],
   listInterviews: async () => [],
+  getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
 };
 
 describe('jobs', () => {
@@ -60,18 +61,96 @@ describe('jobs', () => {
 });
 
 describe('careers page', () => {
-  it('shows open jobs as Published, closed as Closed, the rest as Draft', async () => {
+  it('shows open jobs as Open while the board is off, closed as Closed, the rest as Draft', async () => {
     const model = await buildCareersModel(data);
     expect(model.openRoles).toBe(6);
+    expect(model.publishedRoles).toBe(0);
     expect(model.rows.find((r) => r.title === 'Content Writer')?.status).toBe('Closed');
     expect(model.rows.find((r) => r.title === 'Accountant')?.status).toBe('Draft');
-    expect(model.rows.find((r) => r.title === 'Customer Support')).toMatchObject({ type: 'Part-time', status: 'Published' });
+    expect(model.rows.find((r) => r.title === 'Customer Support')).toMatchObject({ type: 'Part-time', status: 'Open' });
   });
   it('carries the whole job for editing, and ids for the careers actions', async () => {
     const jobs = await buildJobsModel(data, NOW);
     expect(jobs.rows[0].job).toMatchObject({ id: jobs.rows[0].id, title: jobs.rows[0].title });
     const careers = await buildCareersModel(data);
     expect(careers.rows.every((r) => typeof r.id === 'string' && typeof r.jobStatus === 'string')).toBe(true);
+  });
+});
+
+describe('careers page: what the public board lists', () => {
+  const job = (id: string, over: Partial<Job>): Job => ({
+    id, title: id, department: null, location: null, employment_type: 'full_time', status: 'open',
+    description: 'What you will do.', salary_min_cents: null, salary_max_cents: null, show_salary: false, closes_on: null,
+    work_arrangement: null, headcount: 1,
+    opened_at: '2026-09-01T00:00:00Z', closed_at: null, created_at: '2026-09-01T00:00:00Z',
+    ...over,
+  });
+  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Work with us', careers_tagline: null };
+
+  it('carries the settings from the provider', async () => {
+    const model = await buildCareersModel({ ...EMPTY, getSettings: async () => settings });
+    expect(model.settings).toEqual(settings);
+    expect((await buildCareersModel(EMPTY)).settings.careers_enabled).toBe(false);
+  });
+
+  it('shows open jobs with a description, newest opened first', async () => {
+    const jobs = [
+      job('Older', { opened_at: '2026-09-01T00:00:00Z', location: 'Shah Alam' }),
+      job('Draft', { status: 'draft', opened_at: null }),
+      job('Paused', { status: 'paused' }),
+      job('Blank', { description: '   \n ' }),
+      job('None', { description: null }),
+      job('Closed', { status: 'closed' }),
+      job('Newer', { opened_at: '2026-10-05T00:00:00Z' }),
+    ];
+    // The busiest job is not first: the order is by opening date, not by applicants.
+    const app = (id: string): Application => ({
+      id, candidate_id: id, job_id: 'Older', candidate_name: 'Aina', job_title: 'Older', stage: 'applied',
+      outcome: 'active', rating: null, source: null, applied_at: '2026-10-01T00:00:00Z', offered_at: null,
+      hired_at: null, created_at: '2026-10-01T00:00:00Z',
+    });
+    const model = await buildCareersModel({
+      ...EMPTY, listJobs: async () => jobs, listApplications: async () => [app('a1'), app('a2')],
+    });
+    expect(model.showing).toEqual([
+      { title: 'Newer', location: '' },
+      { title: 'Older', location: 'Shah Alam' },
+    ]);
+    expect(model.rows).toHaveLength(7);
+  });
+
+  describe('the status each row carries', () => {
+    const jobs = [
+      job('Described', {}),
+      job('Blank', { description: '  ' }),
+      job('Closed', { status: 'closed' }),
+      job('Draft', { status: 'draft' }),
+      job('Paused', { status: 'paused' }),
+    ];
+    const statuses = async (careers_enabled: boolean) => {
+      const model = await buildCareersModel({
+        ...EMPTY, listJobs: async () => jobs, getSettings: async () => ({ ...settings, careers_enabled }),
+      });
+      return { model, byTitle: Object.fromEntries(model.rows.map((r) => [r.title, r.status])) };
+    };
+
+    it('reads Open for every open job while the board is off', async () => {
+      const { model, byTitle } = await statuses(false);
+      expect(byTitle).toEqual({ Described: 'Open', Blank: 'Open', Closed: 'Closed', Draft: 'Draft', Paused: 'Draft' });
+      expect(model.publishedRoles).toBe(0);
+      expect(model.openRoles).toBe(2);
+    });
+
+    it('reads Published only for an open job with a description while the board is on', async () => {
+      const { model, byTitle } = await statuses(true);
+      expect(byTitle).toEqual({ Described: 'Published', Blank: 'Open', Closed: 'Closed', Draft: 'Draft', Paused: 'Draft' });
+      expect(model.publishedRoles).toBe(1);
+      expect(model.openRoles).toBe(2);
+    });
+  });
+
+  it('lists nothing for a workspace with no jobs', async () => {
+    expect((await buildCareersModel(EMPTY)).showing).toEqual([]);
   });
 });
 

@@ -1,6 +1,6 @@
+import { headers } from 'next/headers';
 import {
   Briefcase,
-  Copy,
   Filter,
   Globe,
   Palette,
@@ -19,7 +19,6 @@ import {
   type Slice,
 } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -33,7 +32,10 @@ import {
 import { can } from '@/lib/auth/permissions';
 import { getViewer } from '@/lib/auth/viewer';
 import { buildCareersModel } from '@/lib/hire/lists';
+import { DEFAULT_HEADLINE, careersPath, careersUrl } from '@/lib/hire/public-careers';
+import { originFromHeaders } from '@/lib/reach/form-submissions';
 import { cn } from '@/lib/utils';
+import { CareersBrandingForm, CareersHeaderControls } from '@/screens/hire/careers-controls';
 import { LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire } from '@/screens/hire/parts';
 import { PublishButton } from '@/screens/hire/publish-button';
 
@@ -71,10 +73,11 @@ const APPLY_SOURCE: Slice[] = [
   { key: 'other', label: 'Other', value: 8, color: 'var(--muted-foreground)' },
 ];
 
-type JobStatus = 'Published' | 'Closed' | 'Draft';
+type JobStatus = 'Published' | 'Open' | 'Closed' | 'Draft';
 
 const STATUS_TONE: Record<JobStatus, string> = {
   Published: 'text-emerald-600 dark:text-emerald-400',
+  Open: 'text-foreground',
   Closed: 'text-muted-foreground',
   Draft: 'text-amber-600 dark:text-amber-400',
 };
@@ -82,12 +85,35 @@ const STATUS_TONE: Record<JobStatus, string> = {
 /* ------------------------------------------------------------------ */
 
 export default async function CareersPageScreen() {
-  const [{ model, isDemo }, viewer] = await Promise.all([
+  const [{ model, isDemo }, viewer, requestHeaders] = await Promise.all([
     loadHire('careers-page', (data) => buildCareersModel(data)),
     getViewer(),
+    headers(),
   ]);
   const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
-  const published = (model?.rows ?? []).filter((j) => j.status === 'Published');
+  /** A demo visitor sees the sample page and can switch nothing. */
+  const demo = isDemo || viewer.isDemo;
+  const settings = model?.settings;
+  /** Whether the public board is on. The demo workspace never has one. */
+  const boardOn = !demo && settings?.careers_enabled === true;
+  /**
+   * Whether the Status column and the card subtitle say "Published". The demo workspace has no board, yet its
+   * sample screen shows its open jobs as published (every open demo job has a description), so for the label
+   * only the demo counts as on.
+   */
+  const boardLabelOn = demo || boardOn;
+  const rows = (model?.rows ?? []).map((j) => ({
+    ...j,
+    status: demo && j.status === 'Open' ? ('Published' as const) : j.status,
+  }));
+  const publishedRoles = rows.filter((j) => j.status === 'Published').length;
+  const boardPath = careersPath(viewer.orgId);
+  const origin = demo ? null : originFromHeaders((name) => requestHeaders.get(name));
+  /** The first three jobs a visitor would see, in the board's own order. */
+  const showing = (model?.showing ?? []).slice(0, 3);
+  const brand = demo
+    ? { name: 'Rimba Ventures', headline: 'Join our team', tagline: 'Build the future with us' }
+    : { name: viewer.orgName, headline: settings?.careers_headline || DEFAULT_HEADLINE, tagline: settings?.careers_tagline || null };
 
   return (
     <ScreenContainer>
@@ -95,14 +121,15 @@ export default async function CareersPageScreen() {
         title="Careers Page"
         subtitle="Your public job board, Saudara."
         actions={
-          <>
-            <Button variant="outline" size="sm" disabled title="Coming soon">
-              Preview
-            </Button>
-            <Button size="sm" disabled title="Coming soon">
-              Publish
-            </Button>
-          </>
+          // Not shown when the settings could not be read: a switch must never show a state it does not know.
+          settings ? (
+            <CareersHeaderControls
+              enabled={boardOn}
+              mode={demo ? 'demo' : canEdit ? 'edit' : 'view'}
+              previewPath={boardPath}
+              shareUrl={origin ? careersUrl(origin, viewer.orgId) : null}
+            />
+          ) : undefined
         }
       />
 
@@ -173,64 +200,56 @@ export default async function CareersPageScreen() {
           <BentoStat label="Open roles" value={model ? String(model.openRoles) : '—'} />
         </BentoCard>
 
-        {/* Live page preview (browser frame) */}
+        {/* Page preview (browser frame) */}
         <BentoCard
           title="Careers page"
           subtitle="How visitors see it"
           icon={Globe}
-          action={
-            <Button variant="outline" size="sm" disabled title="Coming soon">
-              <Copy className="size-4" />
-              Copy link
-            </Button>
-          }
           className="col-span-2 md:col-span-4"
         >
-          <div className="flex h-[240px] items-center justify-center">
+          <div className="flex min-h-[240px] items-center justify-center">
             <div className="w-full max-w-[240px] overflow-hidden rounded-xl border bg-background shadow-sm">
               <div className="flex items-center gap-1.5 border-b bg-muted/40 px-3 py-2">
-                <span className="size-2 rounded-full bg-red-400/70" />
-                <span className="size-2 rounded-full bg-amber-400/70" />
-                <span className="size-2 rounded-full bg-emerald-400/70" />
+                <span className="size-2 shrink-0 rounded-full bg-red-400/70" />
+                <span className="size-2 shrink-0 rounded-full bg-amber-400/70" />
+                <span className="size-2 shrink-0 rounded-full bg-emerald-400/70" />
                 <span className="ml-2 truncate text-[10px] text-muted-foreground">
-                  {isDemo ? 'careers.openkuasa.com' : 'Careers page'}
+                  {demo ? 'careers.openkuasa.com' : boardPath}
                 </span>
               </div>
               <div className="flex flex-col gap-2 bg-gradient-to-br from-primary/10 to-muted px-4 py-5">
-                {isDemo && (
+                {!model ? LOAD_FAILED : !demo && !boardOn ? (
+                  <Muted>Your careers page is off</Muted>
+                ) : (
                   <>
-                    <span className="w-fit rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                      Rimba Ventures
+                    <span className="w-fit max-w-full truncate rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      {brand.name}
                     </span>
-                    <p className="text-sm font-bold leading-tight">Join our team</p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Build the future with us
-                    </p>
-                  </>
-                )}
-                <div className="mt-1 space-y-1.5">
-                  {!model ? LOAD_FAILED : published.length === 0 ? (
-                    <Muted>No published roles yet</Muted>
-                  ) : (
-                    <>
-                      {published
-                        .slice(0, 3)
-                        .map((j, index) => (
+                    <p className="text-sm font-bold leading-tight break-words">{brand.headline}</p>
+                    {brand.tagline && (
+                      <p className="text-[10px] break-words text-muted-foreground">{brand.tagline}</p>
+                    )}
+                    <div className="mt-1 space-y-1.5">
+                      {showing.length === 0 ? (
+                        <Muted>No open roles right now</Muted>
+                      ) : (
+                        showing.map((j, index) => (
                           <div
                             key={`${j.title}-${index}`}
-                            className="flex items-center justify-between rounded-md border bg-background/70 px-2 py-1"
+                            className="flex items-center justify-between gap-2 rounded-md border bg-background/70 px-2 py-1"
                           >
-                            <span className="truncate text-[10px] font-medium">
-                              {j.title}
-                            </span>
-                            <span className="shrink-0 text-[9px] text-muted-foreground">
-                              {j.location.split(' · ')[0]}
-                            </span>
+                            <span className="truncate text-[10px] font-medium">{j.title}</span>
+                            {j.location && (
+                              <span className="max-w-[50%] shrink-0 truncate text-[9px] text-muted-foreground">
+                                {j.location.split(' · ')[0]}
+                              </span>
+                            )}
                           </div>
-                        ))}
-                    </>
-                  )}
-                </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -282,7 +301,7 @@ export default async function CareersPageScreen() {
           icon={Palette}
           className="col-span-2 md:col-span-4"
         >
-          {isDemo ? (
+          {!settings ? LOAD_FAILED : demo ? (
             <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="headline">Headline</Label>
@@ -292,20 +311,25 @@ export default async function CareersPageScreen() {
                 <Label htmlFor="tagline">Tagline</Label>
                 <Input id="tagline" disabled defaultValue="Build the future with us" />
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="primary-colour">Primary colour</Label>
-                <Input id="primary-colour" disabled defaultValue="#2E8B57" />
-              </div>
             </div>
           ) : (
-            NOT_AVAILABLE
+            <CareersBrandingForm
+              headline={settings.careers_headline}
+              tagline={settings.careers_tagline}
+              canEdit={canEdit}
+              defaultHeadline={DEFAULT_HEADLINE}
+            />
           )}
         </BentoCard>
 
         {/* Job listings table */}
         <BentoCard
           title="Job listings"
-          subtitle={model ? `${model.openRoles} published · ${model.rows.length} total` : undefined}
+          subtitle={
+            model
+              ? `${boardLabelOn ? `${publishedRoles} published` : `${model.openRoles} open`} · ${model.rows.length} total`
+              : undefined
+          }
           icon={Briefcase}
           className="col-span-2 md:col-span-12"
         >
@@ -325,7 +349,7 @@ export default async function CareersPageScreen() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {model.rows.map((j) => (
+                  {rows.map((j) => (
                     <TableRow key={j.id}>
                       <TableCell className="whitespace-nowrap font-medium">
                         {j.title}
@@ -350,7 +374,7 @@ export default async function CareersPageScreen() {
                       </TableCell>
                       {canEdit && (
                         <TableCell className="text-right">
-                          <PublishButton id={j.id} title={j.title} published={j.status === 'Published'} />
+                          <PublishButton id={j.id} title={j.title} published={j.jobStatus === 'open'} />
                         </TableCell>
                       )}
                     </TableRow>

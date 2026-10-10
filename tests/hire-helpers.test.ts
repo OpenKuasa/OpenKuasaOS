@@ -27,6 +27,7 @@ const EMPTY: HireData = {
   listCandidates: async () => [],
   listApplications: async () => [],
   listInterviews: async () => [],
+  getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
 };
 const app = (over: Partial<Application>): Application => ({
   id: 'a', candidate_id: 'c', job_id: 'j', candidate_name: 'A', job_title: 'J', stage: 'applied',

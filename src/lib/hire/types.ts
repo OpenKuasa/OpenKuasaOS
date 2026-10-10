@@ -105,4 +105,19 @@ export type HireData = {
   listCandidates(): Promise<Candidate[]>;
   listApplications(): Promise<Application[]>;
   listInterviews(): Promise<Interview[]>;
+  getSettings(): Promise<HireSettings>;
+};
+
+/** A workspace's hiring settings. `org_id` is null only for the sample data. */
+export type HireSettings = {
+  org_id: string | null;
+  /** Whether the public job board is on. */
+  careers_enabled: boolean;
+  careers_headline: string | null;
+  careers_tagline: string | null;
+};
+export const SETTINGS_COLUMNS = 'careers_enabled,careers_headline,careers_tagline';
+/** What a workspace with no settings row has. */
+export const DEFAULT_HIRE_SETTINGS: Omit<HireSettings, 'org_id'> = {
+  careers_enabled: false, careers_headline: null, careers_tagline: null,
 };

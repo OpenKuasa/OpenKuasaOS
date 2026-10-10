@@ -55,10 +55,12 @@ export const REACH_WRITE_TOOL_NAMES = [
 export type HireAccess = {
   data: HireData;
   write?: { ctx: HireWriteContext; canWrite: boolean };
+  /** The site's own address, for the careers page link. */
+  origin?: string | null;
 };
 
 /** Hiring tools that change data. */
-export const HIRE_WRITE_TOOL_NAMES = ['createJob', 'updateJob', 'setJobStatus', 'deleteJob'] as const;
+export const HIRE_WRITE_TOOL_NAMES = ['createJob', 'updateJob', 'setJobStatus', 'deleteJob', 'updateCareersPage'] as const;
 
 /** The HR data an agent reads, who is asking, and whether they may change it. */
 export type PeopleAccess = { data: PeopleData; viewer: PeopleViewer; write?: PeopleWrite };
@@ -110,7 +112,7 @@ export function crmProduct(crm: CrmAccess): ProductToolkit {
 
 /** Lekir: jobs, candidates, applications and interviews. */
 export function hireProduct(hire: HireAccess): ProductToolkit {
-  const all = createHireTools(hire.data, () => new Date(), hire.write);
+  const all = createHireTools(hire.data, () => new Date(), hire.write, { origin: hire.origin ?? null });
   return { key: 'hire', name: 'Lekir', ...split(all, HIRE_WRITE_TOOL_NAMES) };
 }
 

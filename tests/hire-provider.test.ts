@@ -102,4 +102,47 @@ describe('getHireData', () => {
       expect(columns, column).toContain(column);
     }
   });
+
+  describe('getSettings', () => {
+    const settingsClient = (result: { data: unknown; error: unknown }) => {
+      const seen: { table?: string; columns?: string; column?: string; org?: unknown } = {};
+      const client = {
+        from: (table: string) => ({
+          select: (columns: string) => ({
+            eq: (column: string, org: unknown) => ({
+              maybeSingle: async () => {
+                Object.assign(seen, { table, columns, column, org });
+                return result;
+              },
+            }),
+          }),
+        }),
+      } as never;
+      return { client, seen };
+    };
+
+    it('reads the row for the workspace', async () => {
+      const { client, seen } = settingsClient({
+        data: { careers_enabled: true, careers_headline: 'Hi', careers_tagline: null }, error: null,
+      });
+      expect(await (await getHireData(client)).getSettings()).toEqual({
+        org_id: 'o1', careers_enabled: true, careers_headline: 'Hi', careers_tagline: null,
+      });
+      expect(seen).toEqual({
+        table: 'hire_settings', columns: 'careers_enabled,careers_headline,careers_tagline', column: 'org_id', org: 'o1',
+      });
+    });
+
+    it('gives the defaults when there is no row', async () => {
+      const { client } = settingsClient({ data: null, error: null });
+      expect(await (await getHireData(client)).getSettings()).toEqual({
+        org_id: 'o1', careers_enabled: false, careers_headline: null, careers_tagline: null,
+      });
+    });
+
+    it('throws a read error on to the caller', async () => {
+      const { client } = settingsClient({ data: null, error: new Error('boom') });
+      await expect((await getHireData(client)).getSettings()).rejects.toThrow('boom');
+    });
+  });
 });

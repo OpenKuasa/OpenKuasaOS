@@ -18,6 +18,8 @@ import {
   deleteJobInput,
   setJobStatus,
   setJobStatusInput,
+  updateCareersPage,
+  updateCareersPageInput,
   updateJob,
   updateJobInput,
 } from '@/lib/hire/capabilities';
@@ -25,6 +27,7 @@ import { formatWhen } from '@/lib/reach/overview';
 import { LOOKUP_MAX, limitSchema, rowLimit } from '@/lib/ai/limits';
 import { applicationLabel, funnelCounts, matchesText } from '@/lib/hire/applications-view';
 import { timeToHire } from '@/lib/hire/dashboard';
+import { careersPath, careersUrl } from '@/lib/hire/public-careers';
 import { applicantsByJob, overviewTotals, sourceBreakdown } from '@/lib/hire/overview';
 import { APPLICATION_STAGES, type HireData, type Job } from '@/lib/hire/types';
 
@@ -37,6 +40,7 @@ export const HIRE_TOOL_NAMES = [
   'listInterviews',
   'getTimeToHire',
   'getSourceBreakdown',
+  'getCareersPage',
 ] as const;
 
 const READ_ERROR = { ok: false as const, error: 'Could not read hiring data.' };
@@ -75,6 +79,7 @@ export function createHireTools(
   data: HireData,
   nowArg: Date | (() => Date) = () => new Date(),
   write?: { ctx: HireWriteContext; canWrite: boolean },
+  site?: { origin: string | null },
 ): ToolSet {
   const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
 
@@ -300,6 +305,30 @@ export function createHireTools(
       execute: async () =>
         safe('getSourceBreakdown', async () => ({ sources: sourceBreakdown(await data.listApplications()) })),
     }),
+
+    getCareersPage: tool({
+      description:
+        'The public careers page: whether it is on, its address, its headline and tagline, and how many jobs it is showing. ' +
+        'When it is off nothing is public.',
+      inputSchema: z.object({}),
+      execute: async () =>
+        safe('getCareersPage', async () => {
+          const [settings, jobs] = await Promise.all([data.getSettings(), data.listJobs()]);
+          const path = settings.org_id ? careersPath(settings.org_id) : null;
+          const origin = site?.origin ?? null;
+          return {
+            enabled: settings.careers_enabled,
+            headline: settings.careers_headline,
+            tagline: settings.careers_tagline,
+            path,
+            url: settings.careers_enabled && origin && settings.org_id ? careersUrl(origin, settings.org_id) : null,
+            // Only open jobs with a description are listed publicly.
+            jobs_showing: settings.careers_enabled
+              ? jobs.filter((j) => j.status === 'open' && j.description?.trim()).length
+              : 0,
+          };
+        }),
+    }),
   };
   if (!write?.canWrite) return read;
   const { ctx } = write;
@@ -335,6 +364,13 @@ export function createHireTools(
       description: 'Delete a job for good. Only a job with no applications can be deleted; otherwise close it.',
       inputSchema: deleteJobInput,
       execute: async (input) => deleteJob(ctx, input),
+    }),
+    updateCareersPage: tool({
+      description:
+        'Turn the public careers page on or off, or change its headline and tagline. Send only what changes. ' +
+        'Turning it on makes every open job visible to anyone with the link.',
+      inputSchema: updateCareersPageInput,
+      execute: async (input) => updateCareersPage(ctx, input, now()),
     }),
   };
 }

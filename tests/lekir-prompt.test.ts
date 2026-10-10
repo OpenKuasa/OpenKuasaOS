@@ -1,6 +1,6 @@
 // tests/lekir-prompt.test.ts
 import { describe, expect, it } from 'vitest';
-import { LEKIR_SYSTEM, subAgentSystem } from '@/lib/ai/agents/prompts';
+import { LEKIR_SYSTEM, TUAH_SYSTEM, subAgentSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
 import { HIRE_WRITE_TOOL_NAMES } from '@/lib/ai/products';
 
 const t = LEKIR_SYSTEM.toLowerCase();
@@ -22,8 +22,13 @@ describe('LEKIR_SYSTEM', () => {
   it('says what it can change, in step with the change tools it holds', () => {
     expect(t).toContain('create, edit, open, pause, close, reopen or delete jobs');
     // A change tool for something else means this line has to grow with it.
-    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$/.test(name))).toBe(true);
+    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$|^updateCareersPage$/.test(name))).toBe(true);
     expect(HIRE_WRITE_TOOL_NAMES.length).toBeGreaterThan(0);
+  });
+  it('can switch the careers page on or off, and says what switching it on exposes', () => {
+    expect(t).toContain('public careers page');
+    expect(t).toContain('turning it on makes every open job visible to anyone with the link');
+    expect(t).toContain('getcareerspage');
   });
   it('still cannot change candidates, applications or interviews', () => {
     expect(t).toContain('you cannot change candidates, applications or interviews yet');
@@ -80,5 +85,21 @@ describe('LEKIR_SYSTEM', () => {
   });
   it('never reports a failed lookup as a fact', () => {
     expect(t).toContain('never turn an error into a fact');
+  });
+});
+
+describe('the careers page in the other prompts', () => {
+  const prompts: [string, string][] = [
+    ['the hire specialist rule', subAgentSystem('hire', true)],
+    ['TUAH_SYSTEM', TUAH_SYSTEM],
+    ['tuahTeamSystem', tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], true, null)],
+  ];
+  it.each(prompts)('%s says the careers page can be switched, and what switching it on exposes', (_name, prompt) => {
+    const p = prompt.toLowerCase();
+    expect(p).toContain('public careers page');
+    expect(p).toContain('turning it on makes every open job visible to anyone with the link');
+  });
+  it('tells the specialist to use getCareersPage for the address', () => {
+    expect(subAgentSystem('hire', true)).toContain('getCareersPage');
   });
 });

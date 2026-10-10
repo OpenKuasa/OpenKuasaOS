@@ -121,6 +121,22 @@ describe('Tuah with hiring changes', () => {
   });
 });
 
+describe('the site origin reaches the hiring tools', () => {
+  it('a hire access carrying an origin gives getCareersPage an address', async () => {
+    const settings = { org_id: 'org1', careers_enabled: true, careers_headline: null, careers_tagline: null };
+    const access = {
+      data: { ...createSeedHireData(new Date('2026-10-10T04:00:00Z')), getSettings: async () => settings },
+      origin: 'https://openkuasa.com',
+    };
+    const lookup = hireProduct(access).read.getCareersPage as unknown as {
+      execute: (i: unknown, o: unknown) => Promise<unknown>;
+    };
+    expect(await lookup.execute({}, { toolCallId: 't', messages: [] })).toMatchObject({
+      url: 'https://openkuasa.com/careers/org1',
+    });
+  });
+});
+
 describe('Tuah’s team changing a job', () => {
   it('prepares the job without saving it, and applyChange saves it once approved', async () => {
     created.mockReset();

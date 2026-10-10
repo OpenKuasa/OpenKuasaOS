@@ -8,7 +8,7 @@
  * `record_form_view`, `submit_public_form`), which decide for themselves what a
  * stranger may see and do.
  */
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   type SubmissionInput,
   type SubmissionOutcome,
@@ -21,17 +21,7 @@ export type PublicForm =
   /** A draft or paused form: nothing about it or its workspace is given out. */
   | { accepting: false };
 
-/**
- * A client that carries no session at all, whoever is asking. Reading and
- * submitting a public form must not depend on who happens to be signed in.
- */
-export function createAnonymousClient(): SupabaseClient {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } },
-  );
-}
+export { createAnonymousClient } from '@/lib/supabase/anonymous';
 
 type PublicFormRow = {
   form_name: string | null;

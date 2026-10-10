@@ -161,6 +161,7 @@ export class Conversation {
       },
       {
         data: createSupabaseHireData(client, orgId),
+        origin: 'https://example.test',
         write: canWrite ? { ctx: { client, orgId }, canWrite: true } : undefined,
       },
     );
@@ -248,5 +249,6 @@ export async function cleanUp({ client, orgId }: Workspace): Promise<void> {
   await client.from('leads').delete().eq('org_id', orgId).eq('source', EVAL_TAG);
   await client.from('campaigns').delete().eq('org_id', orgId).ilike('name', like);
   await client.from('hire_jobs').delete().eq('org_id', orgId).ilike('title', like);
+  await client.from('hire_settings').update({ careers_enabled: false }).eq('org_id', orgId);
   await client.from('forms').delete().eq('org_id', orgId).ilike('name', like);
 }
