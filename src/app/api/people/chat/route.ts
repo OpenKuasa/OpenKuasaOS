@@ -16,6 +16,7 @@ import { can } from '@/lib/auth/permissions';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { createSupabasePeopleData, getPeopleData } from '@/lib/people/supabase';
 import type { PeopleData, PeopleViewer } from '@/lib/people/types';
+import { streamErrorName } from '@/lib/people/stream-error';
 import { getPeopleViewer } from '@/lib/people/viewer';
 
 export const dynamic = 'force-dynamic';
@@ -60,7 +61,8 @@ export async function POST(request: Request) {
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {
-      console.error('[ask-lekiu] stream error:', error instanceof Error ? error.message : error);
+      // Name only: a rejected change's message embeds the whole input (NRIC, bank account, salary).
+      console.error('[ask-lekiu] stream error:', streamErrorName(error));
       return 'Lekiu ran into a problem. Please try again in a moment.';
     },
   });
