@@ -68,6 +68,9 @@ function excerpt(text: string | null | undefined): string | null {
 
 const limit = limitSchema(`How many rows to return, at most ${LOOKUP_MAX}.`);
 
+/** The date in Kuala Lumpur, as YYYY-MM-DD: the day a closing date is checked against. */
+const klToday = (now: Date) => now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+
 export function createHireTools(
   data: HireData,
   nowArg: Date | (() => Date) = () => new Date(),
@@ -108,6 +111,8 @@ export function createHireTools(
           );
           return {
             total: rows.length,
+            // A closing date is an absolute date, so "in two weeks" needs a today to count from.
+            today_in_malaysia: klToday(now()),
             jobs: rows.slice(0, rowLimit(requested, LOOKUP_MAX)).map(({ job, applicants }) => ({
               id: job.id,
               // The approval titles read a row's name from `name`.
@@ -301,17 +306,21 @@ export function createHireTools(
   // The approval titles learn a row's name from a `name` field; a job has `title`.
   const named = (result: CapResult<Job>) =>
     result.ok ? { ...result, data: { ...result.data, name: result.data.title } } : result;
+  // closes_on is an absolute date; without this the model has to guess the year.
+  const today = ` Today in Malaysia is ${klToday(now())}.`;
   return {
     ...read,
     createJob: tool({
       description:
         'Create a job opening. It is always created as a draft: nothing is open until it is opened. ' +
-        'Only a title is needed; give the description when you have one.',
+        'Only a title is needed; give the description when you have one.' +
+        today,
       inputSchema: createJobInput,
       execute: async (input) => named(await createJob(ctx, input, now())),
     }),
     updateJob: tool({
-      description: "Change a job's details. Send only the fields that change. Does not change its status.",
+      description:
+        "Change a job's details. Send only the fields that change. Does not change its status." + today,
       inputSchema: updateJobInput,
       execute: async (input) => named(await updateJob(ctx, input, now())),
     }),

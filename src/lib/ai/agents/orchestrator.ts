@@ -140,7 +140,11 @@ export function runTuah(
    * carries out what they prepare, instead of holding every tool itself.
    */
   team?: Omit<TeamContext, 'apiKey'> | null,
-  /** The workspace's hiring data. Lookups only, so it needs no workspace role. */
+  /**
+   * The workspace's hiring data. The lookups need no workspace role; the job
+   * change tools are added only when `hire.write.canWrite` is set, and each
+   * waits for the user's approval.
+   */
   hire?: HireAccess | null,
 ) {
   // Every product the user can reach: marketing always, the CRM in a workspace, hiring when passed.

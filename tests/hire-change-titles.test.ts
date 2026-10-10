@@ -28,9 +28,33 @@ describe('approval titles for jobs', () => {
     expect(approvalDetail('updateJob', 'text')).toBeNull();
     expect(approvalDetail('deleteCampaign')).toBe('This cannot be undone.');
   });
-  it('lists what an edit changes', () => {
-    expect(approvalDetail('updateJob', { id: ID, title: 'x', salary_min_cents: 1, salary_max_cents: 2, closes_on: null }))
-      .toBe('Changes: title, salary, closing date');
+  it('lists what an edit changes, with the salary and the closing date it would save', () => {
+    expect(approvalDetail('updateJob', { id: ID, title: 'x', salary_min_cents: 300_000, salary_max_cents: 450_000, closes_on: '2026-10-31' }))
+      .toBe('Changes: title, salary (RM 3,000 – RM 4,500 a month), closing date (31 Oct 2026)');
+    expect(approvalDetail('updateJob', { id: ID, headcount: 2, show_salary: true })).toBe('Changes: salary visibility, headcount');
     expect(approvalDetail('updateJob', { id: ID })).toBeNull();
+  });
+  it('says when an edit clears the closing date or the salary', () => {
+    expect(approvalDetail('updateJob', { id: ID, closes_on: null })).toBe('Changes: closing date (none)');
+    expect(approvalDetail('updateJob', { id: ID, salary_min_cents: null, salary_max_cents: null })).toBe('Changes: salary (not stated)');
+    // One bound alone: the other stays as stored, so the card does not claim the whole salary is gone.
+    expect(approvalDetail('updateJob', { id: ID, salary_min_cents: null })).toBe('Changes: salary (no minimum)');
+    expect(approvalDetail('updateJob', { id: ID, salary_max_cents: 450_050 })).toBe('Changes: salary (up to RM 4,500.50 a month)');
+  });
+  it('shows the salary and closing date of a new job', () => {
+    expect(approvalDetail('createJob', {
+      title: 'Barista', department: 'Operations', location: 'Shah Alam',
+      salary_min_cents: 300_000, salary_max_cents: 450_000, closes_on: '2026-10-31',
+    })).toBe('Operations · Shah Alam · RM 3,000 – RM 4,500 a month · closes 31 Oct 2026');
+    expect(approvalDetail('createJob', { title: 'Barista', salary_min_cents: 300_000 })).toBe('from RM 3,000 a month');
+    expect(approvalDetail('createJob', { title: 'Barista', salary_max_cents: 1_000_000_000, closes_on: '2026-01-05' }))
+      .toBe('up to RM 10,000,000 a month · closes 5 Jan 2026');
+  });
+  it('has no second line for a new job with nothing extra, or without a usable input', () => {
+    expect(approvalDetail('createJob', { title: 'Barista' })).toBeNull();
+    expect(approvalDetail('createJob', { title: 'Barista', department: ' ', salary_min_cents: null, closes_on: null })).toBeNull();
+    expect(approvalDetail('createJob')).toBeNull();
+    expect(approvalDetail('createJob', null)).toBeNull();
+    expect(approvalDetail('createJob', 'text')).toBeNull();
   });
 });

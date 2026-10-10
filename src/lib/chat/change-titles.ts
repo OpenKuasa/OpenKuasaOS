@@ -246,10 +246,67 @@ const JOB_FIELD_WORDS: [string[], string][] = [
   [['headcount'], 'headcount'],
 ];
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** An amount in sen, or null when the input holds anything else there. */
+const sen = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
+
+/** Sen as ringgit: "RM 3,000", with the sen shown only when there are some ("RM 4,500.50"). */
+function ringgit(amount: number): string {
+  const whole = String(Math.floor(amount / 100)).replace(/\B(?=(\d{3})+$)/g, ',');
+  const rest = amount % 100;
+  return `RM ${whole}${rest === 0 ? '' : `.${String(rest).padStart(2, '0')}`}`;
+}
+
+/** The monthly salary a change asks for, or null when it gives no amount. */
+function salaryText(min: number | null, max: number | null): string | null {
+  if (min !== null && max !== null) return `${ringgit(min)} – ${ringgit(max)} a month`;
+  if (min !== null) return `from ${ringgit(min)} a month`;
+  if (max !== null) return `up to ${ringgit(max)} a month`;
+  return null;
+}
+
+/** "2026-10-31" as "31 Oct 2026", without going through a locale; null for anything else. */
+function dateText(value: unknown): string | null {
+  const parts = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+  const month = parts ? MONTHS[Number(parts[2]) - 1] : undefined;
+  return parts && month ? `${Number(parts[3])} ${month} ${parts[1]}` : null;
+}
+
+const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
+
+/**
+ * The second line of an approval card. For a job it shows the values the
+ * user is approving that the question itself does not: the salary and the
+ * closing date above all.
+ */
 export function approvalDetail(toolName: string, input?: unknown): string | null {
+  const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  if (toolName === 'createJob') {
+    const salary = salaryText(sen(i.salary_min_cents), sen(i.salary_max_cents));
+    const closes = dateText(i.closes_on);
+    const parts = [text(i.department), text(i.location), salary, closes && `closes ${closes}`].filter(Boolean);
+    return parts.length > 0 ? parts.join(' · ') : null;
+  }
   if (toolName === 'updateJob') {
-    const keys = Object.keys((input ?? {}) as Record<string, unknown>).filter((k) => k !== 'id');
-    const words = JOB_FIELD_WORDS.filter(([fields]) => fields.some((f) => keys.includes(f))).map(([, w]) => w);
+    const sent = (field: string) => Object.hasOwn(i, field);
+    const words = JOB_FIELD_WORDS.filter(([fields]) => fields.some(sent)).map(([fields, word]) => {
+      if (word === 'salary') {
+        const min = sen(i.salary_min_cents);
+        const max = sen(i.salary_max_cents);
+        // Only one bound sent, and that one cleared: the other bound stays as it is.
+        const cleared = fields.every(sent)
+          ? 'not stated'
+          : sent('salary_min_cents') ? 'no minimum' : 'no maximum';
+        return `salary (${salaryText(min, max) ?? cleared})`;
+      }
+      if (word === 'closing date') {
+        // A date that cannot be read is shown as it was sent, never as "none".
+        return `closing date (${dateText(i.closes_on) ?? text(i.closes_on) ?? 'none'})`;
+      }
+      return word;
+    });
     return words.length > 0 ? `Changes: ${words.join(', ')}` : null;
   }
   if (toolName === 'deleteContact') return 'Their deals are deleted too. This cannot be undone.';

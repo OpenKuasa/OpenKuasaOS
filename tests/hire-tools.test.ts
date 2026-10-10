@@ -211,6 +211,24 @@ describe('hire change tools', () => {
     }
     expect(HIRE_WRITE_TOOL_NAMES).toEqual(['createJob', 'updateJob', 'setJobStatus', 'deleteJob']);
   });
+  it('gives a writer nothing beyond the lookups except the listed change tools, so each one needs approval', () => {
+    const writerTools = createHireTools(data, NOW, { ctx, canWrite: true });
+    const lookups: readonly string[] = HIRE_TOOL_NAMES;
+    const beyond = Object.keys(writerTools).filter((name) => !lookups.includes(name));
+    expect(new Set(beyond)).toEqual(new Set(HIRE_WRITE_TOOL_NAMES));
+    expect(beyond).toHaveLength(HIRE_WRITE_TOOL_NAMES.length);
+  });
+  it('tells the model today\'s date in Kuala Lumpur, for working out a closing date', async () => {
+    const lateUtc = new Date('2026-10-10T17:00:00Z'); // 01:00 on 11 Oct in Kuala Lumpur
+    const t = createHireTools(data, lateUtc, { ctx, canWrite: true }) as Record<
+      string,
+      { description: string; execute: (i: unknown, o: unknown) => Promise<Loose> }
+    >;
+    expect(t.createJob.description).toContain('Today in Malaysia is 2026-10-11.');
+    expect(t.updateJob.description).toContain('Today in Malaysia is 2026-10-11.');
+    const listed = await t.listJobs.execute({}, { toolCallId: 't', messages: [] });
+    expect(listed).toMatchObject({ total: 9, today_in_malaysia: '2026-10-11' });
+  });
   it('take exactly the capability schemas as input', () => {
     const t = createHireTools(data, NOW, { ctx, canWrite: true }) as Record<string, { inputSchema: unknown }>;
     expect(t.createJob.inputSchema).toBe(createJobInput);
