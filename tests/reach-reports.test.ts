@@ -103,4 +103,26 @@ describe('deriveReportsModel', () => {
     expect(JSON.stringify(m)).not.toContain('NaN');
     expect(m.leadsTrend.every((w) => w.leads === 0 && w.qualified === 0)).toBe(true);
   });
+
+  it('buckets leadsTrend weekly, each lead in exactly one week, summing to totalLeads', () => {
+    // 30d range: cutoff = now - 30d; weeks start at 30, 23, 16, 9, 2 days ago.
+    const m = deriveReportsModel(
+      [
+        lead({ created_at: daysAgo(28), stage: 'qualified' }), // week 1
+        lead({ created_at: daysAgo(21), stage: 'lead' }), // week 2
+        lead({ created_at: daysAgo(23), stage: 'won' }), // exactly on week 1/2 boundary -> week 2
+        lead({ created_at: daysAgo(1), stage: 'booked' }), // week 5
+        lead({ created_at: daysAgo(1), stage: 'contacted' }), // week 5
+        lead({ created_at: now.toISOString(), stage: 'lead' }), // exactly now -> last week
+      ],
+      [],
+      [],
+      '30d',
+      now,
+    );
+    expect(m.leadsTrend).toHaveLength(5);
+    expect(m.leadsTrend.map((w) => w.leads)).toEqual([1, 2, 0, 0, 3]);
+    expect(m.leadsTrend.map((w) => w.qualified)).toEqual([1, 1, 0, 0, 1]);
+    expect(m.leadsTrend.reduce((sum, w) => sum + w.leads, 0)).toBe(m.totalLeads);
+  });
 });

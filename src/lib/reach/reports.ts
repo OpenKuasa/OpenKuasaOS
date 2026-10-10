@@ -40,9 +40,10 @@ export function deriveReportsModel(
   const leadsTrend = Array.from({ length: weeks }, (_, i) => {
     const from = cutoff + i * 7 * 86_400_000;
     const to = from + 7 * 86_400_000;
+    const isLast = i === weeks - 1;
     const wk = ls.filter((l) => {
       const t = new Date(l.created_at).getTime();
-      return t >= from && t < to;
+      return t >= from && (isLast || t < to);
     });
     return { label: `Wk ${i + 1}`, leads: wk.length, qualified: wk.filter(qualified).length };
   });
