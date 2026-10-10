@@ -1,5 +1,6 @@
 import type { Slice } from '@/components/charts';
 import { getCurrentOrg } from '@/lib/auth/current-org';
+import { klDay } from '@/lib/crm/deal-stats';
 import { createClient } from '@/lib/supabase/server';
 
 /* ---- display shapes shared by the screens and their sample data ---- */
@@ -126,7 +127,7 @@ function capitalise<T extends string>(s: string) {
   return (s.charAt(0).toUpperCase() + s.slice(1)) as T;
 }
 
-/* ---- view builders (pure; `today` is a UTC YYYY-MM-DD date) ------- */
+/* ---- view builders (pure; `today` is a YYYY-MM-DD date in Kuala Lumpur) */
 
 export function billsView(bills: BillRow[], payments: PaymentRow[], today: string): BillsView {
   const open = bills.filter((b) => b.display_status === 'pending' || b.display_status === 'overdue');
@@ -275,19 +276,15 @@ async function fetchPayments({ supabase, orgId }: Live) {
   return data as unknown as PaymentRow[];
 }
 
-function todayUtc() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export async function loadBillsView(): Promise<BillsView | null> {
   const live = await liveOrg();
   if (!live) return null;
   const [bills, payments] = await Promise.all([fetchBills(live), fetchPayments(live)]);
-  return billsView(bills, payments, todayUtc());
+  return billsView(bills, payments, klDay(new Date()));
 }
 
 export async function loadPaymentsView(): Promise<PaymentsView | null> {
   const live = await liveOrg();
   if (!live) return null;
-  return paymentsView(await fetchPayments(live), todayUtc());
+  return paymentsView(await fetchPayments(live), klDay(new Date()));
 }
