@@ -7,7 +7,7 @@ import {
 } from '@/lib/people/company';
 import { todayInMalaysia } from '@/lib/people/dates';
 import { createSeedPeopleData } from '@/lib/people/seed';
-import type { AttendanceDay, PeopleData } from '@/lib/people/types';
+import type { AttendanceDay, PayrollRun, PeopleData } from '@/lib/people/types';
 
 const NOW = new Date('2026-10-09T04:00:00Z');
 const TODAY = todayInMalaysia(NOW);
@@ -79,6 +79,17 @@ describe('buildDashboardModel', () => {
     expect(model.leaveByType).toBeNull();
     expect(model.joiners).toBeNull();
     expect(model.payroll).toBeNull();
+  });
+
+  it('skips a payroll run that has no payslips', async () => {
+    const input = await dashboardInput(data);
+    const empty: PayrollRun = { id: 'new', period_month: '2026-11-01', status: 'draft', paid_at: null };
+    const model = buildDashboardModel({ ...input, runs: [...input.runs, empty] }, TODAY, true);
+    expect(model.payroll?.latest?.period_month).toBe('2026-10-01');
+    expect(model.payroll?.byMonth).toHaveLength(8);
+    const only = buildDashboardModel({ ...input, runs: [empty], payslips: [] }, TODAY, true);
+    expect(only.payroll?.latest).toBeNull();
+    expect(only.payroll?.byMonth).toEqual([]);
   });
 
   it('is zero and has no NaN for an empty workspace', () => {

@@ -72,7 +72,8 @@ export function buildDashboardModel(input: DashboardInput, today: string, team: 
   if (!team) {
     return { ...base, attendanceToday: null, weeklyAttendance: null, leaveByType: null, joiners: null, payroll: null };
   }
-  const summary = payrollSummary(input.runs, input.payslips);
+  // A run with no payslips yet has nothing to show: skip it rather than report RM 0.
+  const summary = payrollSummary(input.runs, input.payslips).filter((run) => run.headcount > 0);
   return {
     ...base,
     attendanceToday: attendanceOn(input.attendance, today),

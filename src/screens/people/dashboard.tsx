@@ -47,9 +47,11 @@ export default async function DashboardScreen() {
     color: LEAVE_COLORS[index % LEAVE_COLORS.length],
   }));
   const leaveTotal = Math.round(leaveSlices.reduce((sum, s) => sum + s.value, 0) * 10) / 10;
-  const attendanceRows = (model?.weeklyAttendance ?? []).map((w) =>
-    w.value === null ? { label: w.label } : { label: w.label, rate: w.value },
-  );
+  // Weeks with no recorded days are left out rather than plotted as 0.
+  const attendanceRows: { label: string; rate: number }[] = [];
+  for (const week of model?.weeklyAttendance ?? []) {
+    if (week.value !== null) attendanceRows.push({ label: week.label, rate: week.value });
+  }
   const departmentRows = (model?.departments ?? []).map((d) => ({ label: d.department, headcount: d.headcount }));
 
   return (
@@ -107,7 +109,7 @@ export default async function DashboardScreen() {
             LOAD_FAILED
           ) : !model.team ? (
             HR_ONLY
-          ) : attendanceRows.every((row) => !('rate' in row)) ? (
+          ) : attendanceRows.length === 0 ? (
             <Muted>No attendance recorded in the last 8 weeks</Muted>
           ) : (
             <AreaTrend data={attendanceRows} series={ATTENDANCE_SERIES} height={240} />
