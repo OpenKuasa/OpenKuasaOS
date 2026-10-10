@@ -80,6 +80,9 @@ begin
     execute format(
       'create policy %I on public.%I for select to authenticated using (private.is_org_member(org_id))',
       t || '_select', t);
+    -- The project adds mfa_required to new public tables by itself; replace it
+    -- so this file gives the same result with or without that trigger.
+    execute format('drop policy if exists mfa_required on public.%I', t);
     execute format(
       'create policy mfa_required on public.%I as restrictive for all to authenticated '
       || 'using ((select private.mfa_ok())) with check ((select private.mfa_ok()))', t);
