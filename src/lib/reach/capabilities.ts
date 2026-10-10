@@ -6,7 +6,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import type { Campaign, Creative } from './types';
+import type { AdSettings, Campaign, Creative } from './types';
 
 export type ReachWriteContext = { client: SupabaseClient; orgId: string };
 export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -168,4 +168,38 @@ export async function deleteCreative(
   if (error) return { ok: false, error: WRITE_FAILED };
   if (!data) return { ok: false, error: 'That creative was not found.' };
   return { ok: true, data: { id: data.id } };
+}
+
+// ─── ad settings (one row per org, upserted) ─────────────────────────────────
+
+export const updateAdSettingsInput = z.object({
+  daily_cap_cents: z.number().int().min(0).nullable().optional(),
+  monthly_cap_cents: z.number().int().min(0).nullable().optional(),
+  currency: z.string().length(3).optional(),
+  automation: z.record(z.string(), z.boolean()).optional(),
+  notifications: z.record(z.string(), z.boolean()).optional(),
+});
+
+export async function updateAdSettings(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof updateAdSettingsInput>,
+): Promise<CapResult<AdSettings>> {
+  const parsed = updateAdSettingsInput.parse(input);
+  const cols = 'daily_cap_cents,monthly_cap_cents,currency,automation,notifications,updated_at';
+  // Update-first: an UPDATE must never SET org_id (not granted); insert only if no row exists yet.
+  const upd = await ctx.client
+    .from('ad_settings')
+    .update({ ...parsed, updated_at: new Date().toISOString() })
+    .eq('org_id', ctx.orgId)
+    .select(cols)
+    .maybeSingle();
+  if (upd.error) return { ok: false, error: WRITE_FAILED };
+  if (upd.data) return { ok: true, data: upd.data as AdSettings };
+  const ins = await ctx.client
+    .from('ad_settings')
+    .insert({ ...parsed, org_id: ctx.orgId })
+    .select(cols)
+    .single();
+  if (ins.error || !ins.data) return { ok: false, error: WRITE_FAILED };
+  return { ok: true, data: ins.data as AdSettings };
 }

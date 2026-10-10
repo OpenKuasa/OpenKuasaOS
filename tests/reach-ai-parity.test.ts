@@ -7,9 +7,11 @@ import {
   deleteCampaignInput,
   deleteCreativeInput,
   setCampaignStatusInput,
+  updateAdSettingsInput,
   updateCampaignInput,
   updateCreativeInput,
 } from '@/lib/reach/capabilities';
+import { WRITE_TOOL_NAMES } from '@/lib/ai/agents/orchestrator';
 
 const ctx = { client: {} as never, orgId: 'org1' };
 // The factory returns read tools or read+write tools; with canWrite it is the latter.
@@ -27,6 +29,14 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect(tools.createCreative.inputSchema).toBe(createCreativeInput);
     expect(tools.updateCreative.inputSchema).toBe(updateCreativeInput);
     expect(tools.deleteCreative.inputSchema).toBe(deleteCreativeInput);
+    expect(tools.updateAdSettings.inputSchema).toBe(updateAdSettingsInput);
+  });
+
+  it('every write tool is approval-gated', () => {
+    const readonly = createReachTools(createSeedReachData());
+    const writeTools = Object.keys(tools).filter((k) => !(k in readonly));
+    for (const name of writeTools) expect(WRITE_TOOL_NAMES).toContain(name);
+    expect([...writeTools].sort()).toEqual([...WRITE_TOOL_NAMES].sort());
   });
 
   it('omits write tools when the caller cannot write', () => {

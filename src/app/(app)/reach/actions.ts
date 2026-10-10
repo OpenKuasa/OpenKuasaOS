@@ -17,6 +17,8 @@ import {
   deleteCreativeInput,
   setCampaignStatus,
   setCampaignStatusInput,
+  updateAdSettings,
+  updateAdSettingsInput,
   updateCampaign,
   updateCampaignInput,
   updateCreative,
@@ -74,4 +76,8 @@ export async function updateCreativeAction(input: unknown) {
 }
 export async function deleteCreativeAction(input: unknown) {
   return run(deleteCreativeInput, input, deleteCreative);
+}
+
+export async function updateAdSettingsAction(input: unknown) {
+  return run(updateAdSettingsInput, input, updateAdSettings);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createCampaignInput, updateCampaignInput } from '@/lib/reach/capabilities';
+import { createCampaignInput, updateAdSettingsInput, updateCampaignInput } from '@/lib/reach/capabilities';
 
 describe('campaign capability schemas', () => {
   it('rejects an empty name', () => {
@@ -18,6 +18,17 @@ describe('campaign capability schemas', () => {
   it('update requires a uuid id and allows partial fields', () => {
     expect(updateCampaignInput.safeParse({ id: 'not-a-uuid', name: 'y' }).success).toBe(false);
     expect(updateCampaignInput.safeParse({ id: '00000000-0000-0000-0000-000000000000', name: 'y' }).success).toBe(true);
+  });
+});
+
+describe('ad settings schema', () => {
+  it('requires a 3-letter currency', () => {
+    expect(updateAdSettingsInput.safeParse({ currency: 'MY' }).success).toBe(false);
+    expect(updateAdSettingsInput.safeParse({ currency: 'MYR' }).success).toBe(true);
+  });
+  it('accepts boolean toggle maps and rejects non-boolean values', () => {
+    expect(updateAdSettingsInput.safeParse({ automation: { auto_pause: true }, notifications: { email: false } }).success).toBe(true);
+    expect(updateAdSettingsInput.safeParse({ automation: { auto_pause: 'yes' } }).success).toBe(false);
   });
 });
 

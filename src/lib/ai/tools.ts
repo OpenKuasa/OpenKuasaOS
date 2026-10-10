@@ -23,6 +23,8 @@ import {
   deleteCreativeInput,
   setCampaignStatus as capSetCampaignStatus,
   setCampaignStatusInput,
+  updateAdSettings as capUpdateAdSettings,
+  updateAdSettingsInput,
   updateCampaign as capUpdateCampaign,
   updateCampaignInput,
   updateCreative as capUpdateCreative,
@@ -442,6 +444,11 @@ export function createReachTools(
       description: 'Delete a creative by id. Cannot be undone; needs approval.',
       inputSchema: deleteCreativeInput,
       execute: async (input) => capDeleteCreative(ctx, input),
+    }),
+    updateAdSettings: tool({
+      description: 'Update the org’s ad settings (budget caps, currency, automation/notification toggles). Needs approval.',
+      inputSchema: updateAdSettingsInput,
+      execute: async (input) => capUpdateAdSettings(ctx, input),
     }),
   };
 }

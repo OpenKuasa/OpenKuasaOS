@@ -123,3 +123,32 @@ testWithSupabase('a different org cannot create a creative in the owner org', as
     .insert({ org_id: owner.orgId, name: 'x', type: 'copy', channel: 'whatsapp' });
   expect(error?.code).toBe('42501');
 });
+
+testWithSupabase('owner can save ad settings twice (insert then update); a different org cannot', async () => {
+  const cols = 'currency,daily_cap_cents';
+  const first = await owner.c
+    .from('ad_settings')
+    .insert({ org_id: owner.orgId, currency: 'MYR', daily_cap_cents: 5000 })
+    .select(cols)
+    .single();
+  expect(first.error, first.error?.message).toBeNull();
+  expect(first.data!.currency).toBe('MYR');
+  const second = await owner.c
+    .from('ad_settings')
+    .update({ currency: 'SGD', daily_cap_cents: 9000, updated_at: new Date().toISOString() })
+    .eq('org_id', owner.orgId)
+    .select(cols)
+    .maybeSingle();
+  expect(second.error, second.error?.message).toBeNull();
+  expect(second.data).toEqual({ currency: 'SGD', daily_cap_cents: 9000 });
+
+  const intrusion = await other.c.from('ad_settings').insert({ org_id: owner.orgId, currency: 'USD' });
+  expect(intrusion.error?.code).toBe('42501');
+  const hijack = await other.c
+    .from('ad_settings')
+    .update({ currency: 'USD' })
+    .eq('org_id', owner.orgId)
+    .select('currency');
+  expect(hijack.data ?? []).toHaveLength(0);
+  // No delete grant on ad_settings; the throwaway org's row is left in place.
+});

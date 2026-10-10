@@ -13,11 +13,15 @@ import type { ReachData } from '@/lib/reach/types';
 import { JEBAT_SYSTEM, TUAH_SYSTEM } from '@/lib/ai/agents/prompts';
 
 /** Tools that change data: each one pauses for the owner's approval before running. */
-const WRITE_TOOL_NAMES = [
+export const WRITE_TOOL_NAMES = [
   'createCampaign',
   'updateCampaign',
   'setCampaignStatus',
   'deleteCampaign',
+  'createCreative',
+  'updateCreative',
+  'deleteCreative',
+  'updateAdSettings',
 ] as const;
 
 export function runJebat(
