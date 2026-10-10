@@ -73,9 +73,39 @@ export function reachProduct(reach: ReachAccess): ProductToolkit {
   return { key: 'reach', name: 'Jebat', ...split(all, REACH_WRITE_TOOL_NAMES) };
 }
 
-/** Kasturi: CRM contacts, deals and pipelines. */
+/** Kasturi: CRM contacts, deals, pipelines, follow-ups and the calendar. */
 export function crmProduct(crm: CrmAccess): ProductToolkit {
   return { key: 'crm', name: 'Kasturi', ...split(createCrmTools(crm), CRM_WRITE_TOOL_NAMES) };
+}
+
+/**
+ * The marketing tools for the two screens Kasturi shares with Jebat:
+ * Appointments and Lead Forms.
+ */
+export const KASTURI_SHARED_TOOL_NAMES = [
+  'getUpcomingAppointments',
+  'createAppointment',
+  'updateAppointment',
+  'setAppointmentStatus',
+  'deleteAppointment',
+  'listForms',
+  'createForm',
+  'updateForm',
+  'setFormStatus',
+  'deleteForm',
+] as const;
+
+/**
+ * Appointments and lead forms for Ask-Kasturi. Tuah already holds these
+ * through Jebat's toolkit, so this one is never combined with `reachProduct`.
+ */
+export function kasturiSharedProduct(reach: ReachAccess): ProductToolkit {
+  const all: ToolSet = createReachTools(reach.data, () => new Date(), reach.write);
+  const shared: ToolSet = {};
+  for (const [name, tool] of Object.entries(all)) {
+    if ((KASTURI_SHARED_TOOL_NAMES as readonly string[]).includes(name)) shared[name] = tool;
+  }
+  return { key: 'reach', name: 'Kasturi', ...split(shared, REACH_WRITE_TOOL_NAMES) };
 }
 
 /**

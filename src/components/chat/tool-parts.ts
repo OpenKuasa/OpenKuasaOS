@@ -55,6 +55,8 @@ const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
   listDeals: { label: 'Deals', Icon: Handshake },
   listPipelines: { label: 'Pipelines', Icon: SquareKanban },
   getDealStats: { label: 'Deal totals', Icon: ChartColumn },
+  listFollowUps: { label: 'Follow-ups', Icon: ClipboardList },
+  getCalendar: { label: 'Calendar', Icon: CalendarDays },
   listContacts: { label: 'Leads', Icon: Users },
 };
 

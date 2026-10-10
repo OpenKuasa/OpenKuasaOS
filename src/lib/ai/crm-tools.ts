@@ -1,6 +1,6 @@
 /**
- * Kasturi (CRM) tools for Tuah: looking up contacts, deals and pipelines, and
- * changing them. Every query runs as the signed-in user and is narrowed to
+ * Kasturi (CRM) tools for Tuah: looking up contacts, deals, pipelines,
+ * follow-ups and the calendar, and changing them. Every query runs as the signed-in user and is narrowed to
  * their workspace; the `org_id` never comes from the model. Changes go through
  * the same functions and the same field rules as the Kasturi screens, and each
  * one waits for the user's approval before it runs (see `CRM_WRITE_TOOL_NAMES`).
@@ -28,6 +28,9 @@ import {
   MAX_LOST_REASON_LENGTH,
   type CrmDeal,
 } from '@/lib/crm/deals';
+import { loadCrmCalendar, parseMonth } from '@/lib/crm/calendar';
+import { klDay } from '@/lib/crm/deal-stats';
+import { completeFollowUp, createFollowUp, parseFollowUpForm } from '@/lib/crm/follow-ups';
 import {
   ensureDefaultPipeline,
   listCrmPipelines,
@@ -56,11 +59,20 @@ export const CRM_WRITE_TOOL_NAMES = [
   'markDealLost',
   'reopenDeal',
   'deleteDeal',
+  'createFollowUp',
+  'completeFollowUp',
 ] as const;
 
 const CONTACT_STATUSES = ['lead', 'contacted', 'qualified', 'customer', 'archived'] as const;
 const CONTACT_COLUMNS =
   'id,first_name,last_name,email,phone,company,country,status,lead_score,tags,created_at';
+
+type FollowUpRow = {
+  id: string;
+  title: string;
+  due_at: string | null;
+  contact_id: string | null;
+};
 
 type ContactRow = {
   id: string;
@@ -328,6 +340,100 @@ export function createCrmTools(access: CrmAccess) {
         return deriveDealStats(deals, list);
       },
     }),
+
+    listFollowUps: tool({
+      description:
+        'Open follow-ups (reminders to get back to a contact), soonest due first: id, name (what to do), ' +
+        'the contact, the due date (YYYY-MM-DD, or null) and whether it is overdue. Finished ones are not listed.',
+      inputSchema: z.object({
+        contactId: idSchema.optional().describe('Only this contact’s follow-ups.'),
+        limit: limitSchema('Max rows to return (default 20, at most 50).'),
+      }),
+      execute: async ({ contactId, limit }) => {
+        let query = client
+          .from('crm_activities')
+          .select('id,title,due_at,contact_id', { count: 'exact' })
+          .eq('org_id', orgId)
+          .eq('type', 'task')
+          .is('completed_at', null);
+        if (contactId) query = query.eq('contact_id', contactId);
+        const { data, count, error } = await query
+          .order('due_at', { ascending: true, nullsFirst: false })
+          .limit(rowLimit(limit, 20));
+        if (error) throw error;
+        const rows = (data ?? []) as unknown as FollowUpRow[];
+
+        const contactIds = [...new Set(rows.map((row) => row.contact_id))].filter(
+          (id): id is string => Boolean(id),
+        );
+        const names = new Map<string, string>();
+        if (contactIds.length > 0) {
+          const contacts = await client
+            .from('crm_contacts')
+            .select('id,first_name,last_name')
+            .eq('org_id', orgId)
+            .in('id', contactIds);
+          if (contacts.error) throw contacts.error;
+          for (const row of (contacts.data ?? []) as unknown as ContactRow[]) {
+            names.set(row.id, fullName(row));
+          }
+        }
+
+        const today = klDay(new Date());
+        return {
+          total_open: count ?? rows.length,
+          follow_ups: rows.map((row) => {
+            // A due date is stored as midnight UTC of the chosen day.
+            const due = row.due_at ? row.due_at.slice(0, 10) : null;
+            return {
+              id: row.id,
+              // `name` is what an approval card calls the follow-up.
+              name: row.title,
+              contact: row.contact_id ? (names.get(row.contact_id) ?? null) : null,
+              contact_id: row.contact_id,
+              due,
+              overdue: due !== null && due < today,
+            };
+          }),
+        };
+      },
+    }),
+
+    getCalendar: tool({
+      description:
+        'The Kasturi calendar for one month: appointments (with their time in Malaysia), open follow-ups by due date ' +
+        'and open deals by expected close date, in date order. Also counts for today, the next 7 days and the next 30 days. ' +
+        'Leave the month out for the current month.',
+      inputSchema: z.object({
+        month: z
+          .string()
+          .regex(/^\d{4}-\d{2}$/)
+          .optional()
+          .describe('YYYY-MM. Defaults to the current month in Malaysia.'),
+      }),
+      execute: async ({ month }) => {
+        const now = new Date();
+        const calendar = await loadCrmCalendar(client, orgId, parseMonth(month, now), now);
+        return {
+          month: calendar.month,
+          today: klDay(now),
+          counts: {
+            today: calendar.stats.today,
+            next_7_days: calendar.stats.next7,
+            in_month: calendar.stats.inMonth,
+            next_30_days: calendar.stats.next30,
+          },
+          entries: calendar.days.flatMap((day) =>
+            day.items.map((item) => ({
+              date: item.day,
+              time: item.time,
+              kind: item.kind,
+              what: item.label,
+            })),
+          ),
+        };
+      },
+    }),
   };
 
   // A caller who cannot write gets no change tools at all (not merely gated ones).
@@ -525,6 +631,41 @@ export function createCrmTools(access: CrmAccess) {
           const now = await readDealFields(id);
           await deleteCrmDeal(client, orgId, id);
           return { id, name: now.title };
+        }),
+    }),
+
+    createFollowUp: tool({
+      description:
+        'Add a follow-up (a reminder to get back to a contact), with an optional due date. ' +
+        'Get the contact id from listCrmContacts first. Needs approval.',
+      inputSchema: z.object({
+        contactId: idSchema.describe('The id of the contact to follow up with, from listCrmContacts.'),
+        title: z.string().min(1).describe('What to do, such as "Send the quotation".'),
+        dueDate: z.string().optional().describe('YYYY-MM-DD.'),
+      }),
+      execute: async (input) =>
+        attempt(async () => {
+          const payload = parseFollowUpForm(form(input), orgId, access.userId);
+          await createFollowUp(client, payload);
+          return { name: payload.title, due: payload.due_at ? payload.due_at.slice(0, 10) : null };
+        }),
+    }),
+
+    completeFollowUp: tool({
+      description: 'Mark a follow-up as done, by id from listFollowUps. Needs approval.',
+      inputSchema: z.object({ id: idSchema }),
+      execute: async ({ id }) =>
+        attempt(async () => {
+          const { data, error } = await client
+            .from('crm_activities')
+            .select('title')
+            .eq('org_id', orgId)
+            .eq('id', id)
+            .eq('type', 'task')
+            .maybeSingle();
+          if (error) throw error;
+          await completeFollowUp(client, orgId, id);
+          return { id, name: (data as { title: string } | null)?.title ?? null, done: true };
         }),
     }),
   };
