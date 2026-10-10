@@ -227,7 +227,7 @@ export function PaymentsView({
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer className="pb-24 sm:pb-24">
       <PageHeader
         title="Payments Out"
         subtitle="Payments made to suppliers, Saudara."

@@ -306,7 +306,7 @@ export function BillsView({
   const tableError = confirm.error && asking && !askingInView ? confirm.error : null;
 
   return (
-    <ScreenContainer>
+    <ScreenContainer className="pb-24 sm:pb-24">
       <PageHeader
         title="Supplier Bills"
         subtitle="Bills payable to your suppliers, Saudara."
