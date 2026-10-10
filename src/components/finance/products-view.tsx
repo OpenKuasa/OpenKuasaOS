@@ -244,6 +244,7 @@ export function ProductsView({ view, actions }: { view: ProductsViewData; action
                               {
                                 label: 'Edit',
                                 icon: Pencil,
+                                opens: true,
                                 onSelect: () => {
                                   setAdding(false);
                                   setDeleting(null);
@@ -265,6 +266,7 @@ export function ProductsView({ view, actions }: { view: ProductsViewData; action
                                 label: 'Delete',
                                 icon: Trash2,
                                 destructive: true,
+                                opens: true,
                                 onSelect: () => {
                                   setAdding(false);
                                   setEditing(null);
@@ -359,6 +361,7 @@ function ProductFormCard({
             placeholder="A4 Paper (Ream)"
             autoComplete="off"
             autoFocus
+            data-finance-focus
             required
             onChange={(e) => setName(e.target.value)}
           />

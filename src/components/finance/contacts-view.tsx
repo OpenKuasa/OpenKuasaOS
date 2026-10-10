@@ -275,7 +275,7 @@ export function ContactsView({ view, actions }: { view: ContactsViewData; action
                           <RowMenu
                             label={c.name}
                             items={[
-                              { label: 'Edit', icon: Pencil, onSelect: () => openEdit(c) },
+                              { label: 'Edit', icon: Pencil, opens: true, onSelect: () => openEdit(c) },
                               c.active
                                 ? {
                                     label: 'Archive',
@@ -287,7 +287,7 @@ export function ContactsView({ view, actions }: { view: ContactsViewData; action
                                     icon: ArchiveRestore,
                                     onSelect: () => rowAction.run(() => actions.setActive({ id: c.id, active: true })),
                                   },
-                              { label: 'Delete', icon: Trash2, destructive: true, onSelect: () => openDelete(c) },
+                              { label: 'Delete', icon: Trash2, destructive: true, opens: true, onSelect: () => openDelete(c) },
                             ]}
                           />
                         </TableCell>
@@ -370,6 +370,7 @@ function ContactFormCard({
             placeholder="Lim Hardware Sdn Bhd"
             autoComplete="off"
             autoFocus
+            data-finance-focus
             required
             onChange={(e) => setName(e.target.value)}
           />
