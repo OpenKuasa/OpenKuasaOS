@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRODUCTS, getProduct, visibleSections } from '@/config/nav';
+import { buildSearchEntries } from '@/components/app/nav-search-entries';
 
 const people = getProduct('people')!;
 const HR_ONLY = ['approve-leave', 'approve-claims', 'approve-overtime', 'approve-time-off', 'payroll', 'payment-vouchers', 'settings'];
@@ -39,5 +40,20 @@ describe('Lekiu navigation by role', () => {
       expect(all.some((i) => i.needs !== undefined), product.key).toBe(false);
       expect(visibleSections(product, { role: 'viewer', isDemo: false })).toEqual(product.sections);
     }
+  });
+});
+
+describe('jump-to search by role', () => {
+  const hrHrefs = (role: 'owner' | 'member') =>
+    buildSearchEntries({ role, isDemo: false })
+      .map((e) => e.href)
+      .filter((href) => HR_ONLY.some((slug) => href === `/people/${slug}`));
+
+  it('offers a member none of the HR-only pages', () => {
+    expect(hrHrefs('member')).toEqual([]);
+  });
+
+  it('offers an owner all seven', () => {
+    expect(hrHrefs('owner')).toHaveLength(7);
   });
 });

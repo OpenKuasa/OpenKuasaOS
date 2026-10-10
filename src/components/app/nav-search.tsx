@@ -6,39 +6,17 @@ import { useRouter } from 'next/navigation';
 import { Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PRODUCTS } from '@/config/nav';
+import { buildSearchEntries, type SearchEntry } from '@/components/app/nav-search-entries';
+import { useViewer } from '@/components/app/viewer-context';
 import { cn } from '@/lib/utils';
-
-type Entry = { href: string; label: string; context: string };
-
-const ACCOUNT_ENTRIES: Entry[] = [
-  { href: '/account/profile', label: 'My profile', context: 'Account' },
-  { href: '/account/security', label: 'Security', context: 'Account' },
-  { href: '/account/notifications', label: 'Notifications', context: 'Account' },
-  { href: '/account/company', label: 'Company details', context: 'Account' },
-  { href: '/account/team', label: 'Team', context: 'Account' },
-  { href: '/account/ai', label: 'AI key', context: 'Account' },
-];
-
-const ENTRIES: Entry[] = [
-  ...PRODUCTS.flatMap((p) => [
-    { href: `/${p.key}`, label: p.name, context: p.tagline },
-    ...p.sections.flatMap((s) =>
-      s.items.map((i) => ({
-        href: `/${p.key}/${i.slug}`,
-        label: i.label,
-        context: `${p.name} · ${s.label}`,
-      })),
-    ),
-  ]),
-  ...ACCOUNT_ENTRIES,
-];
 
 const MAX_RESULTS = 8;
 
 /** Jump-to search over the app's screens. Record search comes with live data. */
 export function NavSearch() {
   const router = useRouter();
+  const viewer = useViewer();
+  const entries = useMemo(() => buildSearchEntries(viewer), [viewer]);
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -50,17 +28,17 @@ export function NavSearch() {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    return ENTRIES.filter((e) =>
+    return entries.filter((e) =>
       `${e.label} ${e.context}`.toLowerCase().includes(q),
     ).slice(0, MAX_RESULTS);
-  }, [query]);
+  }, [query, entries]);
 
   const close = () => {
     setOpen(false);
     setExpanded(false);
   };
 
-  const go = (entry: Entry | undefined) => {
+  const go = (entry: SearchEntry | undefined) => {
     if (!entry) return;
     setQuery('');
     close();
