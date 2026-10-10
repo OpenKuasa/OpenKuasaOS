@@ -92,7 +92,7 @@ export function ContactsView({ view, actions }: { view: ContactsViewData; action
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer className="pb-24 sm:pb-24">
       <PageHeader
         title="Customers & Suppliers"
         subtitle="Your contacts for billing & procurement, Saudara."
