@@ -12,6 +12,7 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   'reach/assistant',
   'reach/ad-studio',
   'reach/creative-bank',
+  'reach/leads',
   'reach/lead-forms',
   'reach/ad-settings',
 

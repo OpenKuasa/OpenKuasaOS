@@ -19,6 +19,7 @@ describe('live screens', () => {
   it('leaves connected screens and Tuah alone', () => {
     expect(isSampleScreen('/crm/deals')).toBe(false);
     expect(isSampleScreen('/reach/ad-studio')).toBe(false);
+    expect(isSampleScreen('/reach/leads')).toBe(false);
     expect(isSampleScreen('/command')).toBe(false);
   });
 
