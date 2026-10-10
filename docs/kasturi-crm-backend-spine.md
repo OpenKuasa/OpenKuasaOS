@@ -97,7 +97,7 @@ The migration reuses the private tenancy helper functions:
 
 ## Public lead forms
 
-A lead form (`public.forms`, shown at `/reach/lead-forms` and `/crm/lead-forms`) has a public page while it is active. Migration: `20261011140000_reach_form_submissions.sql`.
+A lead form (`public.forms`, shown at `/reach/lead-forms` and `/crm/lead-forms`) has a public page while it is active. Migration: `20261012110000_reach_form_submissions.sql`.
 
 ### The link
 

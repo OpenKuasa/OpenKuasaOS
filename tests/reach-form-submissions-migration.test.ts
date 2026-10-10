@@ -10,7 +10,7 @@ import {
 } from '@/lib/reach/form-submissions';
 
 const migration = readFileSync(
-  join(process.cwd(), 'supabase/migrations/20261011140000_reach_form_submissions.sql'),
+  join(process.cwd(), 'supabase/migrations/20261012110000_reach_form_submissions.sql'),
   'utf8',
 );
 /** The statements, without the comments (which mention things the SQL must not do). */

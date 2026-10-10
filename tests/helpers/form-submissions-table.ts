@@ -3,7 +3,7 @@ import { isMissingTable } from './forms-table';
 
 /** The migration that creates `public.form_submissions` and the public form functions. */
 export const FORM_SUBMISSIONS_MIGRATION =
-  'supabase/migrations/20261011140000_reach_form_submissions.sql';
+  'supabase/migrations/20261012110000_reach_form_submissions.sql';
 
 export const formSubmissionsSkipReason =
   'public.form_submissions or the public form functions do not exist in this database yet: ' +
