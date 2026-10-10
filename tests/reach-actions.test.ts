@@ -40,6 +40,21 @@ vi.mock('@/lib/agents/config', async (orig) => {
   };
 });
 
+vi.mock('@/lib/reach/schedule-capabilities', async (orig) => {
+  const actual = await orig<typeof import('@/lib/reach/schedule-capabilities')>();
+  return {
+    ...actual,
+    createSchedule: async (_ctx: unknown, input: unknown) => {
+      ctl.created.push(input);
+      return { ok: true, data: { id: 's1' } };
+    },
+    setWorkspaceCaps: async (_ctx: unknown, input: unknown) => {
+      ctl.created.push(input);
+      return { ok: true, data: { daily_cap_cents: 1, weekly_cap_cents: 2 } };
+    },
+  };
+});
+
 const svc = vi.hoisted(() => {
   const o = { client: {} as object, run: vi.fn(), inflight: null as unknown };
   // Chainable fake for the in-flight guard's SELECT on agent_runs.
@@ -58,7 +73,7 @@ vi.mock('@/lib/agents/weekly-studio', () => ({
   runWeeklyStudio: svc.run,
 }));
 
-const { createCampaignAction, createLeadAction, createAppointmentAction, setAgentEnabledAction, runAgentNowAction } = await import('@/app/(app)/reach/actions');
+const { createCampaignAction, createLeadAction, createAppointmentAction, setAgentEnabledAction, runAgentNowAction, createScheduleAction, setWorkspaceCapsAction } = await import('@/app/(app)/reach/actions');
 
 beforeEach(() => {
   ctl.viewer = { userId: 'u1', orgId: 'org1', role: 'member', isDemo: false };
@@ -154,6 +169,46 @@ describe('setAgentEnabledAction', () => {
   });
   it('calls the capability for a member with valid input', async () => {
     expect(await setAgentEnabledAction(valid)).toMatchObject({ ok: true });
+    expect(ctl.created).toHaveLength(1);
+  });
+});
+
+describe('createScheduleAction', () => {
+  const valid = { agent_key: 'weekly-studio', interval_seconds: 3600 };
+  it('forbids a demo guest', async () => {
+    ctl.viewer = { ...ctl.viewer, isDemo: true };
+    expect(await createScheduleAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('forbids a viewer', async () => {
+    ctl.viewer = { ...ctl.viewer, role: 'viewer' };
+    expect(await createScheduleAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('rejects invalid input before calling the capability', async () => {
+    expect(await createScheduleAction({ agent_key: 'nope', interval_seconds: 1 })).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('calls the capability for a member with valid input', async () => {
+    expect(await createScheduleAction(valid)).toMatchObject({ ok: true });
+    expect(ctl.created).toHaveLength(1);
+  });
+});
+
+describe('setWorkspaceCapsAction', () => {
+  const valid = { daily_cap_cents: 100, weekly_cap_cents: 500 };
+  it('forbids a demo guest', async () => {
+    ctl.viewer = { ...ctl.viewer, isDemo: true };
+    expect(await setWorkspaceCapsAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('forbids a viewer', async () => {
+    ctl.viewer = { ...ctl.viewer, role: 'viewer' };
+    expect(await setWorkspaceCapsAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('calls the capability for a member with valid input', async () => {
+    expect(await setWorkspaceCapsAction(valid)).toMatchObject({ ok: true });
     expect(ctl.created).toHaveLength(1);
   });
 });

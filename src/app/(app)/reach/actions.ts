@@ -60,6 +60,21 @@ import {
   setAgentEnabled,
   setAgentEnabledInput,
 } from '@/lib/agents/config';
+import {
+  cancelSchedule,
+  cancelScheduleInput,
+  createSchedule,
+  createScheduleInput,
+  pauseSchedule,
+  pauseScheduleInput,
+  resumeSchedule,
+  resumeScheduleInput,
+  setWorkspaceCaps,
+  setWorkspaceCapsInput,
+  syncCadenceSchedule,
+  updateSchedule,
+  updateScheduleInput,
+} from '@/lib/reach/schedule-capabilities';
 import { serviceClient } from '@/lib/supabase/service';
 import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
 import { RUN_MAX_AGE_MS } from '@/lib/agents/runner';
@@ -295,10 +310,50 @@ export async function setAgentEnabledAction(input: unknown) {
   return runAgentConfig(setAgentEnabledInput, input, setAgentEnabled);
 }
 export async function setAgentCadenceAction(input: unknown) {
-  return runAgentConfig(setAgentCadenceInput, input, setAgentCadence);
+  // The dropdown also drives the schedule table (the runner reads only that).
+  return runAgentConfig(setAgentCadenceInput, input, async (ctx, parsed) => {
+    const result = await setAgentCadence(ctx, parsed);
+    if (!result.ok) return result;
+    const synced = await syncCadenceSchedule(ctx, parsed.cadence);
+    return synced.ok ? result : { ok: false, error: synced.error };
+  });
 }
 export async function setAgentCapAction(input: unknown) {
   return runAgentConfig(setAgentCapInput, input, setAgentCap);
+}
+
+/** Same shape as {@link runAgentConfig}, for schedules + workspace caps. */
+async function runSchedule<I, O>(
+  schema: ZodType<I>,
+  input: unknown,
+  fn: (ctx: ReachWriteContext, parsed: I) => Promise<CapResult<O>>,
+): Promise<CapResult<O>> {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return INVALID;
+  const result = await fn(ctx, parsed.data);
+  if (result.ok) for (const path of AGENTS_PATHS) revalidatePath(path);
+  return result;
+}
+
+export async function createScheduleAction(input: unknown) {
+  return runSchedule(createScheduleInput, input, createSchedule);
+}
+export async function updateScheduleAction(input: unknown) {
+  return runSchedule(updateScheduleInput, input, updateSchedule);
+}
+export async function pauseScheduleAction(input: unknown) {
+  return runSchedule(pauseScheduleInput, input, pauseSchedule);
+}
+export async function resumeScheduleAction(input: unknown) {
+  return runSchedule(resumeScheduleInput, input, resumeSchedule);
+}
+export async function cancelScheduleAction(input: unknown) {
+  return runSchedule(cancelScheduleInput, input, cancelSchedule);
+}
+export async function setWorkspaceCapsAction(input: unknown) {
+  return runSchedule(setWorkspaceCapsInput, input, setWorkspaceCaps);
 }
 
 /**

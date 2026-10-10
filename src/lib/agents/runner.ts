@@ -4,57 +4,224 @@ import { decryptApiKey, hasKeySecret } from '@/lib/ai/key-crypto';
 import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
 import { WEEKLY_STUDIO } from '@/lib/agents/types';
 
-const CADENCE_WINDOW_MS: Record<string, number> = {
-  daily: 24 * 60 * 60 * 1000,
-  weekly: 7 * 24 * 60 * 60 * 1000,
+export type RunSchedulesSummary = {
+  ran: number;
+  skipped: number;
+  paused: number;
+  completed: number;
+  failed: number;
 };
 
-export type RunAgentsSummary = { ran: number; skipped: number; failed: number };
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type OrgConfig = {
+  enabled: boolean | null;
+  daily_cap_cents: number | null;
+  weekly_cap_cents: number | null;
+};
+
+/** Rolling-ceiling check. Returns a pause reason, or null if under budget. */
+async function overBudget(
+  client: SupabaseClient,
+  orgId: string,
+  caps: OrgConfig | null,
+): Promise<string | null> {
+  const daily = caps?.daily_cap_cents ?? 500;
+  const weekly = caps?.weekly_cap_cents ?? 2000;
+  const spentSince = async (sinceIso: string): Promise<number> => {
+    // Zero-cost rows (monitor-skips) are excluded: they add nothing and would
+    // otherwise push the window past PostgREST's row cap and undercount the sum.
+    const { data, error } = await client
+      .from('agent_runs')
+      .select('cost_cents')
+      .eq('org_id', orgId)
+      .gt('cost_cents', 0)
+      .gte('started_at', sinceIso);
+    // Fail closed: an unreadable spend must never read as "under budget". The
+    // per-schedule catch counts it failed and the next tick retries (no pause).
+    if (error) throw new Error('spend query failed');
+    return (data ?? []).reduce(
+      (a: number, r: { cost_cents: number | null }) => a + (r.cost_cents ?? 0),
+      0,
+    );
+  };
+  if ((await spentSince(new Date(Date.now() - DAY_MS).toISOString())) >= daily) {
+    return 'daily budget reached';
+  }
+  if ((await spentSince(new Date(Date.now() - 7 * DAY_MS).toISOString())) >= weekly) {
+    return 'weekly budget reached';
+  }
+  return null;
+}
+
+/** Monitor-skip: has the org's reach data changed since `sinceIso`? */
+async function hasNewDataSince(
+  client: SupabaseClient,
+  orgId: string,
+  sinceIso: string,
+): Promise<boolean> {
+  for (const table of ['leads', 'campaigns', 'appointments']) {
+    const { data } = await client
+      .from(table)
+      .select('id')
+      .eq('org_id', orgId)
+      .gt('created_at', sinceIso)
+      .limit(1)
+      .maybeSingle();
+    if (data) return true;
+  }
+  return false;
+}
+
+type DueSchedule = {
+  id: string;
+  org_id: string;
+  agent_key: string;
+  interval_seconds: number;
+  next_run_at: string;
+  last_run_at: string | null;
+  end_at: string | null;
+  max_runs: number | null;
+  runs_used: number;
+  max_total_cents: number | null;
+  spent_cents: number;
+};
 
 /**
- * Scheduled driver. `client` MUST be the service-role client. Kill-switch:
- * does nothing unless AGENTS_ENABLED is 'true'/'1'. Each due config is CLAIMED
- * with a conditional update (last_run_at null or older than the window) before
- * running, so overlapping triggers run it at most once per window. The org comes
- * from the claimed row only; the per-run cost cap (max_cost_cents) is enforced
- * inside runWeeklyStudio from that same config row. One failure never stops the loop.
+ * Schedule-driven driver. `client` MUST be the service-role client. Kill-switch:
+ * does nothing unless AGENTS_ENABLED is 'true'/'1'. For each due active schedule:
+ * finish it if its limits are spent, else check the workspace's rolling daily/weekly
+ * ceilings BEFORE any run (over budget pauses the org's active schedules), then CLAIM
+ * it with a conditional update so overlapping ticks run it once. If nothing in the
+ * org's reach data is new since the last run, record a cost-0 skipped run instead of
+ * generating. The org always comes from the schedule row. One failure never stops the
+ * loop and exception text is dropped (it may carry request details or a key).
  */
-export async function runAgents(client: SupabaseClient): Promise<RunAgentsSummary> {
-  const summary: RunAgentsSummary = { ran: 0, skipped: 0, failed: 0 };
+export async function runSchedules(client: SupabaseClient): Promise<RunSchedulesSummary> {
+  const summary: RunSchedulesSummary = { ran: 0, skipped: 0, paused: 0, completed: 0, failed: 0 };
   const flag = (process.env.AGENTS_ENABLED ?? '').trim().toLowerCase();
   if (flag !== 'true' && flag !== '1') return summary;
 
+  const nowIso = new Date().toISOString();
   const { data, error } = await client
-    .from('agent_configs')
-    .select('id, org_id, cadence, last_run_at')
-    .eq('agent_key', WEEKLY_STUDIO)
-    .eq('enabled', true)
-    .neq('cadence', 'off');
+    .from('agent_schedules')
+    .select(
+      'id, org_id, agent_key, interval_seconds, next_run_at, last_run_at, end_at, max_runs, runs_used, max_total_cents, spent_cents',
+    )
+    .eq('status', 'active')
+    .lte('next_run_at', nowIso);
   if (error || !data) return summary;
 
-  for (const cfg of data as { id: string; org_id: string; cadence: string; last_run_at: string | null }[]) {
-    const window = CADENCE_WINDOW_MS[cfg.cadence];
-    if (!window) continue;
-    const now = Date.now();
-    if (cfg.last_run_at && now - new Date(cfg.last_run_at).getTime() < window) continue;
+  // Per-org Weekly Studio config, read once per org per tick.
+  const configs = new Map<string, OrgConfig | null>();
+  const configFor = async (orgId: string): Promise<OrgConfig | null> => {
+    if (configs.has(orgId)) return configs.get(orgId) ?? null;
+    const { data: cfg } = await client
+      .from('agent_configs')
+      .select('enabled, daily_cap_cents, weekly_cap_cents')
+      .eq('org_id', orgId)
+      .eq('agent_key', WEEKLY_STUDIO)
+      .maybeSingle();
+    const row = (cfg as OrgConfig | null) ?? null;
+    configs.set(orgId, row);
+    return row;
+  };
+
+  for (const s of data as DueSchedule[]) {
     try {
-      const cutoff = new Date(now - window).toISOString();
-      const { data: claimed, error: claimErr } = await client
-        .from('agent_configs')
-        .update({ last_run_at: new Date(now).toISOString() })
-        .eq('id', cfg.id)
-        .eq('enabled', true)
-        .or(`last_run_at.is.null,last_run_at.lt.${cutoff}`)
-        .select('id, org_id')
-        .maybeSingle();
-      if (claimErr || !claimed) {
+      // Off switch: leave the schedule untouched so re-enabling resumes it.
+      // No config row keeps the default behavior (proceed).
+      const config = await configFor(s.org_id);
+      if (config && config.enabled === false) {
         summary.skipped += 1;
         continue;
       }
-      await runWeeklyStudio(client, claimed.org_id as string, 'schedule');
+
+      const done =
+        (s.max_runs != null && s.runs_used >= s.max_runs) ||
+        (s.max_total_cents != null && s.spent_cents >= s.max_total_cents) ||
+        (s.end_at != null && new Date(s.end_at) <= new Date());
+      if (done) {
+        await client
+          .from('agent_schedules')
+          .update({ status: 'completed', updated_at: nowIso })
+          .eq('id', s.id)
+          .eq('org_id', s.org_id)
+          .eq('status', 'active');
+        summary.completed += 1;
+        continue;
+      }
+
+      const reason = await overBudget(client, s.org_id, config);
+      if (reason) {
+        await client
+          .from('agent_schedules')
+          .update({ status: 'paused', paused_reason: reason, updated_at: nowIso })
+          .eq('org_id', s.org_id)
+          .eq('status', 'active');
+        summary.paused += 1;
+        continue;
+      }
+
+      const nextIso = new Date(Date.now() + s.interval_seconds * 1000).toISOString();
+      const { data: claimed } = await client
+        .from('agent_schedules')
+        .update({ next_run_at: nextIso, paused_reason: null, updated_at: nowIso })
+        .eq('id', s.id)
+        .eq('status', 'active')
+        .lte('next_run_at', nowIso)
+        .select('id')
+        .maybeSingle();
+      if (!claimed) {
+        summary.skipped += 1;
+        continue;
+      }
+
+      if (s.last_run_at && !(await hasNewDataSince(client, s.org_id, s.last_run_at))) {
+        await client.from('agent_runs').insert({
+          org_id: s.org_id,
+          agent_key: s.agent_key,
+          status: 'skipped',
+          trigger: 'schedule',
+          cost_cents: 0,
+          finished_at: nowIso,
+        });
+        await client
+          .from('agent_schedules')
+          .update({ last_run_at: nowIso, runs_used: s.runs_used + 1, updated_at: nowIso })
+          .eq('id', s.id)
+          .eq('org_id', s.org_id);
+        summary.skipped += 1;
+        continue;
+      }
+
+      const result = await runWeeklyStudio(client, s.org_id, 'schedule');
+      const { data: runRow } = await client
+        .from('agent_runs')
+        .select('cost_cents')
+        .eq('id', result.runId)
+        .maybeSingle();
+      const cost = (runRow?.cost_cents as number | undefined) ?? 0;
+      const runsUsed = s.runs_used + 1;
+      const spent = s.spent_cents + cost;
+      const nowDone =
+        (s.max_runs != null && runsUsed >= s.max_runs) ||
+        (s.max_total_cents != null && spent >= s.max_total_cents);
+      await client
+        .from('agent_schedules')
+        .update({
+          last_run_at: nowIso,
+          runs_used: runsUsed,
+          spent_cents: spent,
+          // Never write 'active': a user may have paused/cancelled mid-run.
+          ...(nowDone ? { status: 'completed' } : {}),
+          updated_at: nowIso,
+        })
+        .eq('id', s.id)
+        .eq('org_id', s.org_id)
+        .eq('status', 'active');
       summary.ran += 1;
     } catch {
-      // Deliberately drop the exception text; the run row records its own failure.
       summary.failed += 1;
     }
   }
