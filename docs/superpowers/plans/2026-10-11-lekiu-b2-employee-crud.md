@@ -4316,3 +4316,16 @@ Report which of these were done and which were not.
 - Lekiu inside Tuah: the spec leaves it out; it needs a paid evaluation run.
 - Importing employees from a file.
 - Carried to plan C from B1: provider-side filters for the Overview reads, a `truncated` flag at the 5,000-row stop, `todayInMalaysia` without locale data.
+
+## Execution Notes (2026-10-11)
+
+The task bodies above are the plan as written. The code on the branch differs where the reviews found problems; the branch is the reference. What changed:
+
+- **Tasks 1–2.** Ids are checked with `z.guid()`, not `z.string().uuid()`: Zod's `.uuid()` refuses valid database ids that are not RFC-version uuids (the demo workspace's are). The eight capability functions return a refusal for bad input instead of throwing. A failed rollback after a failed private-details insert is logged.
+- **Task 3.** `loadEmployeePrivateAction` checks its id the same way.
+- **Task 5.** Three prompt bullets reworded: the "no change tool means not an owner or admin" rule is limited to employee and department changes; the scope section leaves recruiting to Lekir and says adding an employee record is Lekiu's; the `"ok": false` rule for lookups says "lookup".
+- **Task 6.** Cancelling a failed save, rename or delete confirm clears the error. `canEdit` is also false in the demo workspace.
+- **Task 8.** `supabase/tests/people_rls_check.sql` was not re-run: the branch has no migration. The live tests (`people.rls`, `people-provider.rls`, `people-capabilities.rls`) pass.
+- **Final review.** The chat route logs only an error's name: the AI SDK puts a rejected tool input, whole, into the error message. Approval cards for adding and editing an employee list what is being set, with the value for status, salary and work email and the name only for NRIC, bank and the like. The link card says "Unlink" only for a null email. Search (`nav-search`) hides the same HR-only pages as the side navigation. The department-delete refusal says inactive staff count.
+- **Left for later**, none of which leaks data or blocks a task: a delete card for an employee whose name is not known reads "this employee"; over-length text gets Zod's own message on the form; a half-saved edit (directory saved, private details not) does not refresh the page; a change approved in chat does not refresh a page already open; the next employee number reads at most 1,000 rows; a change refused by the database's own rule reads as "not found"; salary parsing accepts `1e3`; every viewer's page carries each employee's account id; the other four chat routes still log whole errors (their inputs carry no identity data).
+- **Not done, needs the owner:** the signed-in owner walkthrough on the Employees screen, and one real question to the model.
