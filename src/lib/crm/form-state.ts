@@ -1,6 +1,11 @@
 /** What a Kasturi form action hands back to the form that called it. */
 export type CrmFormState =
-  | { ok: true; message?: string }
+  | {
+      ok: true;
+      message?: string;
+      /** The id of what was created, when the form needs it. */
+      id?: string;
+    }
   | { ok: false; error: string; values: Record<string, string> }
   | undefined;
 
@@ -30,4 +35,12 @@ export type CrmDealActions = {
   markLost: CrmFormAction;
   reopen: CrmFormAction;
   remove: CrmFormAction;
+  /** Takes `name` and `stages` (comma-separated). Hands back the new pipeline's `id`. */
+  createPipeline: CrmFormAction;
+  /** Takes `pipelineId` and `name`. */
+  renamePipeline: CrmFormAction;
+  /** Takes `pipelineId`. */
+  makeDefaultPipeline: CrmFormAction;
+  /** Takes `pipelineId`. */
+  removePipeline: CrmFormAction;
 };

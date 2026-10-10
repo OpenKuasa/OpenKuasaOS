@@ -1,6 +1,8 @@
 'use client';
 
-import { Search } from 'lucide-react';
+import type { RefObject } from 'react';
+import { Search, Settings2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -25,6 +27,9 @@ export function DealsToolbar({
   pipelineId,
   onPipelineChange,
   owners,
+  managing = false,
+  onManage,
+  manageButtonRef,
 }: {
   filters: DealFilters;
   onChange: (next: DealFilters) => void;
@@ -33,6 +38,11 @@ export function DealsToolbar({
   onPipelineChange: (id: string) => void;
   /** Every owner with a deal in this pipeline. */
   owners: string[];
+  /** True while the Manage pipelines card is open. */
+  managing?: boolean;
+  /** Opens or closes that card. Present only for people who may change pipelines. */
+  onManage?: () => void;
+  manageButtonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -59,6 +69,18 @@ export function DealsToolbar({
           ))}
         </SelectContent>
       </Select>
+      {onManage ? (
+        <Button
+          ref={manageButtonRef}
+          type="button"
+          variant="outline"
+          aria-expanded={managing}
+          onClick={onManage}
+        >
+          <Settings2 />
+          Manage pipelines
+        </Button>
+      ) : null}
       <Select value={filters.owner} onValueChange={(owner) => onChange({ ...filters, owner })}>
         <SelectTrigger aria-label="Owner" className="w-44">
           <SelectValue />

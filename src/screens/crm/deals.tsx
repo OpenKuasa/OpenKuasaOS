@@ -30,13 +30,9 @@ import {
 import type { CrmDeal, CrmDealContactChoice } from '@/lib/crm/deals';
 import type { CrmDealActions } from '@/lib/crm/form-state';
 import type { CrmPipeline } from '@/lib/crm/pipelines';
-import {
-  DealCard,
-  DealFormCard,
-  DeleteDealConfirm,
-  EditableDealCard,
-  LostDealConfirm,
-} from './deal-parts';
+import { DealBoard, useDealMoves } from './deal-board';
+import { DealFormCard } from './deal-parts';
+import { ManagePipelinesCard } from './deal-pipelines';
 import { DailyReportCard } from './deal-report';
 import {
   SAMPLE_DEALS,
@@ -92,7 +88,10 @@ export default function DealsScreen({
   // its sample figures and charts.
   const live = pipelines !== undefined;
   const allPipelines = pipelines ?? SAMPLE_PIPELINES;
-  const allDeals = live ? (deals ?? NO_DEALS) : SAMPLE_DEALS;
+  const loadedDeals = live ? (deals ?? NO_DEALS) : SAMPLE_DEALS;
+  // A dropped card counts as moved at once, on the board and in the figures.
+  const moves = useDealMoves(loadedDeals, actions?.move);
+  const allDeals = moves.deals;
   const at = useMemo(() => new Date(now ?? SAMPLE_NOW), [now]);
 
   const [pipelineId, setPipelineId] = useState<string | null>(null);
@@ -108,6 +107,7 @@ export default function DealsScreen({
   const [editing, setEditing] = useState<CrmDeal | null>(null);
   const [asking, setAsking] = useState<{ kind: 'delete' | 'lost'; id: string } | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
 
   const pipelineDeals = useMemo(
     () => dealsInPipeline(allDeals, pipeline?.id ?? null),
@@ -132,6 +132,8 @@ export default function DealsScreen({
   const firstFieldRef = useRef<HTMLElement>(null);
   const askingRef = useRef<HTMLElement>(null);
   const reportCloseRef = useRef<HTMLButtonElement>(null);
+  const manageButtonRef = useRef<HTMLButtonElement>(null);
+  const manageCloseRef = useRef<HTMLButtonElement>(null);
 
   const focusForm = () => {
     firstFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -158,6 +160,9 @@ export default function DealsScreen({
   useEffect(() => {
     if (reportOpen) reportCloseRef.current?.focus();
   }, [reportOpen]);
+  useEffect(() => {
+    if (managing) manageCloseRef.current?.focus();
+  }, [managing]);
 
   const startAdd = () => {
     setAdding(true);
@@ -183,6 +188,23 @@ export default function DealsScreen({
   const changePipeline = (id: string) => {
     setPipelineId(id);
     // The other pipeline has its own owners, stages and deals.
+    setFilters((f) => ({ ...f, owner: ALL_OWNERS }));
+    closeForm();
+    setAsking(null);
+  };
+
+  const toggleManaging = () => {
+    // Making another pipeline the default must not change the board under
+    // the person, so the pipeline on show is held from here on.
+    if (!managing && pipeline) setPipelineId(pipeline.id);
+    // Closing hands focus back to the button that opened the card.
+    if (managing) manageButtonRef.current?.focus();
+    setManaging(!managing);
+  };
+  const pipelineDeleted = (id: string) => {
+    if (id !== pipeline?.id) return;
+    // The board falls back to the default, which has its own owners.
+    setPipelineId(null);
     setFilters((f) => ({ ...f, owner: ALL_OWNERS }));
     closeForm();
     setAsking(null);
@@ -372,7 +394,25 @@ export default function DealsScreen({
             pipelineId={pipeline.id}
             onPipelineChange={changePipeline}
             owners={owners}
+            managing={managing}
+            onManage={actions ? toggleManaging : undefined}
+            manageButtonRef={manageButtonRef}
           />
+
+          {actions && managing ? (
+            <div className="mb-4">
+              <ManagePipelinesCard
+                pipelines={allPipelines}
+                deals={allDeals}
+                dealsCapped={(totalDeals ?? 0) > allDeals.length}
+                actions={actions}
+                onCreated={changePipeline}
+                onDeleted={pipelineDeleted}
+                onClose={toggleManaging}
+                closeRef={manageCloseRef}
+              />
+            </div>
+          ) : null}
 
           {hiddenByView || (live && (totalDeals ?? 0) > allDeals.length) ? (
             <p className="mb-3 text-xs text-muted-foreground">
@@ -383,66 +423,18 @@ export default function DealsScreen({
             </p>
           ) : null}
 
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {columns.map(({ stage, deals: inStage, total }) => (
-              <div
-                key={stage.id}
-                className="flex w-72 shrink-0 flex-col rounded-xl border bg-muted/40 p-2"
-              >
-                <div className="mb-2 px-2 py-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className={`size-2 rounded-full ${stage.dot}`} />
-                    <h3 className="text-sm font-semibold">{stage.name}</h3>
-                    <span className="ml-auto rounded-full bg-background px-2 text-xs text-muted-foreground">
-                      {inStage.length}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                    {formatRM(total)}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  {inStage.map((deal) =>
-                    actions && asking?.id === deal.id ? (
-                      asking.kind === 'delete' ? (
-                        <DeleteDealConfirm
-                          key={deal.id}
-                          deal={deal}
-                          action={actions.remove}
-                          onClose={() => setAsking(null)}
-                          focusRef={askingRef}
-                        />
-                      ) : (
-                        <LostDealConfirm
-                          key={deal.id}
-                          deal={deal}
-                          action={actions.markLost}
-                          onClose={() => setAsking(null)}
-                          focusRef={askingRef}
-                        />
-                      )
-                    ) : actions ? (
-                      <EditableDealCard
-                        key={deal.id}
-                        deal={deal}
-                        stages={stages}
-                        actions={actions}
-                        onEdit={() => startEdit(deal)}
-                        onMarkLost={() => ask('lost', deal)}
-                        onDelete={() => ask('delete', deal)}
-                        onMenuClosed={menuClosed}
-                      />
-                    ) : (
-                      <DealCard key={deal.id} deal={deal} />
-                    ),
-                  )}
-                  {inStage.length === 0 ? (
-                    <p className="px-2 pb-2 text-xs text-muted-foreground">No deals here.</p>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
+          <DealBoard
+            columns={columns}
+            stages={stages}
+            actions={actions}
+            moves={moves}
+            asking={asking}
+            onEdit={startEdit}
+            onAsk={ask}
+            onAskClosed={() => setAsking(null)}
+            onMenuClosed={menuClosed}
+            askingRef={askingRef}
+          />
           {stages.length === 0 ? (
             <p className="rounded-xl border bg-muted/40 p-4 text-sm text-muted-foreground">
               This pipeline has no stages yet, so it cannot hold deals.

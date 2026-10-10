@@ -15,9 +15,16 @@ import {
 } from '@/lib/crm/deals';
 import type { CrmDealActions, CrmFormState } from '@/lib/crm/form-state';
 import {
+  createCrmPipeline,
+  deleteCrmPipeline,
   ensureDefaultPipeline,
   listCrmPipelines,
   needsDefaultPipeline,
+  parseCrmPipelineForm,
+  parsePipelineName,
+  readPipelineId,
+  renameCrmPipeline,
+  setDefaultCrmPipeline,
 } from '@/lib/crm/pipelines';
 import { runCrmWrite } from '@/lib/crm/run-write';
 import { createClient } from '@/lib/supabase/server';
@@ -94,12 +101,64 @@ async function deleteDealAction(_prev: CrmFormState, formData: FormData) {
   );
 }
 
+async function createPipelineAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  let id = '';
+  const state = await runWrite(formData, 'Could not create the pipeline.', async () => {
+    id = await createCrmPipeline(supabase, orgId, parseCrmPipelineForm(formData));
+  });
+  // The board switches to the pipeline it is told was made.
+  return state?.ok ? { ...state, id } : state;
+}
+
+async function renamePipelineAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runWrite(formData, 'Could not rename the pipeline.', () =>
+    renameCrmPipeline(
+      supabase,
+      orgId,
+      readPipelineId(formData),
+      parsePipelineName(String(formData.get('name') ?? '')),
+    ),
+  );
+}
+
+async function makeDefaultPipelineAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runWrite(formData, 'Could not change the default pipeline.', () =>
+    setDefaultCrmPipeline(supabase, orgId, readPipelineId(formData)),
+  );
+}
+
+async function deletePipelineAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runWrite(formData, 'Could not delete the pipeline.', () =>
+    deleteCrmPipeline(supabase, orgId, readPipelineId(formData)),
+  );
+}
+
 const ACTIONS: CrmDealActions = {
   save: saveDealAction,
   move: moveDealAction,
   markLost: markDealLostAction,
   reopen: reopenDealAction,
   remove: deleteDealAction,
+  createPipeline: createPipelineAction,
+  renamePipeline: renamePipelineAction,
+  makeDefaultPipeline: makeDefaultPipelineAction,
+  removePipeline: deletePipelineAction,
 };
 
 export default async function CrmDealsPage() {

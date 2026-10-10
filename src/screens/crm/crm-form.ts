@@ -5,13 +5,14 @@ import type { CrmFormAction, CrmFormState } from '@/lib/crm/form-state';
 
 /**
  * Runs a form action and calls `onDone` once it has succeeded, so the caller
- * can close whatever the form was shown in.
+ * can close whatever the form was shown in. `onDone` is given the id of what
+ * the action made, when it hands one back.
  */
-export function useCrmForm(action: CrmFormAction, onDone?: () => void) {
+export function useCrmForm(action: CrmFormAction, onDone?: (id?: string) => void) {
   const [state, formAction, pending] = useActionState<CrmFormState, FormData>(
     async (prev, formData) => {
       const next = await action(prev, formData);
-      if (next?.ok) onDone?.();
+      if (next?.ok) onDone?.(next.id);
       return next;
     },
     undefined,

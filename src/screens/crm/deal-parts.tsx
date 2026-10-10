@@ -1,6 +1,12 @@
 'use client';
 
-import { useTransition, type ReactNode, type RefObject } from 'react';
+import {
+  useRef,
+  useTransition,
+  type HTMLAttributes,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import Link from 'next/link';
 import {
   ArrowRightLeft,
@@ -38,7 +44,11 @@ import {
 } from '@/lib/crm/deals';
 import type { CrmDealActions, CrmFormAction } from '@/lib/crm/form-state';
 import type { CrmPipelineStage } from '@/lib/crm/pipelines';
+import { cn } from '@/lib/utils';
 import { SELECT_CLASS, useCrmForm } from './crm-form';
+
+/** What a dragged card carries. Not text, so it cannot be dropped into a field. */
+export const DEAL_DRAG_TYPE = 'application/x-deal-card';
 
 const initials = (name: string) =>
   name
@@ -216,14 +226,25 @@ export function DealCard({
   deal,
   menu,
   children,
+  className,
+  dragProps,
 }: {
   deal: CrmDeal;
   menu?: ReactNode;
   /** Shown under the card's details: progress, or what went wrong. */
   children?: ReactNode;
+  className?: string;
+  /** Makes the card something that can be dragged, for people who can edit. */
+  dragProps?: HTMLAttributes<HTMLDivElement>;
 }) {
   return (
-    <div className="space-y-2 rounded-xl border bg-card p-3 shadow-sm transition-colors hover:border-primary/40">
+    <div
+      {...dragProps}
+      className={cn(
+        'space-y-2 rounded-xl border bg-card p-3 shadow-sm transition-colors hover:border-primary/40',
+        className,
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight">
           {deal.company}
@@ -358,6 +379,7 @@ export function EditableDealCard({
   onMarkLost,
   onDelete,
   onMenuClosed,
+  drag,
 }: {
   deal: CrmDeal;
   /** Every stage of the deal's pipeline. */
@@ -367,17 +389,35 @@ export function EditableDealCard({
   onMarkLost: () => void;
   onDelete: () => void;
   onMenuClosed: () => boolean;
+  /** Dragging the card to another stage, which the board looks after. */
+  drag: {
+    /** True while a drop of this card is on its way to the server. */
+    moving: boolean;
+    /** Why the last drop of this card did not go through. */
+    error?: string;
+    /** True while this card is the one being dragged. */
+    active: boolean;
+    onStart: () => void;
+    onEnd: () => void;
+    /** Called when the menu starts a change of its own, so an old drop error goes. */
+    onOtherChange: () => void;
+  };
 }) {
   const move = useCrmForm(actions.move);
   const reopen = useCrmForm(actions.reopen);
   const [, startTransition] = useTransition();
-  const busy = move.pending || reopen.pending;
-  const error = move.error ?? reopen.error;
+  const busy = move.pending || reopen.pending || drag.moving;
+  const error = move.error ?? reopen.error ?? drag.error;
+
+  // A drag reports the card, not what was pressed, so the press is noted
+  // first: one that began on the menu button is not the start of a drag.
+  const pressedControl = useRef(false);
 
   // These have no form on the page, so one is put together for the action.
   // The menu button stays enabled meanwhile, so focus can return to it.
   const send = (formAction: (formData: FormData) => void, fields: Record<string, string>) => {
     if (busy) return;
+    drag.onOtherChange();
     const formData = new FormData();
     formData.set('dealId', deal.id);
     for (const [key, value] of Object.entries(fields)) formData.set(key, value);
@@ -387,6 +427,26 @@ export function EditableDealCard({
   return (
     <DealCard
       deal={deal}
+      className={cn(!busy && 'cursor-grab active:cursor-grabbing', drag.active && 'opacity-50')}
+      dragProps={{
+        // Not while a move is already on its way.
+        draggable: !busy,
+        onPointerDownCapture: (event) => {
+          pressedControl.current =
+            event.target instanceof Element &&
+            event.target.closest('button, a, input, [role="menu"]') !== null;
+        },
+        onDragStart: (event) => {
+          if (busy || pressedControl.current) {
+            event.preventDefault();
+            return;
+          }
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData(DEAL_DRAG_TYPE, deal.id);
+          drag.onStart();
+        },
+        onDragEnd: drag.onEnd,
+      }}
       menu={
         <DealCardMenu
           deal={deal}
@@ -402,7 +462,7 @@ export function EditableDealCard({
     >
       {busy ? (
         <p role="status" className="text-[11px] font-medium text-muted-foreground">
-          {move.pending ? 'Moving…' : 'Reopening…'}
+          {reopen.pending ? 'Reopening…' : 'Moving…'}
         </p>
       ) : null}
       {error ? (
