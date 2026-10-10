@@ -219,8 +219,12 @@ testWithSupabase('7. the demo workspace gives nothing from either function', asy
 });
 
 testWithSupabase('8. a visitor cannot read the tables directly', async () => {
-  expectNoRows(await visitor.from('hire_jobs').select('id'));
-  expectNoRows(await visitor.from('hire_settings').select('org_id'));
+  // Permission denied (42501), not an empty list: an empty list would also pass if the grant existed and
+  // row-level security hid the rows.
+  const jobs = await visitor.from('hire_jobs').select('id');
+  expect(jobs.error?.code).toBe('42501');
+  const settings = await visitor.from('hire_settings').select('org_id');
+  expect(settings.error?.code).toBe('42501');
 });
 
 testWithSupabase('9. a viewer cannot write settings and a writer cannot move the row', async () => {
@@ -260,4 +264,18 @@ testWithSupabase('10. returned rows carry no headcount, status, created_at or cl
   for (const row of [...listRows, ...oneRows]) {
     for (const key of FORBIDDEN_KEYS) expect(Object.keys(row)).not.toContain(key);
   }
+});
+
+// Last on purpose: it switches the owner's board off, and cases 2 to 10 need it on.
+testWithSupabase('11. (runs last, after every case that needs the board on) the owner switches the board off: both functions give nothing', async () => {
+  const off = await owner.c
+    .from('hire_settings')
+    .update({ careers_enabled: false })
+    .eq('org_id', owner.orgId)
+    .select('org_id, careers_enabled')
+    .single();
+  expect(off.error, off.error?.message).toBeNull();
+  expect(off.data!.careers_enabled).toBe(false);
+  expectEmptyResult(await careers(owner.orgId));
+  expectEmptyResult(await job(owner.orgId, openJob.id));
 });
