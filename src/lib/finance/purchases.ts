@@ -250,29 +250,50 @@ async function liveOrg() {
 
 type Live = NonNullable<Awaited<ReturnType<typeof liveOrg>>>;
 
-// ponytail: loads every bill and payment and summarises in JS; move the
-// summaries into SQL once an org has thousands of rows.
-async function fetchBills({ supabase, orgId }: Live) {
-  const { data, error } = await supabase
-    .from('supplier_bill_totals')
-    .select('bill_no, supplier_name, bill_date, due_date, total, balance, display_status')
-    .eq('org_id', orgId)
-    .neq('display_status', 'void')
-    .order('bill_date', { ascending: false })
-    .order('bill_no', { ascending: false });
-  if (error) throw error;
-  return data as BillRow[];
+/** The API answers with at most this many rows per request. */
+const PAGE_SIZE = 1000;
+
+/**
+ * Every row a query matches, read a page at a time. `page` must order by a
+ * unique key, or rows can repeat or go missing between pages.
+ */
+export async function fetchAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as T[]));
+    if ((data?.length ?? 0) < PAGE_SIZE) return rows;
+  }
 }
 
-async function fetchPayments({ supabase, orgId }: Live) {
-  const { data, error } = await supabase
-    .from('payments_out')
-    .select('payment_no, paid_on, method, amount, status, supplier_bills(bill_no, contacts:finance_contacts(name))')
-    .eq('org_id', orgId)
-    .order('paid_on', { ascending: false })
-    .order('payment_no', { ascending: false });
-  if (error) throw error;
-  return data as unknown as PaymentRow[];
+// ponytail: loads every bill and payment and summarises in JS; move the
+// summaries into SQL once an org has thousands of rows.
+function fetchBills({ supabase, orgId }: Live) {
+  return fetchAll<BillRow>((from, to) =>
+    supabase
+      .from('supplier_bill_totals')
+      .select('bill_no, supplier_name, bill_date, due_date, total, balance, display_status')
+      .eq('org_id', orgId)
+      .neq('display_status', 'void')
+      .order('bill_date', { ascending: false })
+      .order('bill_no', { ascending: false })
+      .range(from, to),
+  );
+}
+
+function fetchPayments({ supabase, orgId }: Live) {
+  return fetchAll<PaymentRow>((from, to) =>
+    supabase
+      .from('payments_out')
+      .select('payment_no, paid_on, method, amount, status, supplier_bills(bill_no, contacts:finance_contacts(name))')
+      .eq('org_id', orgId)
+      .order('paid_on', { ascending: false })
+      .order('payment_no', { ascending: false })
+      .range(from, to),
+  );
 }
 
 function todayUtc() {
