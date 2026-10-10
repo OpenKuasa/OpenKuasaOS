@@ -213,7 +213,7 @@ as the detail line.
 - The form is a client component fed by the server screen; the rest of the screen stays a
   server component.
 
-### 7.3 Interaction and accessibility requirements
+### 7.2 Interaction and accessibility requirements
 These apply to the job form, the row menu and the delete confirm. They follow the app's
 existing CRUD screens (`src/screens/crm/contacts-page.tsx`, `deals-page.tsx`,
 `crm-form.ts`); read those first and reuse their panel, dialog and form-state pieces
@@ -257,7 +257,7 @@ rather than building new ones.
 - Panel and dialog transitions are 150 to 300 ms, use transform and opacity only, and are
   removed under `prefers-reduced-motion`.
 
-### 7.2 Careers Page
+### 7.3 Careers Page
 The row action that reads "Publish" for a draft, paused or closed job calls
 `setJobStatusAction` with `open`; for a published job it reads "Unpublish" and closes it.
 The header's Publish and Preview buttons stay disabled until 2b.
