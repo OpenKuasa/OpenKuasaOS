@@ -1,3 +1,14 @@
+/**
+ * The list of built screens. Nothing in the app imports this file: importing
+ * it would put every screen's scripts on every page.
+ *
+ * `scripts/gen-screen-routes.mjs` reads it and writes one route file per
+ * screen under `src/app/(app)/<product>/<item>/page.tsx`.
+ *
+ * To add a screen: import it and add its key below (the key must be an item in
+ * `src/config/nav.ts`), then run `pnpm gen:routes` and commit the new
+ * `page.tsx` with your change. `pnpm dev` and `pnpm build` run it for you.
+ */
 import type { ComponentType } from 'react';
 
 // Jebat (reach)

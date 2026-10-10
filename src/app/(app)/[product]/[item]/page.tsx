@@ -1,10 +1,16 @@
 import { notFound } from 'next/navigation';
 import { PlaceholderPage } from '@/components/app/placeholder-page';
 import { getProduct, findItem } from '@/config/nav';
-import { SCREENS } from '@/screens/registry';
-import CrmContactsPage from '@/screens/crm/contacts-page';
-import CrmDealsPage from '@/screens/crm/deals-page';
 
+/**
+ * The fallback for app URLs with no screen of their own: a nav item that is
+ * not built yet shows a placeholder, anything else is a 404.
+ *
+ * Built screens are not looked up here. Each has its own route file beside
+ * this folder (`../../crm/plugins/page.tsx`), written by `pnpm gen:routes`
+ * from `src/screens/registry.ts`, so that a page ships only its own screen.
+ * Importing the registry here would send every screen to every page again.
+ */
 export default async function ItemPage({
   params,
 }: {
@@ -16,12 +22,6 @@ export default async function ItemPage({
 
   const item = findItem(product, slug);
   if (!item) notFound();
-
-  if (key === 'crm' && slug === 'contacts') return <CrmContactsPage />;
-  if (key === 'crm' && slug === 'deals') return <CrmDealsPage />;
-
-  const Screen = SCREENS[`${key}/${slug}`];
-  if (Screen) return <Screen />;
 
   return (
     <PlaceholderPage title={item.label} subtitle={product.name} icon={item.icon} />
