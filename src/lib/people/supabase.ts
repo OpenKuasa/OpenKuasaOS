@@ -10,12 +10,16 @@ import type {
   Employee,
   EmployeePrivate,
   Goal,
+  HrDocument,
   LeaveBalance,
   LeaveRequest,
+  Letter,
   OvertimeRecord,
   PayrollRun,
   Payslip,
+  PaymentVoucher,
   PeopleData,
+  PeopleSettings,
   PublicHoliday,
   Review,
   Scorecard,
@@ -25,6 +29,7 @@ import type {
   Training,
   TrainingEnrolment,
 } from './types';
+import { DEFAULT_PEOPLE_SETTINGS } from './types';
 
 /** The API answers with at most this many rows per request. */
 const PAGE_SIZE = 1000;
@@ -46,12 +51,16 @@ const PAYSLIP_COLUMNS =
   `id,employee_id,payroll_run_id,period_month,gross_cents,epf_cents,socso_cents,eis_cents,pcb_cents,net_cents,status,${NAME}`;
 const GOAL_COLUMNS = `id,employee_id,title,progress,due_date,status,${NAME}`;
 const SCORECARD_COLUMNS = `id,employee_id,period,score,competencies,${NAME}`;
+const DOCUMENT_COLUMNS = `id,employee_id,title,doc_type,status,issued_on,expires_on,${NAME}`;
+const LETTER_COLUMNS = `id,employee_id,letter_type,title,status,issued_on,created_at,${NAME}`;
+const VOUCHER_COLUMNS = 'id,voucher_no,payee,voucher_type,amount_cents,issued_date,status';
+const SETTINGS_COLUMNS = 'work_week,default_annual_leave_days,overtime_rates,notifications';
 const REVIEW_COLUMNS = `id,employee_id,period,rating,score,reviewer_name,reviewed_at,${NAME}`;
 
 type Named = { name?: string | null } | null | undefined;
 type WithEmployee<T> = Omit<T, 'employee_name'> & { employee: Named };
 type EmployeeRow = Omit<Employee, 'department_name'> & { department: Named };
-type Order = { col: string; asc: boolean };
+type Order = { col: string; asc: boolean; nullsLast?: boolean };
 type Options = { window?: { column: string; from: string; to: string }; eq?: [string, string | number] };
 
 const UNKNOWN = 'Unknown';
@@ -59,6 +68,21 @@ const UNKNOWN = 'Unknown';
 function named<T extends { employee: Named }>(row: T): Omit<T, 'employee'> & { employee_name: string } {
   const { employee, ...rest } = row;
   return { ...rest, employee_name: employee?.name ?? UNKNOWN };
+}
+
+/** A settings row with every missing key filled from the table's own defaults. */
+function withDefaults(row: Partial<PeopleSettings> | null | undefined): PeopleSettings {
+  const d = DEFAULT_PEOPLE_SETTINGS;
+  if (!row) return { ...d, work_week: [...d.work_week], overtime_rates: { ...d.overtime_rates }, notifications: {} };
+  return {
+    work_week: Array.isArray(row.work_week) ? row.work_week : [...d.work_week],
+    default_annual_leave_days:
+      row.default_annual_leave_days === null || row.default_annual_leave_days === undefined
+        ? d.default_annual_leave_days
+        : Number(row.default_annual_leave_days),
+    overtime_rates: { ...d.overtime_rates, ...(row.overtime_rates ?? {}) },
+    notifications: row.notifications ?? {},
+  };
 }
 
 /**
@@ -77,7 +101,7 @@ export function createSupabasePeopleData(client: SupabaseClient, orgId: string):
         query = query.gte(options.window.column, options.window.from).lte(options.window.column, options.window.to);
       }
       const { data, error } = await query
-        .order(order.col, { ascending: order.asc })
+        .order(order.col, order.nullsLast ? { ascending: order.asc, nullsFirst: false } : { ascending: order.asc })
         // A second, unique order keeps pages from overlapping when many rows share a date.
         .order('id', { ascending: true })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -144,6 +168,17 @@ export function createSupabasePeopleData(client: SupabaseClient, orgId: string):
       rows<TrainingEnrolment>('hr_training_enrolments', 'id,employee_id,training_id,completed', { col: 'created_at', asc: false }),
     listAnnouncements: () =>
       rows<Announcement>('hr_announcements', 'id,title,body,category,published_at,author_name', { col: 'published_at', asc: false }),
+    listDocuments: async () =>
+      (await rows<WithEmployee<HrDocument>>('hr_documents', DOCUMENT_COLUMNS, { col: 'issued_on', asc: false, nullsLast: true })).map(named),
+    listLetters: async () =>
+      (await rows<WithEmployee<Letter>>('hr_letters', LETTER_COLUMNS, { col: 'created_at', asc: false })).map(named),
+    listPaymentVouchers: () =>
+      rows<PaymentVoucher>('hr_payment_vouchers', VOUCHER_COLUMNS, { col: 'issued_date', asc: false }),
+    getSettings: async () => {
+      const { data, error } = await client.from('hr_settings').select(SETTINGS_COLUMNS).eq('org_id', orgId).maybeSingle();
+      if (error) throw error;
+      return withDefaults(data as Partial<PeopleSettings> | null);
+    },
   };
 }
 
@@ -170,6 +205,10 @@ const EMPTY_PEOPLE_DATA: PeopleData = {
   listTrainings: none,
   listTrainingEnrolments: none,
   listAnnouncements: none,
+  listDocuments: none,
+  listLetters: none,
+  listPaymentVouchers: none,
+  getSettings: async () => withDefaults(null),
 };
 
 /**

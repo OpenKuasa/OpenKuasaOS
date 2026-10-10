@@ -97,4 +97,35 @@ describe('people seed', () => {
     expect(onLeave).toHaveLength(3);
     expect((await later.listPayrollRuns()).find((r) => r.status === 'draft')?.period_month).toBe('2027-01-01');
   });
+
+  it('has the documents, letters, vouchers and settings the demo has', async () => {
+    const documents = await data.listDocuments();
+    expect(documents).toHaveLength(26);
+    expect(documents.filter((d) => d.doc_type === 'contract' && d.status === 'signed')).toHaveLength(20);
+    const mine = documents.filter((d) => d.employee_id === DEMO_EMPLOYEE_ID);
+    expect(mine).toHaveLength(7);
+    expect(mine.filter((d) => d.status === 'pending_signature')).toHaveLength(1);
+    expect(mine.filter((d) => d.status === 'expiring')).toHaveLength(1);
+    expect(mine.find((d) => d.status === 'expiring')?.expires_on).toBe(addDays(TODAY, 25));
+    expect(documents.every((d) => d.employee_name !== '')).toBe(true);
+    const issued = documents.map((d) => d.issued_on ?? '');
+    expect(issued).toEqual([...issued].sort().reverse());
+
+    const letters = await data.listLetters();
+    expect(letters).toHaveLength(5);
+    expect(letters.filter((l) => l.status === 'issued')).toHaveLength(3);
+    expect(letters.filter((l) => l.status === 'draft').every((l) => l.issued_on === null)).toBe(true);
+    const created = letters.map((l) => l.created_at);
+    expect(created).toEqual([...created].sort().reverse());
+
+    const vouchers = await data.listPaymentVouchers();
+    expect(vouchers).toHaveLength(6);
+    expect(vouchers.filter((v) => v.status === 'paid')).toHaveLength(4);
+    expect(vouchers.reduce((total, v) => total + v.amount_cents, 0)).toBe(2746500);
+    expect(vouchers[0].issued_date).toBe(TODAY);
+
+    expect((await data.getSettings()).notifications).toEqual({
+      leave_requests: true, payslip_ready: true, document_expiry: true, birthdays: false,
+    });
+  });
 });

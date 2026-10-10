@@ -11,9 +11,9 @@ vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => env.org })
 
 import { getPeopleData } from '@/lib/people/supabase';
 import { NO_WORKSPACE_VIEWER, PREVIEW_PEOPLE_VIEWER, getPeopleViewer } from '@/lib/people/viewer';
-import { DEMO_EMPLOYEE_ID } from '@/lib/people/types';
+import { DEFAULT_PEOPLE_SETTINGS, DEMO_EMPLOYEE_ID } from '@/lib/people/types';
 
-type Call = { table: string; columns: string; filters: [string, string, unknown][]; order: string[]; range?: [number, number] };
+type Call = { table: string; columns: string; filters: [string, string, unknown][]; order: string[]; nullsLast?: string[]; range?: [number, number] };
 const calls: Call[] = [];
 
 const ROWS: Record<string, unknown[]> = {
@@ -26,6 +26,9 @@ const ROWS: Record<string, unknown[]> = {
     { id: 'l1', employee_id: 'e1', leave_type: 'annual', employee: { name: 'Aisyah Rahim' } },
     { id: 'l2', employee_id: 'e9', leave_type: 'medical', employee: null },
   ],
+  hr_documents: [{ id: 'd1', employee_id: 'e1', title: 'Payslip', doc_type: 'payslip', employee: { name: 'Aisyah Rahim' } }],
+  hr_letters: [{ id: 'lt1', employee_id: 'e1', title: 'Offer', employee: { name: 'Aisyah Rahim' } }],
+  hr_payment_vouchers: [{ id: 'v1', voucher_no: 'PV-1041', payee: 'KWSP', amount_cents: 100 }],
   hr_attendance_days: Array.from({ length: 1500 }, (_, i) => ({ id: `a${i}`, employee_id: 'e1', work_date: '2026-10-09', status: 'present' })),
 };
 /** What `.maybeSingle()` answers, by table. */
@@ -40,7 +43,11 @@ const client = {
       eq(column: string, value: unknown) { call.filters.push(['eq', column, value]); return query; },
       gte(column: string, value: unknown) { call.filters.push(['gte', column, value]); return query; },
       lte(column: string, value: unknown) { call.filters.push(['lte', column, value]); return query; },
-      order(column: string) { call.order.push(column); return query; },
+      order(column: string, opts?: { nullsFirst?: boolean }) {
+        call.order.push(column);
+        if (opts?.nullsFirst === false) call.nullsLast = [...(call.nullsLast ?? []), column];
+        return query;
+      },
       range(from: number, to: number) {
         call.range = [from, to];
         calls.push(call);
@@ -52,7 +59,9 @@ const client = {
       },
       maybeSingle() {
         calls.push(call);
-        return Promise.resolve({ data: SINGLE[table] ?? null, error: null });
+        const single = SINGLE[table] as { __error?: boolean } | undefined;
+        if (single?.__error) return Promise.resolve({ data: null, error: { message: 'permission denied' } });
+        return Promise.resolve({ data: single ?? null, error: null });
       },
     };
     return query;
@@ -78,12 +87,13 @@ describe('getPeopleData', () => {
       data.listShifts('2026-10-05', '2026-10-11'), data.listPublicHolidays(), data.listPayrollRuns(),
       data.listPayslips(), data.listGoals(), data.listScorecards(), data.listReviews(), data.listTrainings(),
       data.listTrainingEnrolments(), data.listAnnouncements(), data.getEmployeePrivate('e1'),
+      data.listDocuments(), data.listLetters(), data.listPaymentVouchers(), data.getSettings(),
     ]);
     expect([...new Set(calls.map((c) => c.table))].sort()).toEqual([
-      'hr_announcements', 'hr_attendance_days', 'hr_claims', 'hr_departments', 'hr_employee_private',
-      'hr_employees', 'hr_goals', 'hr_leave_balances', 'hr_leave_requests', 'hr_overtime_records',
-      'hr_payroll_runs', 'hr_payslips', 'hr_public_holidays', 'hr_reviews', 'hr_scorecards', 'hr_shifts',
-      'hr_time_off_requests', 'hr_timesheet_entries', 'hr_training_enrolments', 'hr_trainings',
+      'hr_announcements', 'hr_attendance_days', 'hr_claims', 'hr_departments', 'hr_documents',
+      'hr_employee_private', 'hr_employees', 'hr_goals', 'hr_leave_balances', 'hr_leave_requests', 'hr_letters',
+      'hr_overtime_records', 'hr_payment_vouchers', 'hr_payroll_runs', 'hr_payslips', 'hr_public_holidays',
+      'hr_reviews', 'hr_scorecards', 'hr_settings', 'hr_shifts', 'hr_time_off_requests', 'hr_timesheet_entries', 'hr_training_enrolments', 'hr_trainings',
     ]);
     for (const call of calls) expect(call.filters, call.table).toContainEqual(['eq', 'org_id', 'o1']);
   });
@@ -133,6 +143,43 @@ describe('getPeopleData', () => {
     SINGLE.hr_employee_private = { employee_id: 'e1', base_salary_cents: 400000 };
     expect(await data.getEmployeePrivate('e1')).toMatchObject({ base_salary_cents: 400000 });
     expect(calls.at(-1)!.filters).toContainEqual(['eq', 'employee_id', 'e1']);
+  });
+
+  it('reads documents and letters with the employee joined, and vouchers newest first', async () => {
+    const data = await getPeopleData(client);
+    const [document] = await data.listDocuments();
+    expect(document).toMatchObject({ id: 'd1', employee_name: 'Aisyah Rahim' });
+    expect(document).not.toHaveProperty('employee');
+    expect((await data.listLetters())[0]).toMatchObject({ id: 'lt1', employee_name: 'Aisyah Rahim' });
+    expect(await data.listPaymentVouchers()).toHaveLength(1);
+    expect(calls.find((c) => c.table === 'hr_documents')!.columns).toContain('employee:hr_employees(name)');
+    expect(calls.find((c) => c.table === 'hr_documents')!.order[0]).toBe('issued_on');
+    expect(calls.find((c) => c.table === 'hr_documents')!.nullsLast).toEqual(['issued_on']);
+    expect(calls.find((c) => c.table === 'hr_letters')!.order[0]).toBe('created_at');
+    expect(calls.find((c) => c.table === 'hr_payment_vouchers')!.order[0]).toBe('issued_date');
+  });
+
+  it('gives the default settings when there is no row, and fills a partial one from them', async () => {
+    const data = await getPeopleData(client);
+    expect(await data.getSettings()).toEqual(DEFAULT_PEOPLE_SETTINGS);
+    expect(calls.at(-1)!.filters).toContainEqual(['eq', 'org_id', 'o1']);
+    SINGLE.hr_settings = { notifications: { birthdays: false }, default_annual_leave_days: 16, overtime_rates: { weekday: 1.25 } };
+    expect(await data.getSettings()).toEqual({
+      work_week: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      default_annual_leave_days: 16,
+      overtime_rates: { weekday: 1.25, rest_day: 2, public_holiday: 3 },
+      notifications: { birthdays: false },
+    });
+  });
+
+  it('gives the default settings to a signed-in user with no workspace', async () => {
+    env.org = null;
+    expect(await (await getPeopleData(client)).getSettings()).toEqual(DEFAULT_PEOPLE_SETTINGS);
+  });
+
+  it('still throws when the settings read fails for a reason other than no row', async () => {
+    SINGLE.hr_settings = { __error: true };
+    await expect((await getPeopleData(client)).getSettings()).rejects.toMatchObject({ message: 'permission denied' });
   });
 
   it('throws when a read fails, so a screen can say so', async () => {

@@ -1,4 +1,4 @@
-import type { PeopleData } from '@/lib/people/types';
+import { DEFAULT_PEOPLE_SETTINGS, type PeopleData } from '@/lib/people/types';
 
 /**
  * The sample data as the database would hand it to a member who is not an HR
@@ -24,5 +24,9 @@ export function asMember(data: PeopleData, employeeId: string): PeopleData {
     listScorecards: async () => mine(await data.listScorecards()),
     listReviews: async () => mine(await data.listReviews()),
     listTrainingEnrolments: async () => mine(await data.listTrainingEnrolments()),
+    listDocuments: async () => mine(await data.listDocuments()),
+    listLetters: async () => mine(await data.listLetters()),
+    listPaymentVouchers: async () => [],
+    getSettings: async () => structuredClone(DEFAULT_PEOPLE_SETTINGS),
   };
 }

@@ -12,7 +12,7 @@ describe('live screens', () => {
   });
 
   it('marks a screen that is not connected as sample', () => {
-    expect(isSampleScreen('/people/payroll')).toBe(true);
+    expect(isSampleScreen('/people/calendar')).toBe(true);
     expect(isSampleScreen('/crm/broadcast')).toBe(true);
   });
 

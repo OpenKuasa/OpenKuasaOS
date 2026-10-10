@@ -225,6 +225,56 @@ export type Announcement = {
   author_name: string | null;
 };
 
+export type DocumentType = 'payslip' | 'contract' | 'letter' | 'tax' | 'benefits';
+export type DocumentStatus = 'signed' | 'pending_signature' | 'available' | 'expiring';
+
+export type HrDocument = {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  title: string;
+  doc_type: DocumentType;
+  status: DocumentStatus;
+  issued_on: string | null;
+  expires_on: string | null;
+};
+
+export type Letter = {
+  id: string;
+  employee_id: string;
+  employee_name: string;
+  letter_type: string;
+  title: string;
+  status: 'draft' | 'issued';
+  issued_on: string | null;
+  created_at: string;
+};
+
+export type PaymentVoucher = {
+  id: string;
+  voucher_no: string;
+  payee: string;
+  voucher_type: string;
+  amount_cents: number;
+  issued_date: string;
+  status: 'draft' | 'issued' | 'paid';
+};
+
+export type PeopleSettings = {
+  work_week: string[];
+  default_annual_leave_days: number;
+  overtime_rates: { weekday: number; rest_day: number; public_holiday: number };
+  notifications: Record<string, boolean>;
+};
+
+/** What a workspace with no settings row has: the table's own defaults. */
+export const DEFAULT_PEOPLE_SETTINGS: PeopleSettings = {
+  work_week: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  default_annual_leave_days: 14,
+  overtime_rates: { weekday: 1.5, rest_day: 2, public_holiday: 3 },
+  notifications: {},
+};
+
 /**
  * Everything the Overview and the lookups read. One provider per request.
  * Each method returns the rows this caller may see: all of them for HR, only
@@ -253,6 +303,14 @@ export type PeopleData = {
   listTrainings(): Promise<Training[]>;
   listTrainingEnrolments(): Promise<TrainingEnrolment[]>;
   listAnnouncements(): Promise<Announcement[]>;
+  /** hr_documents, newest `issued_on` first. */
+  listDocuments(): Promise<HrDocument[]>;
+  /** hr_letters, newest `created_at` first. */
+  listLetters(): Promise<Letter[]>;
+  /** hr_payment_vouchers, newest `issued_date` first. HR only: anyone else gets none. */
+  listPaymentVouchers(): Promise<PaymentVoucher[]>;
+  /** The workspace's settings, or {@link DEFAULT_PEOPLE_SETTINGS} when there is no row or the caller may not read it. */
+  getSettings(): Promise<PeopleSettings>;
 };
 
 /** Who is looking: used for wording and defaults, never to decide what they may read. */

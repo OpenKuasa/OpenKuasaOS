@@ -8,7 +8,6 @@ import {
   PieChart,
   Plane,
   TrendingUp,
-  UserRoundX,
   Users,
 } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
@@ -26,7 +25,7 @@ import { LiveDot } from '@/components/ui/live-dot';
 import { formatDay } from '@/lib/people/dates';
 import { approvalsHeading, buildPeopleOverviewModel } from '@/lib/people/overview';
 import { AskLekiuHero } from '@/screens/people/ask-lekiu-hero';
-import { DEPARTMENT_COLORS, HR_ONLY, LOAD_FAILED, Muted, NOT_AVAILABLE, loadPeople } from '@/screens/people/parts';
+import { DEPARTMENT_COLORS, HR_ONLY, LOAD_FAILED, Muted, NOT_AVAILABLE, NotLinkedCard, loadPeople } from '@/screens/people/parts';
 
 /* ---- static config ------------------------------------------------ */
 
@@ -86,16 +85,7 @@ export default async function OverviewScreen() {
         </BentoCard>
 
         {notLinked ? (
-          <BentoCard
-            title="Your HR record isn't linked yet"
-            icon={UserRoundX}
-            className="col-span-2 md:col-span-12"
-          >
-            <p className="text-sm text-muted-foreground">
-              You can see the team, but your own leave, claims and payslips will appear only once your
-              account is linked to your employee record. Ask an owner or admin of this workspace to link it on the Employees screen.
-            </p>
-          </BentoCard>
+          <NotLinkedCard />
         ) : null}
 
         {noEmployees ? (
