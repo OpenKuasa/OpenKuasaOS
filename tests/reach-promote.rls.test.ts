@@ -86,3 +86,41 @@ testWithSupabase('promoting a lead creates a CRM contact, stamps the lead, and i
     if (leadId) await deleteLead(owner, { id: leadId });
   }
 });
+
+testWithSupabase('a lead whose promoted CRM contact was deleted can be promoted again', async () => {
+  let leadId: string | null = null;
+  const contactIds: string[] = [];
+  try {
+    const created = await createLead(owner, { name: 'Faridah Osman', channel: 'whatsapp', stage: 'qualified' });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    leadId = created.data.id;
+
+    const first = await promoteLeadToContact(owner, { id: leadId });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const contactId1 = first.data.contact_id;
+    contactIds.push(contactId1);
+
+    // a CRM user deletes the promoted contact
+    const del = await owner.client.from('crm_contacts').delete().eq('id', contactId1).eq('org_id', owner.orgId);
+    expect(del.error, del.error?.message).toBeNull();
+
+    // the guard now allows a fresh promote
+    const second = await promoteLeadToContact(owner, { id: leadId });
+    expect(second.ok, second.ok ? '' : second.error).toBe(true);
+    if (!second.ok) return;
+    const contactId2 = second.data.contact_id;
+    contactIds.push(contactId2);
+    expect(contactId2).not.toBe(contactId1);
+
+    const lead = await owner.client.from('leads').select('promoted_contact_id').eq('id', leadId).single();
+    expect(lead.error, lead.error?.message).toBeNull();
+    expect(lead.data?.promoted_contact_id).toBe(contactId2);
+  } finally {
+    for (const cid of contactIds) {
+      await owner.client.from('crm_contacts').delete().eq('id', cid).eq('org_id', owner.orgId);
+    }
+    if (leadId) await deleteLead(owner, { id: leadId });
+  }
+});

@@ -205,7 +205,10 @@ export function splitLeadName(name: string): { first_name: string; last_name: st
 
 export const promoteLeadToContactInput = z.object({ id: z.string().uuid() });
 
-/** One-way bridge: reuses createCrmContact, then stamps the lead so it cannot be promoted twice. */
+/**
+ * One-way bridge: reuses createCrmContact, then stamps the lead so it cannot be promoted twice.
+ * Re-promote is allowed only if the previously promoted contact was deleted in CRM.
+ */
 export async function promoteLeadToContact(
   ctx: ReachWriteContext,
   input: z.infer<typeof promoteLeadToContactInput>,
@@ -219,8 +222,17 @@ export async function promoteLeadToContact(
     .maybeSingle();
   if (readErr) return writeFailed('promoteLeadToContact.read', readErr);
   if (!lead) return { ok: false, error: 'That lead was not found.' };
-  if ((lead as { promoted_contact_id: string | null }).promoted_contact_id) {
-    return { ok: false, error: 'Already promoted to a contact.' };
+  const existingContactId = (lead as { promoted_contact_id: string | null }).promoted_contact_id;
+  if (existingContactId) {
+    const { data: existingContact, error: contactErr } = await ctx.client
+      .from('crm_contacts')
+      .select('id')
+      .eq('id', existingContactId)
+      .eq('org_id', ctx.orgId)
+      .maybeSingle();
+    if (contactErr) return writeFailed('promoteLeadToContact.contactCheck', contactErr);
+    if (existingContact) return { ok: false, error: 'Already promoted to a contact.' };
+    // The promoted contact was deleted in CRM; fall through to re-promote (fresh contact + re-stamp).
   }
   const l = lead as unknown as Lead;
   const name = splitLeadName(l.name);
