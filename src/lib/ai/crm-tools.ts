@@ -401,9 +401,9 @@ export function createCrmTools(access: CrmAccess) {
 
     getCalendar: tool({
       description:
-        'The Kasturi calendar for one month: appointments (with their time in Malaysia), open follow-ups by due date ' +
-        'and open deals by expected close date, in date order. Also counts for today, the next 7 days and the next 30 days. ' +
-        'Leave the month out for the current month.',
+        'The Kasturi calendar for one month: appointments, open follow-ups by due date and open deals by expected ' +
+        'close date, in date order. Every date and time is already in Malaysian time: say them as given, never add or ' +
+        'subtract hours. Also counts for today, the next 7 days and the next 30 days. Leave the month out for the current month.',
       inputSchema: z.object({
         month: z
           .string()
@@ -416,7 +416,7 @@ export function createCrmTools(access: CrmAccess) {
         const calendar = await loadCrmCalendar(client, orgId, parseMonth(month, now), now);
         return {
           month: calendar.month,
-          today: klDay(now),
+          today_in_malaysia: klDay(now),
           counts: {
             today: calendar.stats.today,
             next_7_days: calendar.stats.next7,
@@ -425,8 +425,8 @@ export function createCrmTools(access: CrmAccess) {
           },
           entries: calendar.days.flatMap((day) =>
             day.items.map((item) => ({
-              date: item.day,
-              time: item.time,
+              date_in_malaysia: item.day,
+              time_in_malaysia: item.time,
               kind: item.kind,
               what: item.label,
             })),
