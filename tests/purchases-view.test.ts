@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { billsView, paymentsView, type BillRow, type PaymentRow } from '@/lib/finance/purchases';
+import { billsView, paymentsView, toPaymentRow, type BillRow, type PaymentRow } from '@/lib/finance/purchases';
 
 const today = '2026-10-09';
 
@@ -69,4 +69,63 @@ test('payment cards count only paid money; trend covers the last 8 months', () =
   expect(view.trend[0]).toEqual({ label: 'Mar', electronic: 2.5, cash: 0 });
   expect(view.trend[7]).toEqual({ label: 'Oct', electronic: 3, cash: 1 });
   expect(view.byMethod.map((m) => m.value)).toEqual([3, 0, 1, 0]);
+});
+
+const viewRow = {
+  allocation_id: 'a1',
+  number: 'PV-0003',
+  txn_date: '2026-10-05',
+  method: 'fpx',
+  amount: '132.50',
+  status: 'posted',
+  bill_no: 'BILL-0007',
+  supplier_name: 'Lim Hardware',
+};
+
+test('a row of finance_payments_out becomes the payment the screen shows', () => {
+  expect(toPaymentRow(viewRow)).toEqual({
+    key: 'a1',
+    payment_no: 'PV-0003',
+    paid_on: '2026-10-05',
+    method: 'fpx',
+    amount: 132.5,
+    status: 'paid',
+    supplier_bills: { bill_no: 'BILL-0007', contacts: { name: 'Lim Hardware' } },
+  });
+});
+
+test('a scheduled payment has no number yet and stays scheduled', () => {
+  expect(toPaymentRow({ ...viewRow, number: null, status: 'scheduled' })).toMatchObject({
+    payment_no: '—',
+    status: 'scheduled',
+  });
+});
+
+test('a method the screen does not chart yet is counted with bank transfers', () => {
+  expect(toPaymentRow({ ...viewRow, method: 'duitnow' }).method).toBe('bank_transfer');
+  expect(toPaymentRow({ ...viewRow, method: 'cash' }).method).toBe('cash');
+});
+
+test('every payment row gets its own id, even with a missing or repeated number', () => {
+  const rows = [
+    toPaymentRow({ ...viewRow, allocation_id: 'a1', bill_no: 'BILL-0007' }),
+    toPaymentRow({ ...viewRow, allocation_id: 'a2', bill_no: 'BILL-0008' }),
+    toPaymentRow({ ...viewRow, allocation_id: 'a3', number: null, status: 'scheduled' }),
+  ];
+  const ids = paymentsView(rows, '2026-10-09').payments.map((p) => p.id);
+  expect(new Set(ids).size).toBe(3);
+});
+
+test('every bill row gets its own id, and a draft shows a dash for its number', () => {
+  const view = billsView(
+    [
+      bill({ bill_no: null, key: 'k1', display_status: 'draft' }),
+      bill({ bill_no: null, key: 'k2', display_status: 'draft' }),
+      bill({ bill_no: 'BILL-0007', key: 'k3' }),
+    ],
+    [],
+    today,
+  );
+  expect(new Set(view.bills.map((b) => b.id)).size).toBe(3);
+  expect(view.bills.map((b) => b.billNo)).toEqual(['—', '—', 'BILL-0007']);
 });

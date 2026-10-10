@@ -111,6 +111,13 @@ describe('contact writes', () => {
     const { ctx } = fakeClient({ data: null, error: { code: '23514' } });
     expect(await updateContact(ctx, { id: ID, name: 'X' })).toEqual({ ok: false, error: 'Tick Customer, Supplier or both.' });
   });
+  it('explains that a supplier with bills cannot stop being a supplier', async () => {
+    const { ctx } = fakeClient({ data: null, error: { code: 'FIN07' } });
+    expect(await updateContact(ctx, { id: ID, is_customer: true, is_supplier: false })).toEqual({
+      ok: false,
+      error: 'This contact has supplier bills, so it has to stay a supplier.',
+    });
+  });
   it('hides any other database error behind a general message and logs it', async () => {
     const { ctx } = fakeClient({ data: null, error: { code: 'XX000', message: 'boom' } });
     expect(await createContact(ctx, { name: 'A', is_customer: true, is_supplier: false })).toEqual({

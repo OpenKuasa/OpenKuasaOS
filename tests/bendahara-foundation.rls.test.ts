@@ -67,7 +67,7 @@ testWithSupabase('the same category name twice in one workspace is refused, what
 testWithSupabase('accounts, categories and sequences are invisible and unwritable across workspaces', async () => {
   const { data: account, error } = await a.c
     .from('finance_accounts')
-    .insert({ org_id: a.orgId, name: 'Main Bank', kind: 'bank', bank_name: 'Maybank' })
+    .insert({ org_id: a.orgId, name: 'Operations Account', kind: 'bank', bank_name: 'Maybank' })
     .select('id')
     .single();
   expect(error, error?.message).toBeNull();
@@ -129,4 +129,8 @@ testWithSupabase('a demo viewer cannot take a number or add an account', async (
   expect(number.error?.code).toBe('42501');
   const write = await c.from('finance_accounts').insert({ org_id: demoId, name: 'Viewer', kind: 'cash' });
   expect(write.error?.code).toBe('42501');
+  const category = await c.from('finance_categories').insert({ org_id: demoId, name: 'Viewer', kind: 'expense' });
+  expect(category.error?.code).toBe('42501');
+  const sequence = await c.from('finance_sequences').insert({ org_id: demoId, doc_type: 'quotation', prefix: 'X-' });
+  expect(sequence.error?.code).toBe('42501');
 });

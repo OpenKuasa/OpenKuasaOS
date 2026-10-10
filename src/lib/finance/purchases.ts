@@ -1,6 +1,7 @@
 import type { Slice } from '@/components/charts';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { createClient } from '@/lib/supabase/server';
+import { rm as formatRm, rmShort as formatRmShort } from './format';
 
 /* ---- display shapes shared by the screens and their sample data ---- */
 
@@ -16,7 +17,10 @@ export type Stat = {
 export type BillStatus = 'Paid' | 'Pending' | 'Overdue' | 'Draft';
 
 export type Bill = {
+  /** Unique per row, for React keys; a draft has no number. */
   id: string;
+  /** The bill number shown to the person; '—' for a draft. */
+  billNo: string;
   date: string;
   supplier: string;
   due: string;
@@ -57,7 +61,9 @@ export type PaymentsView = {
 /* ---- rows as read from Supabase ---------------------------------- */
 
 export type BillRow = {
-  bill_no: string;
+  /** Unique per bill; a draft has no number. */
+  key?: string;
+  bill_no: string | null;
   supplier_name: string;
   bill_date: string;
   due_date: string;
@@ -67,6 +73,8 @@ export type BillRow = {
 };
 
 export type PaymentRow = {
+  /** Unique per row; the payment number is not (a scheduled payment has none, and a payment split across bills repeats it). */
+  key?: string;
   payment_no: string;
   paid_on: string;
   method: 'bank_transfer' | 'fpx' | 'cash' | 'cheque';
@@ -88,16 +96,9 @@ const ELECTRONIC = new Set<PaymentRow['method']>(['bank_transfer', 'fpx']);
 
 /* ---- formatting --------------------------------------------------- */
 
-export function rm(n: number) {
-  return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-/** Short money for KPI cards: RM 2,600 / RM 12.7k. */
-export function rmShort(n: number) {
-  return n >= 10_000
-    ? `RM ${(n / 1000).toFixed(1)}k`
-    : `RM ${Math.round(n).toLocaleString('en-MY')}`;
-}
+// Kept as exports of this module for its existing importers; defined in format.ts.
+export const rm = formatRm;
+export const rmShort = formatRmShort;
 
 // Fixed names: Intl's short months vary by ICU version ('Sep' vs 'Sept').
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -164,7 +165,8 @@ export function billsView(bills: BillRow[], payments: PaymentRow[], today: strin
       { key: 'draft', label: 'Draft', value: statusCount('draft'), color: 'var(--chart-3)' },
     ],
     bills: bills.slice(0, TABLE_ROWS).map((b) => ({
-      id: b.bill_no,
+      id: b.key ?? b.bill_no ?? '—',
+      billNo: b.bill_no ?? '—',
       date: day(b.bill_date),
       supplier: b.supplier_name,
       due: day(b.due_date),
@@ -222,7 +224,7 @@ export function paymentsView(payments: PaymentRow[], today: string): PaymentsVie
     byMethod,
     paidMtd: rmShort(paidMtdTotal),
     payments: payments.slice(0, TABLE_ROWS).map((p) => ({
-      id: p.payment_no,
+      id: p.key ?? p.payment_no,
       date: day(p.paid_on),
       supplier: p.supplier_bills.contacts.name,
       bill: p.supplier_bills.bill_no,
@@ -255,24 +257,58 @@ type Live = NonNullable<Awaited<ReturnType<typeof liveOrg>>>;
 async function fetchBills({ supabase, orgId }: Live) {
   const { data, error } = await supabase
     .from('supplier_bill_totals')
-    .select('bill_no, supplier_name, bill_date, due_date, total, balance, display_status')
+    .select('id, bill_no, supplier_name, bill_date, due_date, total, balance, display_status')
     .eq('org_id', orgId)
     .neq('display_status', 'void')
     .order('bill_date', { ascending: false })
-    .order('bill_no', { ascending: false });
+    .order('bill_no', { ascending: false })
+    .order('id', { ascending: true });
   if (error) throw error;
-  return data as BillRow[];
+  return ((data ?? []) as (BillRow & { id: string })[]).map(({ id, ...row }) => ({ ...row, key: id }));
+}
+
+/** A row of the finance_payments_out view, as PostgREST returns it. */
+export type PaymentOutViewRow = {
+  allocation_id: string;
+  number: string | null;
+  txn_date: string;
+  method: string;
+  amount: number | string;
+  status: string;
+  bill_no: string | null;
+  supplier_name: string;
+};
+
+/**
+ * The view row in the shape the screen's builders use. The screen charts four
+ * methods so far; the others (DuitNow, card, e-wallet) are electronic, so they
+ * are counted with bank transfers until the screen shows all seven.
+ */
+export function toPaymentRow(row: PaymentOutViewRow): PaymentRow {
+  const method = (row.method in METHODS ? row.method : 'bank_transfer') as PaymentRow['method'];
+  return {
+    key: row.allocation_id,
+    payment_no: row.number ?? '—',
+    paid_on: row.txn_date,
+    method,
+    amount: Number(row.amount),
+    status: row.status === 'posted' ? 'paid' : 'scheduled',
+    supplier_bills: { bill_no: row.bill_no ?? '—', contacts: { name: row.supplier_name } },
+  };
 }
 
 async function fetchPayments({ supabase, orgId }: Live) {
   const { data, error } = await supabase
-    .from('payments_out')
-    .select('payment_no, paid_on, method, amount, status, supplier_bills(bill_no, contacts:finance_contacts(name))')
+    .from('finance_payments_out')
+    .select('allocation_id, number, txn_date, method, amount, status, bill_no, supplier_name')
     .eq('org_id', orgId)
-    .order('paid_on', { ascending: false })
-    .order('payment_no', { ascending: false });
+    // Voided and rejected payments are not shown on this screen yet.
+    .in('status', ['posted', 'scheduled'])
+    .order('txn_date', { ascending: false })
+    .order('number', { ascending: false })
+    .order('allocation_id', { ascending: true });
   if (error) throw error;
-  return data as unknown as PaymentRow[];
+  return ((data ?? []) as PaymentOutViewRow[]).map(toPaymentRow);
 }
 
 function todayUtc() {
