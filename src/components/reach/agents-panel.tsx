@@ -192,11 +192,22 @@ export function AgentsPanel({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{STATUS_LABEL[run.status]}</span>
                   <span className="text-muted-foreground">
-                    {formatWhen(run.started_at)} · {assetCount(run.id)} asset
-                    {assetCount(run.id) === 1 ? '' : 's'}
+                    {formatWhen(run.started_at)} · RM {(run.cost_cents / 100).toFixed(2)} ·{' '}
+                    {assetCount(run.id)} asset{assetCount(run.id) === 1 ? '' : 's'}
                   </span>
                 </div>
-                <p className="text-muted-foreground">{preview(run.digest_md)}</p>
+                {run.digest_md ? (
+                  <details className="text-sm">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      {preview(run.digest_md)}
+                    </summary>
+                    <div className="mt-2 whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-foreground">
+                      {run.digest_md}
+                    </div>
+                  </details>
+                ) : (
+                  <p className="text-muted-foreground">No digest.</p>
+                )}
                 {assets.some((a) => a.run_id === run.id) && (
                   <div className="grid gap-2 pt-1 sm:grid-cols-2">
                     {assets
