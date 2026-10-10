@@ -1,0 +1,264 @@
+import { describe, expect, it, vi } from 'vitest';
+import { createSeedReachData } from '@/lib/reach/seed';
+import type { Delegation, Proposal } from '@/lib/chat/delegation';
+
+const seen = vi.hoisted(() => ({
+  creates: 0,
+  layers: [] as string[],
+  tuahTools: [] as string[][],
+  workerTools: [] as string[][],
+  workerPrompts: [] as string[],
+}));
+
+vi.mock('@/lib/crm/contacts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/crm/contacts')>();
+  return {
+    ...actual,
+    createCrmContact: async () => {
+      seen.creates += 1;
+      return { id: 'c1', first: 'Ali', last: 'Hassan' };
+    },
+  };
+});
+
+vi.mock('@/lib/ai/provider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/provider')>();
+  const { MockLanguageModelV4, simulateReadableStream } = await import('ai/test');
+  const usage = {
+    inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 1, text: 1, reasoning: 0 },
+  };
+  const text = (id: string, delta: string) => [
+    { type: 'text-start', id },
+    { type: 'text-delta', id, delta },
+    { type: 'text-end', id },
+    { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage },
+  ];
+  const call = (toolName: string, input: unknown) => [
+    { type: 'tool-call', toolCallId: `call-${toolName}`, toolName, input: JSON.stringify(input) },
+    { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage },
+  ];
+  type Options = { prompt: { role: string }[]; tools?: { name: string }[] };
+  const model = (script: (options: Options) => Record<string, unknown>[]) =>
+    new MockLanguageModelV4({
+      doStream: async (options: Options) => ({
+        stream: simulateReadableStream({
+          initialDelayInMs: 0,
+          chunkDelayInMs: 0,
+          chunks: script(options),
+        }),
+      }),
+    } as unknown as ConstructorParameters<typeof MockLanguageModelV4>[0]) as never;
+
+  return {
+    ...actual,
+    getModel: (layer: string) => {
+      seen.layers.push(layer);
+      if (layer === 'worker') {
+        // Kasturi: prepare the contact, then report the proposal.
+        return model((options) => {
+          seen.workerTools.push((options.tools ?? []).map((t) => t.name));
+          const all = JSON.stringify(options.prompt);
+          seen.workerPrompts.push(all);
+          const id = /proposalId\\?":\\?"(\w{8})/.exec(all)?.[1];
+          return id
+            ? text('w', `Prepared the contact. proposalId ${id}`)
+            : call('createContact', {
+                firstName: 'Ali',
+                lastName: 'Hassan',
+                email: 'ali@example.com',
+              });
+        });
+      }
+      // Tuah: ask Kasturi, then put the prepared change in front of the user.
+      return model((options) => {
+        seen.tuahTools.push((options.tools ?? []).map((t) => t.name));
+        const all = JSON.stringify(options.prompt);
+        const id = /proposalId (\w{8})/.exec(all)?.[1];
+        if (all.includes('call-applyChange')) return text('t', 'Done.');
+        return id
+          ? call('applyChange', { proposalId: id })
+          : call('askKasturi', { task: 'Add Ali Hassan, ali@example.com, as a contact' });
+      });
+    },
+  };
+});
+
+const { runTuah } = await import('@/lib/ai/agents/orchestrator');
+const { createTeamTools, delegationForModel } = await import('@/lib/ai/agents/specialists');
+const { crmProduct, reachProduct } = await import('@/lib/ai/products');
+const { proposalsIn, transcriptOf, usesSpecialists } = await import('@/lib/chat/delegation');
+
+const reach = () => ({ data: createSeedReachData() });
+const crm = (canWrite = true) => ({ client: {} as never, orgId: 'org1', userId: 'u1', canWrite });
+const ask = [{ role: 'user' as const, content: 'Add Ali Hassan, ali@example.com, as a contact' }];
+const team = () => ({ transcript: 'User: Add Ali Hassan', proposals: new Map<string, Proposal>() });
+
+describe('Tuah with its team', () => {
+  it('holds only the ask tools and applyChange, and the specialist holds the product tools', async () => {
+    seen.tuahTools = [];
+    seen.workerTools = [];
+    seen.layers = [];
+    await runTuah(ask, reach(), undefined, undefined, null, crm(), team()).consumeStream();
+
+    expect(seen.tuahTools[0].sort()).toEqual(['applyChange', 'askJebat', 'askKasturi']);
+    expect(seen.workerTools[0]).toContain('listCrmContacts');
+    expect(seen.workerTools[0]).toContain('createContact');
+    // Tuah on the larger model, the specialist on the cheaper one.
+    expect(seen.layers).toContain('orchestrator');
+    expect(seen.layers).toContain('worker');
+  });
+
+  it('a change a specialist prepares is not saved, and reaches the user as one approval', async () => {
+    seen.creates = 0;
+    const context = team();
+    const result = runTuah(ask, reach(), undefined, undefined, null, crm(), context);
+    await result.consumeStream();
+
+    expect(seen.creates).toBe(0);
+    const [proposal] = [...context.proposals.values()];
+    expect(proposal).toMatchObject({
+      product: 'crm',
+      action: 'createContact',
+      title: 'Add contact “Ali Hassan”?',
+    });
+
+    const steps = await result.steps;
+    const calls = steps.flatMap((step) => step.toolCalls.map((c) => c.toolName));
+    expect(calls).toEqual(['askKasturi', 'applyChange']);
+    const parts = (await result.content) as { type: string }[];
+    expect(parts.some((p) => p.type === 'tool-approval-request')).toBe(true);
+  });
+
+  it('gives the specialist the conversation, since it does not see it otherwise', async () => {
+    seen.workerPrompts = [];
+    await runTuah(ask, reach(), undefined, undefined, null, crm(), team()).consumeStream();
+    expect(seen.workerPrompts[0]).toContain('User: Add Ali Hassan');
+    expect(seen.workerPrompts[0]).toContain('Task from Tuah');
+  });
+
+  it('a viewer gets no applyChange, and the specialist no change tools', async () => {
+    seen.tuahTools = [];
+    seen.workerTools = [];
+    await runTuah(ask, reach(), undefined, undefined, null, crm(false), team()).consumeStream();
+    expect(seen.tuahTools[0]).not.toContain('applyChange');
+    expect(seen.workerTools[0] ?? []).not.toContain('createContact');
+  });
+});
+
+describe('applyChange', () => {
+  const products = () => [
+    reachProduct({ data: createSeedReachData() }),
+    crmProduct(crm()),
+  ];
+  const proposal = (over: Partial<Proposal> = {}): Proposal => ({
+    id: 'abc12345',
+    product: 'crm',
+    action: 'createContact',
+    input: { firstName: 'Ali', lastName: 'Hassan', email: 'ali@example.com' },
+    title: 'Add contact “Ali Hassan”?',
+    detail: null,
+    ...over,
+  });
+  const applyWith = async (p: Proposal | null, id = 'abc12345') => {
+    const { tools, toolApproval } = createTeamTools(products(), {
+      transcript: '',
+      proposals: new Map(p ? [[p.id, p]] : []),
+    });
+    expect(toolApproval).toEqual({ applyChange: 'user-approval' });
+    const execute = (tools.applyChange as { execute: (i: unknown, o: unknown) => Promise<unknown> })
+      .execute;
+    return execute({ proposalId: id }, { toolCallId: 't', messages: [] });
+  };
+
+  it('runs the product’s own change with the prepared input', async () => {
+    seen.creates = 0;
+    const out = await applyWith(proposal());
+    expect(seen.creates).toBe(1);
+    expect(out).toMatchObject({ ok: true });
+  });
+
+  it('refuses an id it does not know', async () => {
+    seen.creates = 0;
+    expect(await applyWith(null)).toMatchObject({ ok: false });
+    expect(seen.creates).toBe(0);
+  });
+
+  it('refuses a change that is not one of the product’s, or whose input does not pass its rules', async () => {
+    seen.creates = 0;
+    expect(await applyWith(proposal({ action: 'toString' }))).toMatchObject({ ok: false });
+    expect(await applyWith(proposal({ action: 'listCrmContacts' }))).toMatchObject({ ok: false });
+    expect(await applyWith(proposal({ product: 'nope' }))).toMatchObject({ ok: false });
+    expect(await applyWith(proposal({ input: { firstName: '' } }))).toMatchObject({ ok: false });
+    expect(seen.creates).toBe(0);
+  });
+});
+
+describe('reading a team conversation back', () => {
+  const delegation: Delegation = {
+    agent: 'Kasturi',
+    product: 'crm',
+    status: 'done',
+    steps: [{ tool: 'createContact', done: true }],
+    answer: 'Prepared the contact.',
+    proposals: [
+      { id: 'abc12345', product: 'crm', action: 'createContact', input: {}, title: 'Add contact “Ali”?', detail: null },
+    ],
+  };
+  const messages = [
+    { role: 'user', parts: [{ type: 'text', text: 'Add Ali' }] },
+    {
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'Let me check with Kasturi...' },
+        { type: 'tool-askKasturi', state: 'output-available', output: delegation },
+        { type: 'tool-applyChange', state: 'approval-requested', input: { proposalId: 'abc12345' } },
+      ],
+    },
+  ];
+
+  it('finds prepared changes, knows the turn was the team’s, and words the conversation', () => {
+    expect(proposalsIn(messages).get('abc12345')?.action).toBe('createContact');
+    expect(usesSpecialists(messages[1])).toBe(true);
+    expect(usesSpecialists(messages[0])).toBe(false);
+    expect(transcriptOf(messages)).toBe('User: Add Ali\nTuah: Let me check with Kasturi...');
+  });
+
+  it('remembers the names of rows from earlier turns, by kind', async () => {
+    const { namesIn } = await import('@/lib/chat/delegation');
+    const { approvalTitle } = await import('@/lib/chat/change-titles');
+    const earlier = [
+      {
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-askKasturi',
+            state: 'output-available',
+            output: { ...delegation, names: { 'deal:d1': 'Stock system' } },
+          },
+          {
+            type: 'tool-applyChange',
+            state: 'output-available',
+            input: { proposalId: 'abc12345' },
+            output: { ok: true, data: { id: 'c9', name: 'Hana Lee' } },
+          },
+        ],
+      },
+    ];
+    const names = namesIn(earlier);
+    expect(names).toEqual({ 'deal:d1': 'Stock system', 'contact:c9': 'Hana Lee' });
+    const find = (id: unknown, kind?: string) => names[`${kind}:${String(id)}`] ?? null;
+    expect(approvalTitle('deleteContact', { id: 'c9' }, find)).toBe('Delete contact “Hana Lee”?');
+    // The same id is never taken for another kind of thing.
+    expect(approvalTitle('deleteDeal', { id: 'c9' }, find)).toBe('Delete this deal?');
+  });
+
+  it('tells Tuah the answer and the ids of what was prepared', () => {
+    const view = delegationForModel(delegation);
+    expect(view).toContain('Prepared the contact.');
+    expect(view).toContain('proposalId abc12345: Add contact “Ali”?');
+    expect(delegationForModel({ ...delegation, status: 'failed', answer: 'Try again.' })).toContain(
+      'could not finish',
+    );
+  });
+});

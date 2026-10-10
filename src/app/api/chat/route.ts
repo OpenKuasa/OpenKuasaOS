@@ -17,6 +17,7 @@ import { prepareChat } from '@/lib/ai/chat-request';
 import { runTuah } from '@/lib/ai/agents/orchestrator';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
+import { namesIn, proposalsIn, transcriptOf, usesSpecialists } from '@/lib/chat/delegation';
 import { saveAnswer, saveQuestion } from '@/lib/chat/store';
 import { getReachData } from '@/lib/reach/supabase';
 
@@ -55,6 +56,18 @@ export async function POST(request: Request) {
       }
     : null;
 
+  // Tuah answers with its team when the chat asks for it, and always when
+  // the turn resumes one the team started (an approval being answered).
+  const withTeam =
+    chat.team || (lastMessage.role === 'assistant' && usesSpecialists(lastMessage));
+  const team = withTeam
+    ? {
+        transcript: transcriptOf(chat.uiMessages.slice(-8)),
+        proposals: proposalsIn(chat.uiMessages),
+        names: namesIn(chat.uiMessages),
+      }
+    : null;
+
   // The answer does not depend on anyone watching it arrive: closing the tab
   // or opening another chat must not cut it short, so the model is bounded by
   // time rather than by the request, and the stream is drained here.
@@ -65,6 +78,7 @@ export async function POST(request: Request) {
     chat.apiKey,
     chat.screen,
     crm,
+    team,
   );
   void result.consumeStream();
 

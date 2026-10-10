@@ -32,6 +32,7 @@ const bodySchema = z.object({
   messages: z.array(z.unknown()).min(1),
   id: z.unknown().optional(),
   pathname: z.unknown().optional(),
+  team: z.unknown().optional(),
 });
 
 export function chatJson(status: number, body: Record<string, unknown>): Response {
@@ -55,6 +56,10 @@ export type PreparedChat =
       lastMessage: UIMessage;
       /** The product screen the question was asked from, when it is a known one. */
       screen: Screen | null;
+      /** The conversation as the chat UI holds it, already validated. */
+      uiMessages: UIMessage[];
+      /** The client asked for Tuah to answer with its team of specialists. */
+      team: boolean;
     };
 
 /**
@@ -86,6 +91,8 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
   let threadId: string | null = null;
   let lastMessage: UIMessage;
   let screen: Screen | null = null;
+  let uiMessages: UIMessage[];
+  let team = false;
   try {
     const parsed = bodySchema.parse(JSON.parse(raw));
     const recent = parsed.messages.slice(-MAX_MESSAGES);
@@ -96,6 +103,8 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
     messages = await convertToModelMessages(inlineTextFiles(validated.data));
     threadId = isThreadId(parsed.id) ? parsed.id : null;
     screen = screenFromPath(parsed.pathname);
+    uiMessages = validated.data;
+    team = parsed.team === true;
     lastMessage = validated.data[validated.data.length - 1];
   } catch {
     return fail(400, { error: 'Invalid request.' });
@@ -118,5 +127,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
     threadId,
     lastMessage,
     screen,
+    uiMessages,
+    team,
   };
 }

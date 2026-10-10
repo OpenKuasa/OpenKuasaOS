@@ -15,7 +15,8 @@ import {
   reachProduct,
   type ReachAccess,
 } from '@/lib/ai/products';
-import { JEBAT_SYSTEM, tuahSystem } from '@/lib/ai/agents/prompts';
+import { JEBAT_SYSTEM, tuahSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
+import { createTeamTools, type TeamContext } from '@/lib/ai/agents/specialists';
 import type { Screen } from '@/lib/chat/screen';
 
 /** Tools that change data: each one pauses for the owner's approval before running. */
@@ -44,6 +45,12 @@ export function runJebat(
   });
 }
 
+/** What each specialist is for, as Tuah's instructions put it. */
+const TEAM_AREA = {
+  reach: 'marketing: ads and campaigns, spend, leads, lead forms, creatives, appointments and ad settings',
+  crm: 'the CRM: contacts, deals, pipelines and their stages',
+} as const;
+
 /**
  * Tuah, the cross-app assistant on the Command page and the floating button.
  * It has the marketing tools Jebat has and Kasturi's CRM tools (lookups, and
@@ -59,15 +66,27 @@ export function runTuah(
   screen?: Screen | null,
   /** The workspace's CRM, when the user is in one. */
   crm?: CrmAccess | null,
+  /**
+   * Set to run Tuah with its team: it asks a specialist per product and
+   * carries out what they prepare, instead of holding every tool itself.
+   */
+  team?: Omit<TeamContext, 'apiKey'> | null,
 ) {
   // Every product the user can reach: marketing always, the CRM in a workspace.
-  const { tools, toolApproval } = combineToolkits([
-    reachProduct(reach),
-    ...(crm ? [crmProduct(crm)] : []),
-  ]);
+  const products = [reachProduct(reach), ...(crm ? [crmProduct(crm)] : [])];
+  const { tools, toolApproval } = team
+    ? createTeamTools(products, { ...team, apiKey })
+    : combineToolkits(products);
+  const system = team
+    ? tuahTeamSystem(
+        products.map((p) => ({ name: p.name, area: TEAM_AREA[p.key] })),
+        toolApproval !== undefined,
+        screen,
+      )
+    : tuahSystem(screen);
   return streamText({
     model: getModel('orchestrator', apiKey),
-    system: tuahSystem(screen),
+    system,
     messages,
     tools,
     toolApproval,
