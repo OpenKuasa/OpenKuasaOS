@@ -220,8 +220,8 @@ with the announcements write slice.
 `authenticated`, with one policy each `for all using (private.is_org_admin(org_id)) with
 check (private.is_org_admin(org_id))`. No other HR table gets a write grant.
 
-`employees.updated_at` and `employee_private.updated_at` are maintained by the trigger
-pattern the reach writes use.
+`employees.updated_at` and `employee_private.updated_at` are set by a
+`private.people_touch_updated_at()` trigger, not by the client.
 
 ### 4.5 Linking an employee to a signed-in user
 
@@ -237,7 +237,10 @@ pattern the reach writes use.
    (`linkEmployeeToMember`), choosing from the workspace's members.
 
 A unique index on `(org_id, user_id) where user_id is not null` keeps it one-to-one.
-Both triggers are `security definer` functions in `private`.
+Automatic matching uses only a confirmed, non-anonymous auth email. The database refuses a
+`user_id` that is not a member of the employee's workspace, and clears the link when that
+member leaves the workspace; `private.is_own_employee` also requires current membership.
+All of these are `security definer` functions in `private`.
 
 A member with no linked record sees "Your HR record isn't linked yet. Ask your HR admin to
 link it." on the personal screens.
@@ -429,15 +432,20 @@ All model-facing tests use the mocked model; nothing here bills the OpenRouter k
 | **RLS check against the database** (see below) | Two signed-in sessions in one workspace, an admin and a member linked to one employee. The member selects 0 rows of another employee's `employee_private`, `payslips`, `claims`, `leave_requests`, `reviews`, `documents`, and 0 rows of `payroll_runs`; selects their own; cannot insert into `employees`. The admin sees all. A user in another workspace sees nothing |
 | Smoke test (smoke account) | Overview loads, Employees add → edit → delete, one chat question answered with a tool call |
 
-**Where the RLS check runs.** There is one database, the live Supabase project. If a
-Supabase branch can be created for this work, the migrations and the check run there first.
-Otherwise they run on the live project inside the smoke account's own workspace: the smoke
-account is its admin, and one second, persistent test member is invited into it as
-`member` and linked to one employee (its details stored beside
-`~/.config/openkuasa/smoke-account.json`, reused for later Lekiu slices). The check is a
-script in `scripts/` that signs in as each, runs the selects and inserts above through the
-normal client, and exits non-zero on any row it should not see. Creating that second
-account needs the owner's go-ahead.
+**Where the RLS check runs.** There is one database, the live Supabase project
+(`ugchntdgaeefmufumchx`), and it has no branches. The check has two parts, neither of which
+needs a new account:
+
+- `tests/people.rls.test.ts`, in the repo's existing `*.rls.test.ts` style (anonymous
+  sign-ins, skipped without `.env.local`): an owner's CRUD on employees and departments,
+  isolation between two workspaces, and a demo guest reading the demo workspace's personal
+  rows while being unable to write.
+- `supabase/tests/people_rls_check.sql`, for the member tier, which anonymous users cannot
+  reach (an anonymous user cannot accept an invite). One `do` block creates a workspace, an
+  admin, two members and their HR rows, switches to each user's session
+  (`set local role authenticated` plus `request.jwt.claims`), counts what each can read and
+  write, and always ends by raising, so the whole thing rolls back and nothing is left in
+  the database. The message says PASSED or names the first failure.
 
 **Fixed question set** for a real-model check, run only after a yes to a call estimate:
 
@@ -479,6 +487,10 @@ Other branches are adding migrations in parallel (`20261012160000_agent_runs` on
 `20261012160000_bendahara_purchases` on `main`). These files take a `20261013…` prefix, and
 the prefixes are checked against `main` again just before the PR.
 
+The work is delivered as three plans, each its own PR: (A) the database — these
+migrations, their tests and the RLS check; (B) the seam, employee CRUD, the Overview and
+Employees screens and Ask-Lekiu; (C) the remaining 25 screens.
+
 Applying them to the live database is a separate step taken with the owner's go-ahead, not
 part of merging. Until they are applied, production would fail on the new reads, so the
 order is: apply migrations → confirm the RLS check passes → merge → smoke-test on
@@ -490,7 +502,7 @@ openkuasa.com.
 |---|---|
 | The slice is large (23 tables, 27 screens) | One migration per area; screens converted area by area in the plan, each with its tests |
 | An RLS mistake exposes pay | The two-session check in §8 is a required step before merge |
-| `rls_auto_enable()` already adds `mfa_required` to new public tables | The migrations create the policy only if it is absent |
+| The `ensure_rls` event trigger on the live database | Checked: it enables RLS on new tables and adds no policy (the reach tables' `mfa_required` was created by their own migrations), so these migrations create `mfa_required` the same way |
 | Demo guests reading "personal" tables | Covered by `is_demo_org`; the RLS check includes a demo guest reading the demo workspace and nothing else |
 | Screens lose a chart that had no real source | Listed per screen in the plan so the removals are deliberate |
 
