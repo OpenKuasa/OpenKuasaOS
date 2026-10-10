@@ -9,6 +9,7 @@ const CORE = '20261013090000_people_core.sql';
 const LEAVE = '20261013090100_people_leave.sql';
 const CLAIMS = '20261013090200_people_claims_overtime.sql';
 const ATTENDANCE = '20261013090300_people_attendance.sql';
+const PAYROLL = '20261013090400_people_payroll.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
@@ -24,6 +25,9 @@ const TABLES: { file: string; table: string; kind: Kind }[] = [
   { file: ATTENDANCE, table: 'timesheet_entries', kind: 'personal' },
   { file: ATTENDANCE, table: 'shifts', kind: 'personal' },
   { file: ATTENDANCE, table: 'public_holidays', kind: 'shared' },
+  { file: PAYROLL, table: 'payroll_runs', kind: 'hr' },
+  { file: PAYROLL, table: 'payslips', kind: 'personal' },
+  { file: PAYROLL, table: 'payment_vouchers', kind: 'hr' },
 ];
 
 const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
@@ -104,5 +108,17 @@ describe('Lekiu schema', () => {
     expect(text).toContain('create unique index employees_org_user_idx on public.employees (org_id, user_id) where user_id is not null');
     expect(text).toContain('after delete on public.org_members');
     expect(text).not.toContain('on delete restrict');
+  });
+
+  test('a payslip carries its own month and a derived net pay', () => {
+    const text = sql(PAYROLL);
+    const start = text.indexOf('create table public.payslips (');
+    const body = text.slice(start, text.indexOf('\n);', start));
+    // A member cannot read payroll_runs, so the month must be on the payslip.
+    expect(body).toContain('period_month date not null');
+    expect(body).toContain('unique (employee_id, period_month)');
+    expect(body).toContain(
+      'net_cents bigint generated always as (gross_cents - epf_cents - socso_cents - eis_cents - pcb_cents) stored',
+    );
   });
 });
