@@ -25,13 +25,13 @@ import { LiveDot } from '@/components/ui/live-dot';
 import { formatDay } from '@/lib/people/dates';
 import { approvalsHeading, buildPeopleOverviewModel } from '@/lib/people/overview';
 import { AskLekiuHero } from '@/screens/people/ask-lekiu-hero';
-import { LOAD_FAILED, Muted, NOT_AVAILABLE, loadPeople } from '@/screens/people/parts';
+import { HR_ONLY, LOAD_FAILED, Muted, NOT_AVAILABLE, loadPeople } from '@/screens/people/parts';
 
 /* ---- static config ------------------------------------------------ */
 
 const HEADCOUNT_SERIES: Series[] = [{ key: 'headcount', label: 'Headcount', color: 'var(--chart-1)' }];
 const LEAVE_SERIES: Series[] = [{ key: 'days', label: 'Days', color: 'var(--chart-2)' }];
-const DEPARTMENT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'];
+const DEPARTMENT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--muted-foreground)'];
 
 /** Sample crew, shown in the demo workspace only. */
 const AGENTS = [
@@ -57,12 +57,16 @@ const initials = (name: string) =>
 /* ------------------------------------------------------------------ */
 
 export default async function OverviewScreen() {
-  const { model, viewer, chatDemo } = await loadPeople('overview', buildPeopleOverviewModel);
+  const { model, viewer, chatDemo, hasWorkspace } = await loadPeople('overview', buildPeopleOverviewModel);
   const headcount = model?.totals.headcount ?? 0;
   const noStaff = headcount === 0;
-  const heading = approvalsHeading(viewer.isHr || viewer.isDemo);
+  // Without HR rights the database returns only the viewer's own leave and attendance,
+  // so team-titled figures built from them would mislead.
+  const teamView = viewer.isHr || viewer.isDemo;
+  const heading = approvalsHeading(teamView);
   // A member whose HR record is not linked sees the directory but none of their own records.
-  const notLinked = !viewer.isHr && !viewer.isDemo && viewer.employeeId === null && model !== null;
+  const notLinked = hasWorkspace && !teamView && viewer.employeeId === null && model !== null;
+  const noWorkspace = !hasWorkspace && model !== null;
   const departmentMix: Slice[] = (model?.departments ?? []).map((d, index) => ({
     key: d.department,
     label: d.department,
@@ -92,6 +96,14 @@ export default async function OverviewScreen() {
           </BentoCard>
         ) : null}
 
+        {noWorkspace ? (
+          <BentoCard title="No workspace yet" icon={Users} className="col-span-2 md:col-span-12">
+            <p className="text-sm text-muted-foreground">
+              Create or join a workspace to see your team here.
+            </p>
+          </BentoCard>
+        ) : null}
+
         {/* KPI row */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
@@ -112,13 +124,18 @@ export default async function OverviewScreen() {
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
             label="At work today"
-            value={model && rate !== null ? String(model.totals.at_work_today) : '—'}
-            delta={rate !== null ? `${rate}%` : undefined}
-            deltaTone="up"
+            value={model && teamView && rate !== null ? String(model.totals.at_work_today) : '—'}
+            delta={teamView && rate !== null ? `${rate}%` : undefined}
+            deltaTone="flat"
           />
+          {model && !teamView ? <p className="mt-1 text-xs text-muted-foreground">Shown to HR admins</p> : null}
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat label="On leave today" value={model ? String(model.totals.on_leave_today) : '—'} />
+          <BentoStat
+            label="On leave today"
+            value={model && teamView ? String(model.totals.on_leave_today) : '—'}
+          />
+          {model && !teamView ? <p className="mt-1 text-xs text-muted-foreground">Shown to HR admins</p> : null}
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat label={heading.title} value={model ? String(model.totals.pending_approvals) : '—'} />
@@ -152,7 +169,7 @@ export default async function OverviewScreen() {
           icon={Plane}
           className="col-span-2 md:col-span-4"
         >
-          {!model ? LOAD_FAILED : model.leaveByType.length === 0 ? (
+          {!model ? LOAD_FAILED : !teamView ? HR_ONLY : model.leaveByType.length === 0 ? (
             <Muted>No approved leave this month</Muted>
           ) : (
             <BarGroup data={model.leaveByType} series={LEAVE_SERIES} horizontal height={200} />
@@ -164,7 +181,7 @@ export default async function OverviewScreen() {
           icon={Gauge}
           className="col-span-2 md:col-span-4"
         >
-          {!model ? LOAD_FAILED : rate === null ? (
+          {!model ? LOAD_FAILED : !teamView ? HR_ONLY : rate === null ? (
             <Muted>No attendance recorded today</Muted>
           ) : (
             <RadialGauge value={rate} label="at work" valueLabel={`${rate}%`} color="var(--chart-2)" height={200} />
@@ -203,7 +220,7 @@ export default async function OverviewScreen() {
           icon={Plane}
           className="col-span-2 md:col-span-4"
         >
-          {!model ? LOAD_FAILED : model.onLeave.length === 0 ? (
+          {!model ? LOAD_FAILED : !teamView ? HR_ONLY : model.onLeave.length === 0 ? (
             <Muted>Nobody is on leave today</Muted>
           ) : (
             <ul className="space-y-2">
