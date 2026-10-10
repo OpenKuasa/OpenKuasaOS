@@ -21,6 +21,8 @@ import {
   deleteCreativeInput,
   deleteForm,
   deleteFormInput,
+  deleteFormSubmission,
+  deleteFormSubmissionInput,
   deleteLead,
   deleteLeadInput,
   promoteLeadToContact,
@@ -42,7 +44,11 @@ import {
   updateLead,
   updateLeadInput,
 } from '@/lib/reach/capabilities';
+import { createSupabaseReachData } from '@/lib/reach/supabase';
+import { FORM_MESSAGES } from '@/lib/reach/forms';
+import type { FormSubmission } from '@/lib/reach/types';
 import type { ZodType } from 'zod';
+import { z } from 'zod';
 
 const FORBIDDEN: CapResult<never> = { ok: false, error: 'You do not have permission to make changes here.' };
 const INVALID: CapResult<never> = { ok: false, error: 'That input was not valid.' };
@@ -176,4 +182,34 @@ export async function promoteLeadToContactAction(input: unknown) {
   const r = await runLeads(promoteLeadToContactInput, input, promoteLeadToContact);
   if (r.ok) revalidatePath('/crm/contacts');
   return r;
+}
+
+// ─── lead form submissions ───────────────────────────────────────────────────
+
+const listFormSubmissionsInput = z.object({ formId: z.string().uuid() });
+const SUBMISSIONS_UNAVAILABLE = 'The submissions could not be loaded. Please try again.';
+
+/**
+ * A form's latest submissions, for the panel on the Lead Forms screen. A read,
+ * so any member may ask; row-level security decides what comes back.
+ */
+export async function listFormSubmissionsAction(
+  input: unknown,
+): Promise<CapResult<FormSubmission[]>> {
+  const viewer = await getViewer();
+  // The demo and the no-database preview have counts but no stored submissions.
+  if (viewer.isDemo) return { ok: true, data: [] };
+  const parsed = listFormSubmissionsInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: FORM_MESSAGES.gone };
+  try {
+    const data = createSupabaseReachData(await createClient(), viewer.orgId);
+    return { ok: true, data: (await data.listFormSubmissions?.(parsed.data.formId)) ?? [] };
+  } catch (error) {
+    console.error('[reach-actions] listFormSubmissions failed:', error);
+    return { ok: false, error: SUBMISSIONS_UNAVAILABLE };
+  }
+}
+
+export async function deleteFormSubmissionAction(input: unknown) {
+  return runForm(deleteFormSubmissionInput, input, deleteFormSubmission);
 }

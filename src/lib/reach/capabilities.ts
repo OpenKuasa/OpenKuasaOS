@@ -505,3 +505,31 @@ export async function deleteForm(
   if (!data) return { ok: false, error: FORM_MESSAGES.gone };
   return { ok: true, data: { id: data.id } };
 }
+
+// ─── lead form submissions ───────────────────────────────────────────────────
+// Submissions are written only by the public page (through submit_public_form).
+// A member with write access may delete one; nothing can edit one.
+
+const SUBMISSION_GONE = 'That submission no longer exists.';
+
+export const deleteFormSubmissionInput = z.object({
+  id: z.string({ error: SUBMISSION_GONE }).uuid(SUBMISSION_GONE),
+});
+
+/** Deletes one submission. The contact it made is kept. */
+export async function deleteFormSubmission(
+  ctx: ReachWriteContext,
+  input: z.input<typeof deleteFormSubmissionInput>,
+): Promise<CapResult<{ id: string }>> {
+  const { id } = deleteFormSubmissionInput.parse(input);
+  const { data, error } = await ctx.client
+    .from('form_submissions')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select('id')
+    .maybeSingle();
+  if (error) return writeFailed('deleteFormSubmission', error);
+  if (!data) return { ok: false, error: SUBMISSION_GONE };
+  return { ok: true, data: { id: data.id } };
+}

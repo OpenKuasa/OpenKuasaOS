@@ -7,6 +7,7 @@ import type {
   Campaign,
   Creative,
   Form,
+  FormSubmission,
   Lead,
   ReachData,
 } from './types';
@@ -14,6 +15,17 @@ import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { createSeedReachData } from './seed';
 import { FORM_COLUMNS } from './forms';
+import {
+  FORM_SUBMISSION_COLUMNS,
+  type FormSubmissionRow,
+  SUBMISSIONS_SHOWN,
+  mapFormSubmission,
+} from './form-submissions';
+
+/** The API answers with at most this many rows per request. */
+const PAGE_SIZE = 1000;
+/** Where reading submission times stops: 20,000 in the window asked for. */
+const MAX_TIME_PAGES = 20;
 
 /**
  * RLS-scoped {@link ReachData} over Supabase. Reads are filtered to `orgId`
@@ -58,6 +70,35 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
       return (data as AdSettings) ?? null;
     },
     listForms: () => rows<Form>('forms', FORM_COLUMNS, { col: 'created_at', asc: false }),
+    listFormSubmissions: async (formId, limit = SUBMISSIONS_SHOWN): Promise<FormSubmission[]> => {
+      const { data, error } = await client
+        .from('form_submissions')
+        .select(FORM_SUBMISSION_COLUMNS)
+        .eq('org_id', orgId)
+        .eq('form_id', formId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return ((data ?? []) as unknown as FormSubmissionRow[]).map(mapFormSubmission);
+    },
+    listFormSubmissionTimes: async (sinceIso): Promise<string[]> => {
+      const times: string[] = [];
+      // Read a page at a time: one request never answers with more than a page.
+      for (let page = 0; page < MAX_TIME_PAGES; page += 1) {
+        const { data, error } = await client
+          .from('form_submissions')
+          .select('created_at')
+          .eq('org_id', orgId)
+          .gte('created_at', sinceIso)
+          .order('created_at', { ascending: false })
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        if (error) throw error;
+        const batch = (data ?? []) as { created_at: string }[];
+        for (const row of batch) times.push(row.created_at);
+        if (batch.length < PAGE_SIZE) break;
+      }
+      return times;
+    },
     listBroadcasts: async (): Promise<Broadcast[]> => [],
     listAutomations: async (): Promise<Automation[]> => [],
   };

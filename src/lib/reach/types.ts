@@ -61,8 +61,8 @@ export type BroadcastChannel = 'whatsapp' | 'email';
 export type AutomationStatus = 'active' | 'paused' | 'draft';
 
 /**
- * A lead-capture form: the record describing it. The public page and its
- * submissions come later, so both counters stay at 0 until then.
+ * A lead-capture form. While it is active, anyone can fill it in at its public
+ * page (`/f/<id>`); the two counters follow what happens there.
  */
 export type Form = {
   id: string;
@@ -78,6 +78,19 @@ export type Form = {
   submissions_count: number;
   created_at: string;
   updated_at: string;
+};
+
+/** What one visitor sent through a form's public page. */
+export type FormSubmission = {
+  id: string;
+  form_id: string;
+  /** The Kasturi contact it made or matched; null once that contact is deleted. */
+  contact_id: string | null;
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string | null;
+  created_at: string;
 };
 
 /** A one-to-many email / WhatsApp message blast. */
@@ -140,4 +153,12 @@ export interface ReachData {
   listAutomations(): Promise<Automation[]>;
   listCreatives(): Promise<Creative[]>;
   getAdSettings(): Promise<AdSettings | null>;
+  /**
+   * Submissions exist only in a real workspace, so only the Supabase provider
+   * has these two; a provider without them has none to show.
+   */
+  /** One form's newest submissions, newest first. */
+  listFormSubmissions?(formId: string, limit?: number): Promise<FormSubmission[]>;
+  /** When each submission since `sinceIso` came in, across every form. */
+  listFormSubmissionTimes?(sinceIso: string): Promise<string[]>;
 }
