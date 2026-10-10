@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KASTURI_SYSTEM } from '@/lib/ai/agents/prompts';
+import { KASTURI_SYSTEM, kasturiSystem } from '@/lib/ai/agents/prompts';
 import { CRM_WRITE_TOOL_NAMES } from '@/lib/ai/crm-tools';
 
 const t = KASTURI_SYSTEM.toLowerCase();
@@ -31,7 +31,24 @@ describe('KASTURI_SYSTEM', () => {
     expect(t).toContain('add, edit or delete contacts');
     expect(t).toContain('add, edit, move, mark as lost, reopen or delete deals');
     // A change tool for something else means this line has to grow with it.
-    expect([...CRM_WRITE_TOOL_NAMES].every((name) => /Contact$|Deal(Lost)?$/.test(name))).toBe(true);
+    expect(t).toContain('add follow-ups and mark them done');
+    expect([...CRM_WRITE_TOOL_NAMES].every((name) => /Contact$|Deal(Lost)?$|FollowUp$/.test(name))).toBe(true);
+  });
+  it('says what it can change on the screens it shares with Jebat', () => {
+    expect(t).toContain('book, edit, reschedule, cancel, complete or delete appointments');
+    expect(t).toContain('create, edit, activate, pause or delete lead forms');
+  });
+  it('converts appointment times between Malaysia and UTC', () => {
+    expect(t).toContain('3:00 pm in malaysia is 07:00 utc');
+  });
+  it('never promises a reminder a follow-up does not send', () => {
+    expect(t).toContain('does not send anyone a notification');
+  });
+  it('is told today’s date in Malaysia on every turn', () => {
+    // 10 Oct, 23:30 UTC is already Sunday 11 Oct, 07:30 in Malaysia.
+    const prompt = kasturiSystem(new Date('2026-10-10T23:30:00.000Z'));
+    expect(prompt.startsWith(KASTURI_SYSTEM)).toBe(true);
+    expect(prompt).toContain('It is Sunday, 2026-10-11, 07:30 in Malaysia (UTC+8).');
   });
   it('names the lookups a deal needs first', () => {
     expect(KASTURI_SYSTEM).toContain('listCrmContacts');

@@ -26,6 +26,8 @@ describe('product toolkits', () => {
       'listDeals',
       'listPipelines',
       'getDealStats',
+      'listFollowUps',
+      'getCalendar',
     ]);
     expect(Object.keys(kasturi.write)).toContain('deleteContact');
   });

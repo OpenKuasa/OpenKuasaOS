@@ -38,7 +38,8 @@ export type ItemKind =
   | 'lead'
   | 'contact'
   | 'deal'
-  | 'stage';
+  | 'stage'
+  | 'follow-up';
 const KIND_OF_TOOL: Record<string, ItemKind> = {
   getCampaigns: 'campaign',
   createCampaign: 'campaign',
@@ -69,6 +70,8 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   listPipelines: 'stage',
   deleteContact: 'contact',
   deleteDeal: 'deal',
+  listFollowUps: 'follow-up',
+  completeFollowUp: 'follow-up',
 };
 
 /** Names by `kind:id`, so a later turn can still say what an id refers to. */
@@ -175,6 +178,11 @@ export function approvalTitle(
     case 'markDealLost': return `Mark ${the('deal', 'deal')} as lost?`;
     case 'reopenDeal': return `Reopen ${the('deal', 'deal')}?`;
     case 'deleteDeal': return `Delete ${the('deal', 'deal')}?`;
+    case 'createFollowUp': {
+      const who = find(i.contactId, 'contact');
+      return who ? `Add follow-up “${i.title ?? ''}” for ${who}?` : `Add follow-up “${i.title ?? ''}”?`;
+    }
+    case 'completeFollowUp': return `Mark ${the('follow-up', 'follow-up')} as done?`;
     case 'createLead': return `Create lead “${i.name ?? ''}”?`;
     case 'updateLead': return `Save changes to ${the('lead', 'lead')}?`;
     case 'setLeadStage': return `Move ${the('lead', 'lead')} to “${i.stage ?? ''}”?`;

@@ -13,10 +13,11 @@ import {
   REACH_WRITE_TOOL_NAMES,
   combineToolkits,
   crmProduct,
+  kasturiSharedProduct,
   reachProduct,
   type ReachAccess,
 } from '@/lib/ai/products';
-import { JEBAT_SYSTEM, KASTURI_SYSTEM, tuahSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
+import { JEBAT_SYSTEM, kasturiSystem, tuahSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
 import { createTeamTools, type TeamContext } from '@/lib/ai/agents/specialists';
 import type { Screen } from '@/lib/chat/screen';
 
@@ -49,20 +50,22 @@ export function runJebat(
 
 /**
  * "Kasturi, your sales co-pilot": the same single agent as Jebat, holding the
- * CRM tools instead of the marketing ones. Lookups run on their own; each
- * change waits for the owner's approval.
+ * CRM tools instead of the marketing ones, plus the marketing tools for the
+ * two screens it shares with Jebat (Appointments and Lead Forms). Lookups run
+ * on their own; each change waits for the owner's approval.
  */
 export function runKasturi(
   messages: ModelMessage[],
   crm: CrmAccess,
+  reach: ReachAccess,
   abortSignal?: AbortSignal,
   /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
   apiKey?: string,
 ) {
-  const { tools, toolApproval } = combineToolkits([crmProduct(crm)]);
+  const { tools, toolApproval } = combineToolkits([crmProduct(crm), kasturiSharedProduct(reach)]);
   return streamText({
     model: getModel('orchestrator', apiKey),
-    system: KASTURI_SYSTEM,
+    system: kasturiSystem(new Date()),
     messages,
     tools,
     toolApproval,
@@ -78,7 +81,7 @@ export function runKasturi(
 const TEAM_AREA = {
   reach:
     'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
-  crm: 'the CRM: contacts, deals, pipelines and their stages. A lead is not a contact yet: anything about a lead goes to Jebat',
+  crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact) and the calendar. A lead is not a contact yet: anything about a lead goes to Jebat',
 } as const;
 
 /**

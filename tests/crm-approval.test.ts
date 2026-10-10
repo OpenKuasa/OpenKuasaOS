@@ -56,12 +56,14 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
 const { runKasturi } = await import('@/lib/ai/agents/orchestrator');
 
 const crm = { client: {} as never, orgId: 'org1', userId: 'user1', canWrite: true };
+const { createSeedReachData } = await import('@/lib/reach/seed');
+const reach = { data: createSeedReachData() };
 const ask = [{ role: 'user' as const, content: 'Add Ali Hassan, ali@example.com, as a contact' }];
 
 describe('Kasturi’s changes require approval', () => {
   it('a change does not run until it is approved', async () => {
     executed.creates = 0;
-    const result = runKasturi(ask, crm);
+    const result = runKasturi(ask, crm, reach);
     await result.consumeStream();
     expect(executed.creates).toBe(0);
     // The call is surfaced as awaiting approval rather than silently dropped.
@@ -90,6 +92,7 @@ describe('Kasturi’s changes require approval', () => {
         { role: 'tool', content: [{ type: 'tool-approval-response', approvalId: 'a1', approved }] },
       ],
       crm,
+      reach,
     );
 
   it('approve: the resumed turn adds the contact', async () => {
