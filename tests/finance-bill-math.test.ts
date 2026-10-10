@@ -22,6 +22,14 @@ describe('lineAmounts', () => {
     expect(lineAmounts({ quantity: 1000, unit_price: 0.12345, sst_rate: 0 }).amount).toBe(123.5);
   });
 
+  it('keeps 2 decimals of the SST rate, rounded as the database stores it', () => {
+    // 1.005% is stored as 1.01%: SST on RM 10,000.00 is 101.00, not the 100.50 of the rate as typed.
+    expect(lineAmounts({ quantity: 1, unit_price: 10_000, sst_rate: 1.005 })).toEqual({ amount: 10_000, sst: 101 });
+    // 0.145% is stored as 0.15%.
+    expect(lineAmounts({ quantity: 1, unit_price: 10_000, sst_rate: 0.145 }).sst).toBe(15);
+    expect(billTotals([{ quantity: 1, unit_price: 10_000, sst_rate: 1.005 }])).toEqual({ subtotal: 10_000, sst: 101, total: 10_101 });
+  });
+
   it('stays exact near the largest amount a bill line can hold', () => {
     // 99,999,999 x 9,999.9999 = 999,999,980,000.0001; 6% of that is 59,999,998,800.000006.
     expect(lineAmounts({ quantity: 99_999_999, unit_price: 9_999.9999, sst_rate: 6 })).toEqual({

@@ -43,6 +43,10 @@ const cases: [string, { parse: (v: unknown) => unknown }, unknown][] = [
     account_id: ID, txn_date: '2026-10-20', method: 'cheque', reference: ' CHQ 001 ', notes: '', scheduled: true,
     allocations: [{ bill_id: ID, amount: 10.005 }, { bill_id: '22222222-2222-4222-8222-222222222222', amount: 5 }],
   }],
+  ['saveBillInput (an SST rate with three decimals)', saveBillInput, {
+    supplier_id: ID, bill_date: '2026-10-01', due_date: '2026-10-31',
+    lines: [{ description: 'Gloves', quantity: 1, unit_price: 10, sst_rate: 1.005 }, { description: 'Ink', quantity: 1, unit_price: 10, sst_rate: 0.145 }],
+  }],
 ];
 
 describe('finance schemas parse their own output unchanged', () => {
@@ -52,4 +56,31 @@ describe('finance schemas parse their own output unchanged', () => {
       expect(schema.parse(once)).toEqual(once);
     });
   }
+});
+
+describe('a bill line’s SST rate', () => {
+  const bill = (sst_rate: number) => ({
+    supplier_id: ID, bill_date: '2026-10-01', due_date: '2026-10-31',
+    lines: [{ description: 'Gloves', quantity: 1, unit_price: 10, sst_rate }],
+  });
+  const rate = (input: unknown) => saveBillInput.parse(input).lines[0].sst_rate;
+
+  it('is rounded to two decimals as the database stores it, half away from zero', () => {
+    // 1.005 * 100 is 100.49999999999999 in floating point; the column numeric(5,2) stores 1.01.
+    const once = saveBillInput.parse(bill(1.005));
+    expect(once.lines[0].sst_rate).toBe(1.01);
+    expect(rate(once)).toBe(1.01);
+    expect(rate(bill(0.145))).toBe(0.15);
+    expect(rate(bill(8.004))).toBe(8);
+    expect(rate(bill(6))).toBe(6);
+  });
+  it('is checked against 0 to 100 after rounding', () => {
+    expect(rate(bill(100.004))).toBe(100);
+    expect(saveBillInput.safeParse(bill(100.005)).error?.issues[0]?.message).toBe('Enter an SST rate between 0 and 100.');
+    expect(saveBillInput.safeParse(bill(-0.01)).error?.issues[0]?.message).toBe('Enter an SST rate between 0 and 100.');
+    expect(saveBillInput.safeParse(bill(Number.NaN)).error?.issues[0]?.message).toBe('Enter an SST rate between 0 and 100.');
+  });
+  it('is 0 when the line has none', () => {
+    expect(rate({ ...bill(0), lines: [{ description: 'Gloves', quantity: 1, unit_price: 10 }] })).toBe(0);
+  });
 });

@@ -5,7 +5,7 @@
  * Pure. Every box is held as the text the person typed.
  */
 import { addDaysIso, billTotals, type LineNumbers } from './bill-math';
-import { type BillDetail, BILL_MESSAGES, isIsoDate, saveBillInput } from './bills';
+import { type BillDetail, BILL_MESSAGES, isIsoDate, roundRate, saveBillInput } from './bills';
 import { typedNumber } from './format';
 import type { FinanceProduct } from './products';
 import { WRITE_FAILED } from './result';
@@ -120,9 +120,9 @@ export function withProduct(line: LineDraft, product: FinanceProduct | null): Li
   };
 }
 
-/** An empty SST box means no SST. */
+/** An empty SST box means no SST. The rate keeps two decimals, as it is stored. */
 function sstRate(text: string): number {
-  return text.trim() === '' ? 0 : (typedNumber(text) ?? Number.NaN);
+  return text.trim() === '' ? 0 : roundRate(typedNumber(text) ?? Number.NaN);
 }
 
 /** The line's figures for the live total; a box that is not a number is NaN, which counts as nothing. */

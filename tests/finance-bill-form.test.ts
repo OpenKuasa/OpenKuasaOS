@@ -112,6 +112,11 @@ describe('lineNumbers', () => {
   it('reads the boxes as numbers, with an empty SST box as 0', () => {
     expect(lineNumbers({ ...emptyLine('k'), quantity: '2.5', unit_price: '10', sst_rate: '' })).toEqual({ quantity: 2.5, unit_price: 10, sst_rate: 0 });
   });
+  it('rounds the SST rate to two decimals, so what is sent is what the total was worked out with', () => {
+    expect(lineNumbers({ ...emptyLine('k'), sst_rate: '1.005' }).sst_rate).toBe(1.01);
+    expect(lineNumbers({ ...emptyLine('k'), sst_rate: '0.145' }).sst_rate).toBe(0.15);
+    expect(lineNumbers({ ...emptyLine('k'), sst_rate: '6' }).sst_rate).toBe(6);
+  });
   it('gives NaN for a box that is not a number, which the total counts as nothing', () => {
     const numbers = lineNumbers({ ...emptyLine('k'), quantity: '1,000', unit_price: '', sst_rate: 'six' });
     expect([numbers.quantity, numbers.unit_price, numbers.sst_rate].every(Number.isNaN)).toBe(true);

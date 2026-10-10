@@ -57,6 +57,21 @@ const round = (places: number) => (v: number) => {
   return Math.round(v * f) / f;
 };
 
+/**
+ * An SST rate as the column numeric(5,2) stores it: two decimals, half away
+ * from zero, rounded on the figure as written. 1.005 is 1.01 here and in the
+ * database, where `Math.round(1.005 * 100)` and `(1.005).toFixed(2)` both
+ * give 1.00, because the nearest floating point number is a hair below 1.005.
+ * Something that is not a number comes back as it was.
+ */
+export function roundRate(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  // The shortest digits that give this number back, e.g. "1.005e+0": shift the point two places in the text.
+  const [digits, exponent] = Math.abs(value).toExponential().split('e');
+  const hundredths = Math.round(Number(`${digits}e${Number(exponent) + 2}`));
+  return (Math.sign(value) * hundredths) / 100;
+}
+
 const date = z.string({ error: M.date }).refine(isIsoDate, M.date);
 const text = z
   .string({ error: M.tooLong })
@@ -76,7 +91,7 @@ const line = z.object({
   uom: text.default(null),
   pack_size: text.default(null),
   unit_price: z.number({ error: M.price }).min(0, M.price).max(999_999_999, M.price).transform(round(4)),
-  sst_rate: z.number({ error: M.sst }).min(0, M.sst).max(100, M.sst).default(0),
+  sst_rate: z.number({ error: M.sst }).transform(roundRate).pipe(z.number().min(0, M.sst).max(100, M.sst)).default(0),
 });
 
 export const saveBillInput = z

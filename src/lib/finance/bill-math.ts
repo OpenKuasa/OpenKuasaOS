@@ -3,7 +3,7 @@
  * done in whole numbers, so the figure on the form is the figure the database
  * stores, to the sen.
  */
-import { isIsoDate } from './bills';
+import { isIsoDate, roundRate } from './bills';
 
 export type LineNumbers = { quantity: number; unit_price: number; sst_rate: number };
 export type LineAmounts = { amount: number; sst: number };
@@ -22,11 +22,11 @@ function divideRounded(value: bigint, by: bigint): bigint {
 }
 
 function lineSen(line: LineNumbers): { amount: bigint; sst: bigint } {
-  // Quantity keeps 3 decimals and unit price 4, as saveBillInput rounds them.
+  // Quantity keeps 3 decimals, unit price 4 and the SST rate 2, as saveBillInput rounds them.
   const product = units(line.quantity, 3) * units(line.unit_price, 4);
   return {
     amount: divideRounded(product, BigInt(100_000)),
-    sst: divideRounded(product * units(line.sst_rate, 2), BigInt(1_000_000_000)),
+    sst: divideRounded(product * units(roundRate(line.sst_rate), 2), BigInt(1_000_000_000)),
   };
 }
 
