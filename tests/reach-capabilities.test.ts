@@ -72,3 +72,66 @@ itSb('createCampaign writes to the caller org and ignores an input org_id', asyn
     await c.auth.signOut();
   }
 });
+
+import { createLeadInput, updateLeadInput } from '@/lib/reach/capabilities';
+
+describe('lead capability schemas', () => {
+  it('rejects an empty name and a bad channel', () => {
+    expect(createLeadInput.safeParse({ name: '', channel: 'whatsapp' }).success).toBe(false);
+    expect(createLeadInput.safeParse({ name: 'x', channel: 'linkedin' }).success).toBe(false);
+  });
+  it('defaults stage to lead', () => {
+    expect(createLeadInput.parse({ name: 'x', channel: 'whatsapp' })).toMatchObject({ stage: 'lead' });
+  });
+  it('update requires a uuid id and ignores org_id / promoted_contact_id', () => {
+    expect(updateLeadInput.safeParse({ id: 'nope', name: 'y' }).success).toBe(false);
+    const p = updateLeadInput.parse({
+      id: '00000000-0000-0000-0000-000000000000',
+      name: 'y',
+      org_id: 'evil',
+      promoted_contact_id: 'evil',
+    });
+    expect('org_id' in p).toBe(false);
+    expect('promoted_contact_id' in p).toBe(false);
+  });
+});
+
+import { createLead, deleteLead, setLeadStage } from '@/lib/reach/capabilities';
+
+itSb('createLead writes to the caller org, ignores an input org_id, and round-trips', async () => {
+  const c: Sb = createSb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const signIn = await c.auth.signInAnonymously();
+  expect(signIn.error).toBeNull();
+  const { data: orgId, error: orgError } = await c.rpc('create_org_for_current_user', { org_name: 'Lead Cap IT Sdn Bhd' });
+  expect(orgError).toBeNull();
+  expect(orgId).toBeTruthy();
+  const ctx: ReachWriteContext = { client: c, orgId: orgId as string };
+  let createdId: string | null = null;
+  try {
+    const res = await createLead(ctx, {
+      name: 'From capability', channel: 'whatsapp',
+      // @ts-expect-error — org_id is not part of the input type; prove it's ignored even if present.
+      org_id: '00000000-0000-0000-0000-000000000000',
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      createdId = res.data.id;
+      expect(res.data.stage).toBe('lead');
+      expect(res.data.promoted_contact_id).toBeNull();
+      const row = await c.from('leads').select('org_id').eq('id', res.data.id).single();
+      expect(row.error).toBeNull();
+      expect(row.data?.org_id).toBe(orgId);
+      const moved = await setLeadStage(ctx, { id: res.data.id, stage: 'qualified' });
+      expect(moved.ok).toBe(true);
+      if (moved.ok) expect(moved.data.stage).toBe('qualified');
+    }
+  } finally {
+    if (createdId) {
+      const del = await deleteLead(ctx, { id: createdId });
+      expect(del.ok).toBe(true);
+    }
+    await c.auth.signOut();
+  }
+});
