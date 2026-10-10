@@ -40,11 +40,19 @@ vi.mock('@/lib/agents/config', async (orig) => {
   };
 });
 
-const { createCampaignAction, createLeadAction, createAppointmentAction, setAgentEnabledAction } = await import('@/app/(app)/reach/actions');
+const svc = vi.hoisted(() => ({ client: { tag: 'service' } as object, run: vi.fn() }));
+vi.mock('@/lib/supabase/service', () => ({ serviceClient: vi.fn(() => svc.client) }));
+vi.mock('@/lib/agents/weekly-studio', () => ({
+  runWeeklyStudio: svc.run,
+}));
+
+const { createCampaignAction, createLeadAction, createAppointmentAction, setAgentEnabledAction, runAgentNowAction } = await import('@/app/(app)/reach/actions');
 
 beforeEach(() => {
   ctl.viewer = { userId: 'u1', orgId: 'org1', role: 'member', isDemo: false };
   ctl.created = [];
+  svc.run.mockReset();
+  svc.run.mockResolvedValue({ runId: 'r1', status: 'done' });
 });
 
 describe('createCampaignAction', () => {
@@ -134,5 +142,29 @@ describe('setAgentEnabledAction', () => {
   it('calls the capability for a member with valid input', async () => {
     expect(await setAgentEnabledAction(valid)).toMatchObject({ ok: true });
     expect(ctl.created).toHaveLength(1);
+  });
+});
+
+describe('runAgentNowAction', () => {
+  it('forbids a demo guest and does not run', async () => {
+    ctl.viewer = { ...ctl.viewer, isDemo: true };
+    expect(await runAgentNowAction({})).toMatchObject({ ok: false });
+    expect(svc.run).not.toHaveBeenCalled();
+  });
+  it('forbids a viewer and does not run', async () => {
+    ctl.viewer = { ...ctl.viewer, role: 'viewer' };
+    expect(await runAgentNowAction({})).toMatchObject({ ok: false });
+    expect(svc.run).not.toHaveBeenCalled();
+  });
+  it('runs with the service client, the VIEWER org (input ignored) and manual trigger', async () => {
+    const res = await runAgentNowAction({ org_id: 'evil-org', orgId: 'evil-org' });
+    expect(res).toEqual({ ok: true, runId: 'r1' });
+    expect(svc.run).toHaveBeenCalledTimes(1);
+    expect(svc.run).toHaveBeenCalledWith(svc.client, 'org1', 'manual');
+  });
+  it('returns a safe error without leaking the exception', async () => {
+    svc.run.mockRejectedValue(new Error('secret-key-123'));
+    const res = await runAgentNowAction({});
+    expect(res).toEqual({ ok: false, error: 'The run could not be started.' });
   });
 });

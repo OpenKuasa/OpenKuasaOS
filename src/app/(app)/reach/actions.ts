@@ -60,6 +60,8 @@ import {
   setAgentEnabled,
   setAgentEnabledInput,
 } from '@/lib/agents/config';
+import { serviceClient } from '@/lib/supabase/service';
+import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
 import { createSupabaseReachData, getReachData } from '@/lib/reach/supabase';
 import { FORM_MESSAGES } from '@/lib/reach/forms';
 import { leadsToCsv } from '@/lib/reach/csv';
@@ -296,6 +298,27 @@ export async function setAgentCadenceAction(input: unknown) {
 }
 export async function setAgentCapAction(input: unknown) {
   return runAgentConfig(setAgentCapInput, input, setAgentCap);
+}
+
+/**
+ * Manual "Run now". The viewer gate (writer only) is the authorization; the
+ * org comes from the authenticated viewer, never from input. agent_runs and
+ * agent_run_assets have no authenticated write grant, so the service client
+ * is the writer.
+ */
+export async function runAgentNowAction(
+  input?: unknown,
+): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
+  void input; // deliberately ignored: nothing the caller sends may pick the org
+  const ctx = await writeCtx();
+  if (!ctx) return { ok: false, error: 'You do not have permission to make changes here.' };
+  try {
+    const result = await runWeeklyStudio(serviceClient(), ctx.orgId, 'manual');
+    for (const path of AGENTS_PATHS) revalidatePath(path);
+    return { ok: true, runId: result.runId };
+  } catch {
+    return { ok: false, error: 'The run could not be started.' };
+  }
 }
 
 export async function exportLeadsCsv(

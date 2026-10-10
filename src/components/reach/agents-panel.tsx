@@ -11,6 +11,7 @@ import {
 import {
   setAgentCadenceAction,
   setAgentCapAction,
+  runAgentNowAction,
   setAgentEnabledAction,
 } from '@/app/(app)/reach/actions';
 import { Button } from '@/components/ui/button';
@@ -152,9 +153,13 @@ export function AgentsPanel({
           </div>
 
           <div>
-            {/* Task 7: wire runAgentNowAction */}
-            <Button type="button" variant="outline" disabled>
-              Run now
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => act(runAgentNowAction({}))}
+            >
+              {pending ? 'Working…' : 'Run now'}
             </Button>
           </div>
         </div>
