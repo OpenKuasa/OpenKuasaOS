@@ -42,6 +42,7 @@ export const CONTACT_MESSAGES = {
   terms: 'Payment terms must be between 0 and 365 days.',
   gone: 'That contact no longer exists.',
   inUse: 'This contact is used on bills or other documents. Archive it instead.',
+  hasBills: 'This contact has supplier bills, so it has to stay a supplier.',
 } as const;
 
 const M = CONTACT_MESSAGES;
@@ -105,6 +106,7 @@ export const deleteContactInput = z.object({ id });
 function contactWriteFailed(fnName: string, error: unknown): { ok: false; error: string } {
   const code = pgCode(error);
   if (code === PG_FOREIGN_KEY) return { ok: false, error: M.inUse };
+  if (code === 'FIN07') return { ok: false, error: M.hasBills };
   if (code === PG_CHECK) return { ok: false, error: M.role };
   return writeFailed(fnName, error);
 }

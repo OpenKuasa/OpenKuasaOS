@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { billsView, paymentsView, type BillRow, type PaymentRow } from '@/lib/finance/purchases';
+import { billsView, paymentsView, toPaymentRow, type BillRow, type PaymentRow } from '@/lib/finance/purchases';
 
 const today = '2026-10-09';
 
@@ -69,4 +69,37 @@ test('payment cards count only paid money; trend covers the last 8 months', () =
   expect(view.trend[0]).toEqual({ label: 'Mar', electronic: 2.5, cash: 0 });
   expect(view.trend[7]).toEqual({ label: 'Oct', electronic: 3, cash: 1 });
   expect(view.byMethod.map((m) => m.value)).toEqual([3, 0, 1, 0]);
+});
+
+const viewRow = {
+  number: 'PV-0003',
+  txn_date: '2026-10-05',
+  method: 'fpx',
+  amount: '132.50',
+  status: 'posted',
+  bill_no: 'BILL-0007',
+  supplier_name: 'Lim Hardware',
+};
+
+test('a row of finance_payments_out becomes the payment the screen shows', () => {
+  expect(toPaymentRow(viewRow)).toEqual({
+    payment_no: 'PV-0003',
+    paid_on: '2026-10-05',
+    method: 'fpx',
+    amount: 132.5,
+    status: 'paid',
+    supplier_bills: { bill_no: 'BILL-0007', contacts: { name: 'Lim Hardware' } },
+  });
+});
+
+test('a scheduled payment has no number yet and stays scheduled', () => {
+  expect(toPaymentRow({ ...viewRow, number: null, status: 'scheduled' })).toMatchObject({
+    payment_no: '—',
+    status: 'scheduled',
+  });
+});
+
+test('a method the screen does not chart yet is counted with bank transfers', () => {
+  expect(toPaymentRow({ ...viewRow, method: 'duitnow' }).method).toBe('bank_transfer');
+  expect(toPaymentRow({ ...viewRow, method: 'cash' }).method).toBe('cash');
 });
