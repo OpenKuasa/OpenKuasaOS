@@ -23,6 +23,10 @@ export const WRITE_TOOL_NAMES = [
   'updateCreative',
   'deleteCreative',
   'updateAdSettings',
+  'createForm',
+  'updateForm',
+  'setFormStatus',
+  'deleteForm',
 ] as const;
 
 export function runJebat(

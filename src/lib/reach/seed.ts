@@ -167,18 +167,26 @@ export function seedAppointments(now: Date): Appointment[] {
   ].map((a) => ({ ...a, created_at: daysAgo(now, 2) }));
 }
 
-/** Four lead-capture forms; submissions loosely track the channel lead mix. */
-export function seedForms(now: Date): Form[] {
-  const rows: Array<Omit<Form, 'id' | 'created_at'> & { ageDays: number }> = [
-    { name: 'Tempahan Pakej Raya', channel: 'facebook', submissions_count: 84, status: 'active', ageDays: 38 },
-    { name: 'Muat Turun eBook Percuma', channel: 'whatsapp', submissions_count: 117, status: 'active', ageDays: 31 },
-    { name: 'Tempah Sesi Konsultasi', channel: 'instagram', submissions_count: 39, status: 'active', ageDays: 22 },
-    { name: 'Daftar Waitlist Produk Baharu', channel: 'tiktok', submissions_count: 52, status: 'paused', ageDays: 15 },
+/**
+ * The six lead forms the Lead Forms screen shows, in the order it shows them.
+ * Views sum to 2,378 and submissions to 428. The dates are fixed (not relative
+ * to `now`) so the sample screen reads the same every day.
+ */
+export function seedForms(): Form[] {
+  const rows: Array<Pick<Form, 'name' | 'category' | 'slug' | 'status' | 'views_count' | 'submissions_count'> & { created: string }> = [
+    { name: 'Raya Promo Signup', category: 'Promotions', slug: 'raya-promo', status: 'active', views_count: 612, submissions_count: 128, created: '2026-03-12' },
+    { name: 'Free Consultation', category: 'Sales', slug: 'free-consult', status: 'active', views_count: 540, submissions_count: 96, created: '2026-02-28' },
+    { name: 'Newsletter', category: 'Marketing', slug: 'newsletter', status: 'active', views_count: 488, submissions_count: 84, created: '2026-01-05' },
+    { name: 'Product Demo Request', category: 'Sales', slug: 'demo-request', status: 'active', views_count: 354, submissions_count: 62, created: '2026-01-19' },
+    { name: 'eBook Download', category: 'Content', slug: 'ebook-sme-growth', status: 'draft', views_count: 246, submissions_count: 38, created: '2026-03-02' },
+    { name: 'Event RSVP', category: 'Events', slug: 'usahawan-meetup', status: 'draft', views_count: 138, submissions_count: 20, created: '2026-03-08' },
   ];
-  return rows.map(({ ageDays, ...r }, i) => ({
+  return rows.map(({ created, ...r }, i) => ({
     id: `form_${i + 1}`,
     ...r,
-    created_at: daysAgo(now, ageDays),
+    channel: null,
+    created_at: `${created}T04:00:00.000Z`,
+    updated_at: `${created}T04:00:00.000Z`,
   }));
 }
 
@@ -248,7 +256,7 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
   const campaigns = seedCampaigns(now);
   const leads = seedLeads(now);
   const appointments = seedAppointments(now);
-  const forms = seedForms(now);
+  const forms = seedForms();
   const broadcasts = seedBroadcasts(now);
   const automations = seedAutomations(now);
   const creatives = seedCreatives(now);

@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import { type ReachTools, createReachTools } from '@/lib/ai/tools';
 import { createSeedReachData } from '@/lib/reach/seed';
 import {
   createCampaignInput,
   createCreativeInput,
+  createFormInput,
   deleteCampaignInput,
   deleteCreativeInput,
+  deleteFormInput,
   setCampaignStatusInput,
+  setFormStatusInput,
   updateAdSettingsInput,
   updateCampaignInput,
   updateCreativeInput,
+  updateFormInput,
 } from '@/lib/reach/capabilities';
 import { WRITE_TOOL_NAMES } from '@/lib/ai/agents/orchestrator';
 
@@ -30,6 +35,10 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect(tools.updateCreative.inputSchema).toBe(updateCreativeInput);
     expect(tools.deleteCreative.inputSchema).toBe(deleteCreativeInput);
     expect(tools.updateAdSettings.inputSchema).toBe(updateAdSettingsInput);
+    expect(tools.createForm.inputSchema).toBe(createFormInput);
+    expect(tools.updateForm.inputSchema).toBe(updateFormInput);
+    expect(tools.setFormStatus.inputSchema).toBe(setFormStatusInput);
+    expect(tools.deleteForm.inputSchema).toBe(deleteFormInput);
   });
 
   it('every write tool is approval-gated', () => {
@@ -39,10 +48,22 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect([...writeTools].sort()).toEqual([...WRITE_TOOL_NAMES].sort());
   });
 
+  it('the form schemas can be described to the model as JSON Schema', () => {
+    for (const schema of [createFormInput, updateFormInput, setFormStatusInput, deleteFormInput]) {
+      expect(() => z.toJSONSchema(schema, { io: 'input' })).not.toThrow();
+    }
+    const create = z.toJSONSchema(createFormInput, { io: 'input' }) as { required?: string[]; properties: Record<string, unknown> };
+    // Only the name is needed; the link is derived when it is left out.
+    expect(create.required).toEqual(['name']);
+    expect(Object.keys(create.properties).sort()).toEqual(['category', 'channel', 'name', 'slug', 'status']);
+  });
+
   it('omits write tools when the caller cannot write', () => {
     const readonly = createReachTools(createSeedReachData());
     expect('createCampaign' in readonly).toBe(false);
     const denied = createReachTools(createSeedReachData(), () => new Date(), { ctx, canWrite: false });
     expect('deleteCampaign' in denied).toBe(false);
+    expect('createForm' in readonly).toBe(false);
+    expect('deleteForm' in denied).toBe(false);
   });
 });

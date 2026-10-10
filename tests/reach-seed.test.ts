@@ -68,13 +68,21 @@ describe('Rimba seed data', () => {
     expect(await data.listCampaigns()).toHaveLength(5);
     expect(await data.listLeads()).toHaveLength(342);
     expect(await data.listAppointments()).toHaveLength(3);
-    expect(await data.listForms()).toHaveLength(4);
+    expect(await data.listForms()).toHaveLength(6);
     expect(await data.listBroadcasts()).toHaveLength(5);
     expect(await data.listAutomations()).toHaveLength(4);
   });
 
   it('seeds consistent forms, broadcasts and automations', () => {
-    expect(seedForms(NOW)).toHaveLength(4);
+    const forms = seedForms();
+    expect(forms).toHaveLength(6);
+    // The Lead Forms sample screen: 2,378 views and 428 contacts, four live and two drafts.
+    expect(forms.reduce((a, f) => a + f.views_count, 0)).toBe(2378);
+    expect(forms.reduce((a, f) => a + f.submissions_count, 0)).toBe(428);
+    expect(forms.filter((f) => f.status === 'active')).toHaveLength(4);
+    expect(forms.filter((f) => f.status === 'draft')).toHaveLength(2);
+    expect(new Set(forms.map((f) => f.slug)).size).toBe(6);
+    for (const f of forms) expect(f.slug).toMatch(/^[a-z0-9-]{2,60}$/);
     for (const b of seedBroadcasts(NOW)) {
       expect(b.opened_count).toBeLessThanOrEqual(b.sent_count);
       expect(b.clicked_count).toBeLessThanOrEqual(b.opened_count);
@@ -83,6 +91,6 @@ describe('Rimba seed data', () => {
     const autos = seedAutomations(NOW);
     expect(autos).toHaveLength(4);
     expect(autos.filter((a) => a.status === 'draft').every((a) => a.runs_count === 0)).toBe(true);
-    expect(seedForms(NOW)).toEqual(seedForms(NOW));
+    expect(seedForms()).toEqual(seedForms());
   });
 });

@@ -125,12 +125,21 @@ function approvalTitle(toolName: string, input: unknown): string {
     case 'updateCreative': return 'Save changes to this creative?';
     case 'deleteCreative': return 'Delete this creative?';
     case 'updateAdSettings': return 'Update ad settings?';
+    case 'createForm': return `Create lead form “${i.name ?? ''}”?`;
+    case 'updateForm': return 'Save changes to this lead form?';
+    case 'setFormStatus':
+      return i.status === 'active'
+        ? 'Activate this lead form?'
+        : i.status === 'paused'
+          ? 'Pause this lead form?'
+          : 'Move this lead form back to draft?';
+    case 'deleteForm': return 'Delete this lead form?';
     default: return 'Approve this change?';
   }
 }
 
 function approvalDetail(toolName: string, _input: unknown): string | null {
-  if (toolName === 'deleteCampaign' || toolName === 'deleteCreative') return 'This cannot be undone.';
+  if (toolName === 'deleteCampaign' || toolName === 'deleteCreative' || toolName === 'deleteForm') return 'This cannot be undone.';
   return null;
 }
 

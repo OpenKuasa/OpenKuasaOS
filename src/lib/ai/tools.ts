@@ -18,18 +18,26 @@ import {
   createCampaignInput,
   createCreative as capCreateCreative,
   createCreativeInput,
+  createForm as capCreateForm,
+  createFormInput,
   deleteCampaign as capDeleteCampaign,
   deleteCampaignInput,
   deleteCreative as capDeleteCreative,
   deleteCreativeInput,
+  deleteForm as capDeleteForm,
+  deleteFormInput,
   setCampaignStatus as capSetCampaignStatus,
   setCampaignStatusInput,
+  setFormStatus as capSetFormStatus,
+  setFormStatusInput,
   updateAdSettings as capUpdateAdSettings,
   updateAdSettingsInput,
   updateCampaign as capUpdateCampaign,
   updateCampaignInput,
   updateCreative as capUpdateCreative,
   updateCreativeInput,
+  updateForm as capUpdateForm,
+  updateFormInput,
 } from '@/lib/reach/capabilities';
 import {
   type Appointment,
@@ -231,8 +239,12 @@ export function summarizeForms(forms: Form[], limit = 10) {
     .sort((a, b) => b.submissions_count - a.submissions_count)
     .slice(0, limit)
     .map((f) => ({
+      id: f.id,
       name: f.name,
+      category: f.category,
+      slug: f.slug,
       channel: f.channel,
+      views: f.views_count,
       submissions: f.submissions_count,
       status: f.status,
     }));
@@ -355,7 +367,8 @@ export function createReachTools(
     }),
 
     listForms: tool({
-      description: 'Lead-capture forms with channel, submissions count and status, most submissions first.',
+      description:
+        'Lead-capture forms with id, category, link (slug), status, views and submissions count, most submissions first.',
       inputSchema: z.object({ limit: limitSchema('Max forms to return (default 10).') }),
       execute: async ({ limit }) => summarizeForms(await data.listForms(), limit),
     }),
@@ -445,6 +458,27 @@ export function createReachTools(
       description: 'Update the org’s ad settings (budget caps, currency, automation/notification toggles). Needs approval.',
       inputSchema: updateAdSettingsInput,
       execute: async (input) => capUpdateAdSettings(ctx, input),
+    }),
+    createForm: tool({
+      description:
+        'Create a lead form (name, optional category, link and status). Leave the link out to derive it from the name. Needs approval.',
+      inputSchema: createFormInput,
+      execute: async (input) => capCreateForm(ctx, input),
+    }),
+    updateForm: tool({
+      description: 'Edit a lead form by id (name, category, link or status). Needs approval.',
+      inputSchema: updateFormInput,
+      execute: async (input) => capUpdateForm(ctx, input),
+    }),
+    setFormStatus: tool({
+      description: 'Activate or pause a lead form by id, or move it back to draft. Needs approval.',
+      inputSchema: setFormStatusInput,
+      execute: async (input) => capSetFormStatus(ctx, input),
+    }),
+    deleteForm: tool({
+      description: 'Delete a lead form by id. This cannot be undone and needs approval.',
+      inputSchema: deleteFormInput,
+      execute: async (input) => capDeleteForm(ctx, input),
     }),
   };
 }

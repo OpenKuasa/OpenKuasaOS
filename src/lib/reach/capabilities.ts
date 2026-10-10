@@ -6,7 +6,15 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import type { AdSettings, Campaign, Creative } from './types';
+import type { AdSettings, Campaign, Creative, Form } from './types';
+import {
+  FORM_CATEGORY_MAX,
+  FORM_COLUMNS,
+  FORM_MESSAGES,
+  FORM_NAME_MAX,
+  FORM_SLUG_INPUT_PATTERN,
+  resolveFormSlug,
+} from './forms';
 
 export type ReachWriteContext = { client: SupabaseClient; orgId: string };
 export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -208,4 +216,132 @@ export async function updateAdSettings(
     .single();
   if (ins.error || !ins.data) return writeFailed('updateAdSettings', ins.error);
   return { ok: true, data: ins.data as AdSettings };
+}
+
+// ─── lead forms ──────────────────────────────────────────────────────────────
+
+const formStatus = z.enum(['draft', 'active', 'paused'], { error: FORM_MESSAGES.status });
+const formName = z
+  .string({ error: FORM_MESSAGES.name })
+  .trim()
+  .min(1, FORM_MESSAGES.name)
+  .max(FORM_NAME_MAX, FORM_MESSAGES.nameTooLong);
+const formCategory = z
+  .string({ error: FORM_MESSAGES.categoryTooLong })
+  .trim()
+  .max(FORM_CATEGORY_MAX, FORM_MESSAGES.categoryTooLong)
+  .nullable();
+/** The link, with or without its leading "/". Empty means: derive it from the name. */
+const formSlug = z
+  .string({ error: FORM_MESSAGES.slug })
+  .trim()
+  .regex(FORM_SLUG_INPUT_PATTERN, FORM_MESSAGES.slug);
+const formChannel = z
+  .enum(['whatsapp', 'facebook', 'instagram', 'tiktok'], { error: FORM_MESSAGES.channel })
+  .nullable();
+const formId = z.string({ error: FORM_MESSAGES.gone }).uuid(FORM_MESSAGES.gone);
+
+export const createFormInput = z.object({
+  name: formName,
+  category: formCategory.default(null),
+  slug: formSlug.optional(),
+  channel: formChannel.default(null),
+  status: formStatus.default('draft'),
+});
+export const updateFormInput = z.object({
+  id: formId,
+  name: formName.optional(),
+  category: formCategory.optional(),
+  slug: formSlug.optional(),
+  channel: formChannel.optional(),
+  status: formStatus.optional(),
+});
+export const setFormStatusInput = z.object({ id: formId, status: formStatus });
+export const deleteFormInput = z.object({ id: formId });
+
+/** Postgres unique violation: (org_id, slug) is already taken. */
+const UNIQUE_VIOLATION = '23505';
+
+function formWriteFailed(fnName: string, error: unknown): { ok: false; error: string } {
+  if ((error as { code?: string } | null)?.code === UNIQUE_VIOLATION) {
+    return { ok: false, error: FORM_MESSAGES.slugTaken };
+  }
+  return writeFailed(fnName, error);
+}
+
+export async function createForm(
+  ctx: ReachWriteContext,
+  input: z.input<typeof createFormInput>,
+): Promise<CapResult<Form>> {
+  const values = createFormInput.parse(input);
+  const slug = resolveFormSlug(values.slug, values.name);
+  if (!slug.ok) return slug;
+  const { data, error } = await ctx.client
+    .from('forms')
+    .insert({
+      org_id: ctx.orgId,
+      name: values.name,
+      category: values.category || null,
+      slug: slug.slug,
+      channel: values.channel,
+      status: values.status,
+    })
+    .select(FORM_COLUMNS)
+    .single();
+  if (error || !data) return formWriteFailed('createForm', error);
+  return { ok: true, data: data as unknown as Form };
+}
+
+export async function updateForm(
+  ctx: ReachWriteContext,
+  input: z.input<typeof updateFormInput>,
+): Promise<CapResult<Form>> {
+  const { id, slug: rawSlug, category, ...rest } = updateFormInput.parse(input);
+  const fields: Record<string, unknown> = { ...rest };
+  if (category !== undefined) fields.category = category || null;
+  if (rawSlug !== undefined) {
+    // An emptied link is derived again from the name sent with it.
+    const slug = resolveFormSlug(rawSlug, rest.name);
+    if (!slug.ok) return slug;
+    fields.slug = slug.slug;
+  }
+  if (Object.values(fields).every((v) => v === undefined)) {
+    return { ok: false, error: 'Nothing to update.' };
+  }
+  const { data, error } = await ctx.client
+    .from('forms')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select(FORM_COLUMNS)
+    .maybeSingle();
+  if (error) return formWriteFailed('updateForm', error);
+  if (!data) return { ok: false, error: FORM_MESSAGES.gone };
+  return { ok: true, data: data as unknown as Form };
+}
+
+/** Activate or pause a form (or move it back to draft). */
+export async function setFormStatus(
+  ctx: ReachWriteContext,
+  input: z.input<typeof setFormStatusInput>,
+): Promise<CapResult<Form>> {
+  const { id, status } = setFormStatusInput.parse(input);
+  return updateForm(ctx, { id, status });
+}
+
+export async function deleteForm(
+  ctx: ReachWriteContext,
+  input: z.input<typeof deleteFormInput>,
+): Promise<CapResult<{ id: string }>> {
+  const { id } = deleteFormInput.parse(input);
+  const { data, error } = await ctx.client
+    .from('forms')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select('id')
+    .maybeSingle();
+  if (error) return formWriteFailed('deleteForm', error);
+  if (!data) return { ok: false, error: FORM_MESSAGES.gone };
+  return { ok: true, data: { id: data.id } };
 }

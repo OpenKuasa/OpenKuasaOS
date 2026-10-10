@@ -169,10 +169,12 @@ describe('deriveContacts', () => {
 
 describe('forms / broadcasts / automations summaries', () => {
   it('lists forms most-submitted first', () => {
-    const rows = summarizeForms(seedForms(NOW));
-    expect(rows).toHaveLength(4);
-    expect(rows[0].submissions).toBe(117);
-    expect(summarizeForms(seedForms(NOW), 2)).toHaveLength(2);
+    const rows = summarizeForms(seedForms());
+    expect(rows).toHaveLength(6);
+    expect(rows[0].submissions).toBe(128);
+    // The id and the link ride along so Jebat can chain a read into a write.
+    expect(rows[0]).toMatchObject({ id: 'form_1', slug: 'raya-promo', category: 'Promotions', views: 612, status: 'active' });
+    expect(summarizeForms(seedForms(), 2)).toHaveLength(2);
   });
 
   it('lists broadcasts newest first with open rate', () => {

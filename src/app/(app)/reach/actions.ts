@@ -11,18 +11,26 @@ import {
   createCampaignInput,
   createCreative,
   createCreativeInput,
+  createForm,
+  createFormInput,
   deleteCampaign,
   deleteCampaignInput,
   deleteCreative,
   deleteCreativeInput,
+  deleteForm,
+  deleteFormInput,
   setCampaignStatus,
   setCampaignStatusInput,
+  setFormStatus,
+  setFormStatusInput,
   updateAdSettings,
   updateAdSettingsInput,
   updateCampaign,
   updateCampaignInput,
   updateCreative,
   updateCreativeInput,
+  updateForm,
+  updateFormInput,
 } from '@/lib/reach/capabilities';
 import type { ZodType } from 'zod';
 
@@ -80,4 +88,43 @@ export async function deleteCreativeAction(input: unknown) {
 
 export async function updateAdSettingsAction(input: unknown) {
   return run(updateAdSettingsInput, input, updateAdSettings);
+}
+
+// ─── lead forms ──────────────────────────────────────────────────────────────
+
+/** The one screen behind both products' Lead Forms item. */
+const LEAD_FORMS_PATHS = ['/reach/lead-forms', '/crm/lead-forms'];
+
+/**
+ * Same order as {@link run} (guard → parse → capability → revalidate), but a
+ * rejected input answers with the schema's own message, which is written for
+ * the person filling the form in, and both Lead Forms routes are refreshed.
+ */
+async function runForm<I, O>(
+  schema: ZodType<I>,
+  input: unknown,
+  fn: (ctx: ReachWriteContext, parsed: I) => Promise<CapResult<O>>,
+): Promise<CapResult<O>> {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'That input was not valid.' };
+  }
+  const result = await fn(ctx, parsed.data);
+  if (result.ok) for (const path of LEAD_FORMS_PATHS) revalidatePath(path);
+  return result;
+}
+
+export async function createFormAction(input: unknown) {
+  return runForm(createFormInput, input, createForm);
+}
+export async function updateFormAction(input: unknown) {
+  return runForm(updateFormInput, input, updateForm);
+}
+export async function setFormStatusAction(input: unknown) {
+  return runForm(setFormStatusInput, input, setFormStatus);
+}
+export async function deleteFormAction(input: unknown) {
+  return runForm(deleteFormInput, input, deleteForm);
 }

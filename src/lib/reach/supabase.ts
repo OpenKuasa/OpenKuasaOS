@@ -13,13 +13,14 @@ import type {
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { createSeedReachData } from './seed';
+import { FORM_COLUMNS } from './forms';
 
 /**
  * RLS-scoped {@link ReachData} over Supabase. Reads are filtered to `orgId`
  * (the caller's current org); Postgres RLS independently guarantees no other
  * org's rows are reachable, so `orgId` is a workspace selector, not the security
- * boundary. Forms/broadcasts/automations have no tables yet (later slices), so
- * their methods return [] rather than erroring.
+ * boundary. Broadcasts/automations have no tables yet (later slices), so their
+ * methods return [] rather than erroring.
  */
 export function createSupabaseReachData(client: SupabaseClient, orgId: string): ReachData {
   async function rows<T>(table: string, columns: string, order: { col: string; asc: boolean }): Promise<T[]> {
@@ -56,7 +57,7 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
       if (error) throw error;
       return (data as AdSettings) ?? null;
     },
-    listForms: async (): Promise<Form[]> => [],
+    listForms: () => rows<Form>('forms', FORM_COLUMNS, { col: 'created_at', asc: false }),
     listBroadcasts: async (): Promise<Broadcast[]> => [],
     listAutomations: async (): Promise<Automation[]> => [],
   };

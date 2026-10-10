@@ -54,18 +54,28 @@ export type Appointment = {
   created_at: string;
 };
 
-export type FormStatus = 'active' | 'paused';
+export type FormStatus = 'draft' | 'active' | 'paused';
 export type BroadcastChannel = 'whatsapp' | 'email';
 export type AutomationStatus = 'active' | 'paused' | 'draft';
 
-/** A lead-capture form. */
+/**
+ * A lead-capture form: the record describing it. The public page and its
+ * submissions come later, so both counters stay at 0 until then.
+ */
 export type Form = {
   id: string;
   name: string;
-  channel: Channel;
-  submissions_count: number;
+  /** Free text such as Promotions or Sales. */
+  category: string | null;
+  /** The link, without the leading "/": lower-case letters, digits and hyphens. */
+  slug: string;
+  /** Where the form is mainly shared, when that is known. */
+  channel: Channel | null;
   status: FormStatus;
+  views_count: number;
+  submissions_count: number;
   created_at: string;
+  updated_at: string;
 };
 
 /** A one-to-many email / WhatsApp message blast. */
