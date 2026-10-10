@@ -136,6 +136,10 @@ describe('contactsView', () => {
     const view = contactsView([contact, customer, archived], bills);
     expect(view.stats).toEqual({ customers: 1, suppliers: 1, receivable: 0, payable: 2393.6 });
   });
+  it('counts a payable owed to a supplier that is not among the loaded contacts', () => {
+    const view = contactsView([contact], [...bills, { supplier_id: 'not-loaded', balance: 10, display_status: 'overdue' }]);
+    expect(view.stats.payable).toBe(2403.6);
+  });
   it('gives each contact its payable, including an archived one', () => {
     const view = contactsView([contact, customer, archived], bills);
     const byId = Object.fromEntries(view.rows.map((r) => [r.id, r.payable]));

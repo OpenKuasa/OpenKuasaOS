@@ -246,7 +246,7 @@ export function contactsView(contacts: FinanceContact[], bills: BillBalance[]): 
       customers: active.filter((c) => c.is_customer).length,
       suppliers: active.filter((c) => c.is_supplier).length,
       receivable: 0,
-      payable: round2(rows.reduce((sum, c) => sum + c.payable, 0)),
+      payable: round2([...owed.values()].reduce((sum, v) => sum + v, 0)),
     },
     topBalances: rows
       .filter((c) => c.payable > 0)
