@@ -29,8 +29,10 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   // is not a nav item, so the screen is served at /crm/reports.
   'crm/reports',
 
-  // Bendahara: these two read the workspace's own bills and payments. There is
-  // no form to add them yet.
+  // Bendahara. Supplier Bills and Payments Out read the workspace's own data
+  // but have no form to add to them yet.
+  'finance/customers-suppliers',
+  'finance/products',
   'finance/supplier-bills',
   'finance/payments-out',
 ]);
