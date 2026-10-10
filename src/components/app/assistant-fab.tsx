@@ -1,10 +1,28 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
 import { ASSISTANT } from '@/config/nav';
-import { SariConversation } from '@/components/command/sari-conversation';
+
+// The conversation carries the chat engine and the charts its replies draw.
+// It is fetched when the panel is first wanted, not with every screen.
+const loadConversation = () =>
+  import('@/components/command/sari-conversation').then(
+    (mod) => mod.SariConversation,
+  );
+
+const SariConversation = dynamic(loadConversation, {
+  loading: () => (
+    <div
+      role="status"
+      className="grid flex-1 place-items-center text-sm text-muted-foreground"
+    >
+      Opening {ASSISTANT.short}…
+    </div>
+  ),
+});
 
 /**
  * Taming Sari — the cross-app AI assistant. Floating entry point on every
@@ -48,6 +66,9 @@ export function AssistantFab() {
           ref={buttonRef}
           type="button"
           onClick={() => setOpen(true)}
+          // Start the download on intent, so the panel opens ready.
+          onPointerEnter={() => void loadConversation()}
+          onFocus={() => void loadConversation()}
           className="brand-scope fixed bottom-5 right-5 z-30 inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           aria-label={`Ask ${ASSISTANT.name}`}
         >
