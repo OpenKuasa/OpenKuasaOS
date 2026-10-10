@@ -1021,8 +1021,8 @@ function SubmissionsCard({
                     {row.contact_id ? (
                       <Button asChild variant="outline" size="xs">
                         <Link
-                          href={CONTACTS_PATH}
-                          aria-label={`Find ${row.name || row.email} in Kasturi contacts`}
+                          href={`${CONTACTS_PATH}?contact=${row.contact_id}`}
+                          aria-label={`Open ${row.name || row.email} in Kasturi contacts`}
                         >
                           <ExternalLink />
                           Contact in Kasturi

@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { BarChart3, PieChart, Plus, Target, TrendingUp, Users } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
@@ -236,6 +238,9 @@ function StatusPill({ status }: { status: string | null }) {
   );
 }
 
+/** `?contact=<id>` on the Contacts URL opens the page on that one contact. */
+export const CONTACT_PARAM = 'contact';
+
 /** Rows put on screen at a time; "Show more" adds another lot. */
 const PAGE_SIZE = 50;
 
@@ -287,9 +292,14 @@ export default function ContactsScreen({
     () => filterContacts(rows, followUps ?? {}, filters),
     [rows, followUps, filters],
   );
-  const shown = filtered.slice(0, pageSize);
+  // A link such as /crm/contacts?contact=<id> opens on that one contact,
+  // whatever the view and filters are, so it works for an archived contact too.
+  const pathname = usePathname();
+  const openedId = useSearchParams().get(CONTACT_PARAM);
+  const opened = openedId ? (rows.find((c) => c.id === openedId) ?? null) : null;
+  const shown = openedId ? (opened ? [opened] : []) : filtered.slice(0, pageSize);
   // Fewer contacts than were loaded means a view, filter or search is narrowing the list.
-  const narrowed = filtered.length < rows.length;
+  const narrowed = !openedId && filtered.length < rows.length;
   // Checkbox and Contact always show; the "⋯" column only for people who can edit.
   const columns = 2 + (7 - hidden.size) + (actions ? 1 : 0);
 
@@ -507,6 +517,20 @@ export default function ContactsScreen({
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {openedId ? (
+                  <TableRow className="bg-primary/5 hover:bg-primary/5">
+                    <TableCell colSpan={columns} className="text-sm">
+                      <span role="status">
+                        {opened
+                          ? 'Showing the contact you opened.'
+                          : 'That contact could not be found. It may have been deleted, or it is not among the most recent contacts loaded here.'}
+                      </span>{' '}
+                      <Link href={pathname} className="font-medium text-primary hover:underline">
+                        Show all contacts
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
                 {shown.map((c) =>
                   actions && deletingId === c.id ? (
                     <DeleteContactRow
@@ -596,7 +620,7 @@ export default function ContactsScreen({
                   </TableRow>
                   ),
                 )}
-                {shown.length === 0 ? (
+                {shown.length === 0 && !openedId ? (
                   <TableRow>
                     <TableCell colSpan={columns} className="py-10 text-center text-muted-foreground">
                       {rows.length === 0
@@ -619,7 +643,7 @@ export default function ContactsScreen({
             </span>
             <span className="flex items-center gap-3">
               {selectedShown.length > 0 ? <span>{selectedShown.length} selected</span> : null}
-              {filtered.length > shown.length ? (
+              {!openedId && filtered.length > shown.length ? (
                 <Button
                   variant="outline"
                   size="sm"
