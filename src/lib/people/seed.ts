@@ -1,0 +1,490 @@
+/**
+ * Fictional Rimba Ventures HR data: the dev, preview and test stand-in for the
+ * `hr_*` tables. It is the same company the demo workspace shows (the same 20
+ * people, the same leave, claims and pay), built from `now` so tests are
+ * stable. `private.reseed_demo_people()` writes the same people in SQL.
+ */
+
+import { addDays, addMonths, isWeekday, monthStart, todayInMalaysia, weekStart } from './dates';
+import {
+  DEMO_EMPLOYEE_ID,
+  type Announcement,
+  type AttendanceDay,
+  type AttendanceStatus,
+  type Claim,
+  type ClaimCategory,
+  type Department,
+  type Employee,
+  type EmployeePrivate,
+  type EmploymentType,
+  type Goal,
+  type LeaveBalance,
+  type LeaveRequest,
+  type LeaveType,
+  type OvertimeRecord,
+  type PayrollRun,
+  type Payslip,
+  type PeopleData,
+  type PublicHoliday,
+  type RequestStatus,
+  type Review,
+  type Scorecard,
+  type Shift,
+  type TimeOffRequest,
+  type TimesheetEntry,
+  type Training,
+  type TrainingEnrolment,
+} from './types';
+
+const DEPARTMENTS = ['Sales', 'Operations', 'Marketing', 'Finance', 'Management'];
+
+/** n, name, email handle, department, designation, employment type, manager, days since joining, days to next birthday. */
+const PEOPLE: [number, string, string, string, string, EmploymentType, boolean, number, number][] = [
+  [1, 'Aisyah Rahim', 'aisyah', 'Sales', 'Sales Executive', 'full_time', false, 1730, 19],
+  [2, 'Faiz Hakim', 'faiz', 'Marketing', 'Designer', 'full_time', false, 1680, 143],
+  [3, 'Ahmad Zaki', 'zaki', 'Operations', 'Ops Lead', 'full_time', true, 1081, 201],
+  [4, 'Nurul Huda', 'nurul', 'Finance', 'Accountant', 'full_time', false, 960, 9],
+  [5, 'Siti Aminah', 'siti', 'Sales', 'Sales Executive', 'part_time', false, 850, 77],
+  [6, 'Lim Wei Jie', 'weijie', 'Operations', 'Technician', 'contract', false, 1060, 256],
+  [7, 'Siti Lestari', 'lestari', 'Management', 'HR Executive', 'full_time', false, 610, 310],
+  [8, 'Raj Kumar', 'raj', 'Finance', 'Finance Analyst', 'full_time', false, 470, 118],
+  [9, 'Tan Mei Ling', 'meiling', 'Marketing', 'Content Lead', 'full_time', true, 1240, 45],
+  [10, 'Hafiz Osman', 'hafiz', 'Sales', 'Business Development', 'full_time', false, 395, 170],
+  [11, 'Amirul Danial', 'amirul', 'Sales', 'Sales Executive', 'full_time', false, 720, 228],
+  [12, 'Farid Ismail', 'farid', 'Sales', 'Sales Manager', 'full_time', true, 2010, 284],
+  [13, 'Priya Devi', 'priya', 'Sales', 'Account Executive', 'full_time', false, 330, 61],
+  [14, 'Chong Wei Han', 'weihan', 'Operations', 'Logistics Coordinator', 'full_time', false, 890, 332],
+  [15, 'Zainab Yusof', 'zainab', 'Operations', 'Customer Support', 'full_time', false, 540, 97],
+  [16, 'Daniel Wong', 'daniel', 'Operations', 'Technician', 'contract', false, 210, 189],
+  [17, 'Syafiq Karim', 'syafiq', 'Marketing', 'Performance Marketer', 'full_time', false, 660, 131],
+  [18, 'Liyana Salleh', 'liyana', 'Finance', 'Finance Manager', 'full_time', true, 1520, 266],
+  [19, 'Kavitha Nair', 'kavitha', 'Management', 'Operations Director', 'full_time', true, 2300, 29],
+  [20, 'Hakim Abdullah', 'hakim', 'Management', 'Managing Director', 'full_time', true, 2800, 215],
+];
+
+/** n, type, first day and last day from today, days, reason, status, applied days ago. */
+const LEAVE: [number, LeaveType, number, number, number, string, RequestStatus, number][] = [
+  [7, 'annual', -2, 1, 4, 'Family trip', 'approved', 12],
+  [6, 'medical', 0, 0, 1, 'Clinic visit', 'approved', 1],
+  [4, 'emergency', 0, 0, 1, 'Family matter', 'approved', 1],
+  [1, 'annual', 10, 11, 2, 'Balik kampung', 'pending', 2],
+  [11, 'annual', 5, 5, 1, 'Personal errand', 'pending', 1],
+  [9, 'emergency', 3, 3, 1, 'Car repair', 'pending', 0],
+  [2, 'annual', -40, -38, 3, 'Holiday', 'approved', 55],
+  [3, 'medical', -25, -24, 2, 'Flu', 'approved', 26],
+  [5, 'annual', -60, -58, 3, 'Wedding', 'approved', 75],
+  [8, 'unpaid', -33, -33, 1, 'Personal', 'rejected', 40],
+  [10, 'annual', -18, -17, 2, 'Rest', 'approved', 30],
+  [12, 'annual', -75, -71, 5, 'Umrah', 'approved', 100],
+  [13, 'medical', -12, -12, 1, 'Dental', 'approved', 13],
+  [15, 'annual', -50, -49, 2, 'Holiday', 'approved', 62],
+  [17, 'emergency', -8, -8, 1, 'Child unwell', 'approved', 9],
+  [18, 'annual', -90, -86, 5, 'Holiday', 'approved', 110],
+  [1, 'medical', -21, -21, 1, 'Fever', 'approved', 22],
+  [1, 'annual', -45, -44, 2, 'Holiday', 'approved', 60],
+];
+
+/** n, day from today, start, end, reason, status. */
+const TIME_OFF: [number, number, string, string, string, RequestStatus][] = [
+  [1, -9, '15:00', '17:00', 'Bank appointment', 'approved'],
+  [1, -30, '09:00', '11:00', 'School event', 'approved'],
+  [2, 2, '14:00', '16:00', 'Clinic follow-up', 'approved'],
+  [5, -14, '16:00', '18:00', 'JPJ appointment', 'approved'],
+  [10, -6, '09:00', '10:30', 'Car service', 'rejected'],
+  [14, -20, '13:00', '15:00', 'Bank appointment', 'approved'],
+];
+
+/** n, category, amount in cents, day from today, description, receipt, status. */
+const CLAIMS: [number, ClaimCategory, number, number, string, boolean, RequestStatus][] = [
+  [2, 'medical', 24000, -1, 'Clinic consultation', true, 'pending'],
+  [4, 'travel', 18000, -2, 'Site visit mileage', true, 'pending'],
+  [1, 'travel', 32000, -12, 'Client visit, Johor Bahru', true, 'approved'],
+  [1, 'meals', 8600, -20, 'Client lunch', true, 'approved'],
+  [1, 'medical', 15000, -41, 'Panel clinic', true, 'approved'],
+  [1, 'equipment', 68400, -55, 'Headset and keyboard', false, 'rejected'],
+  [3, 'travel', 21000, -9, 'Warehouse run', true, 'approved'],
+  [5, 'meals', 6400, -15, 'Team lunch', true, 'approved'],
+  [9, 'equipment', 129000, -27, 'Camera tripod', true, 'approved'],
+  [12, 'travel', 54000, -33, 'Penang roadshow', true, 'approved'],
+  [13, 'medical', 9000, -6, 'Pharmacy', true, 'approved'],
+  [17, 'other', 12000, -18, 'Courier fees', false, 'rejected'],
+];
+
+/** n, day from today, hours, rate, status. */
+const OVERTIME: [number, number, number, number, RequestStatus][] = [
+  [3, -2, 4, 1.5, 'pending'],
+  [1, -7, 2, 1.5, 'approved'],
+  [1, -23, 3, 1.5, 'approved'],
+  [1, -37, 2.5, 2, 'approved'],
+  [6, -5, 3.5, 1.5, 'approved'],
+  [6, -19, 4, 2, 'approved'],
+  [14, -11, 2, 1.5, 'approved'],
+  [15, -4, 1.5, 1.5, 'approved'],
+  [16, -13, 5, 2, 'approved'],
+  [16, -26, 3, 1.5, 'rejected'],
+  [3, -16, 2.5, 1.5, 'approved'],
+  [10, -8, 2, 1.5, 'approved'],
+];
+
+const HOLIDAYS: [string, number, number, 'national' | 'state', string | null][] = [
+  ["New Year's Day", 1, 1, 'state', 'Kuala Lumpur'],
+  ['Federal Territory Day', 2, 1, 'state', 'Kuala Lumpur'],
+  ['Labour Day', 5, 1, 'national', null],
+  ['National Day', 8, 31, 'national', null],
+  ['Malaysia Day', 9, 16, 'national', null],
+  ['Christmas Day', 12, 25, 'national', null],
+];
+
+const GOALS: [string, number, number][] = [
+  ['Hit the quarterly target', 62, 40],
+  ['Complete the compliance course', 85, 20],
+  ['Cut response time to under 4 hours', 30, 60],
+  ['Mentor one new hire', 55, 75],
+];
+
+/** title, category, provider, first and last day from today, status. */
+const TRAININGS: [string, string, string, number, number, Training['status']][] = [
+  ['Workplace safety refresher', 'Compliance', 'In-house', -60, -59, 'completed'],
+  ['PDPA for customer data', 'Compliance', 'In-house', -30, -30, 'completed'],
+  ['Consultative selling', 'Sales', 'External trainer', -3, 4, 'in_progress'],
+  ['Excel for finance teams', 'Skills', 'Online course', 12, 13, 'upcoming'],
+  ['First-time manager programme', 'Leadership', 'External trainer', 30, 32, 'upcoming'],
+];
+
+const ANNOUNCEMENTS: [string, string, Announcement['category'], number][] = [
+  ['Office closed for National Day', 'The office is closed on 31 August. Support runs a skeleton shift.', 'holiday', 4],
+  ['New panel clinics added', 'Three more panel clinics are available under the medical benefit.', 'benefits', 9],
+  ['Quarterly town hall', 'Join the town hall this Friday at 3pm in the main meeting room.', 'general', 13],
+  ['Updated leave policy', 'Annual leave may now be carried forward up to five days.', 'policy', 21],
+  ['Second-half priorities', 'Leadership has shared the three priorities for the second half.', 'strategy', 34],
+];
+
+const DAY = 86_400_000;
+const pad = (n: number, width: number) => String(n).padStart(width, '0');
+const employeeId = (n: number) => (n === 1 ? DEMO_EMPLOYEE_ID : `seed-emp-${n}`);
+const between = (date: string, from: string, to: string) => date >= from && date <= to;
+
+/** Base pay: RM 2,800 to RM 5,600 by position in the list; managers RM 3,000 more. */
+const salaryCents = (n: number, manager: boolean) => 280000 + ((n * 7) % 8) * 40000 + (manager ? 300000 : 0);
+
+/** Illustrative round figures, not the official contribution tables. */
+function deductions(gross: number) {
+  return {
+    epf_cents: Math.round(gross * 0.11),
+    socso_cents: Math.min(Math.round(gross * 0.005), 2975),
+    eis_cents: Math.min(Math.round(gross * 0.002), 1190),
+    pcb_cents:
+      gross > 500000 ? 8000 + Math.round((gross - 500000) * 0.08) : gross > 350000 ? Math.round((gross - 350000) * 0.03) : 0,
+  };
+}
+
+export function createSeedPeopleData(now: Date = new Date()): PeopleData {
+  const today = todayInMalaysia(now);
+  const year = Number(today.slice(0, 4));
+  const ago = (days: number) => new Date(now.getTime() - days * DAY).toISOString();
+  const nameOf = new Map(PEOPLE.map(([n, name]) => [n, name]));
+
+  const departments: Department[] = DEPARTMENTS.map((name) => ({
+    id: `seed-dept-${name.toLowerCase()}`,
+    name,
+    created_at: ago(3000),
+  }));
+
+  const employees: Employee[] = PEOPLE.map(([n, name, handle, dept, designation, type, manager, tenure, bday]) => {
+    const birthday = addDays(today, bday);
+    return {
+      id: employeeId(n),
+      user_id: null,
+      employee_no: `EMP-${pad(n, 3)}`,
+      name,
+      work_email: `${handle}@openkuasa.com`,
+      department_id: `seed-dept-${dept.toLowerCase()}`,
+      department_name: dept,
+      designation,
+      employment_type: type,
+      is_manager: manager,
+      join_date: addDays(today, -tenure),
+      status: 'active',
+      date_of_birth_day: Number(birthday.slice(8, 10)),
+      date_of_birth_month: Number(birthday.slice(5, 7)),
+      created_at: ago(tenure),
+    };
+  });
+
+  const privates: EmployeePrivate[] = PEOPLE.map(([n, name, , , , , manager, , bday]) => {
+    const birthday = addDays(today, bday);
+    return {
+      employee_id: employeeId(n),
+      nric: `900101-14-${pad(5000 + n, 4)}`,
+      date_of_birth: `${year - 26 - (n % 14)}-${birthday.slice(5, 7)}-${pad(Math.min(Number(birthday.slice(8, 10)), 28), 2)}`,
+      phone: `+60 12-555 ${pad(1000 + n * 37, 4)}`,
+      address: `${n} Jalan Rimba, 50450 Kuala Lumpur`,
+      base_salary_cents: salaryCents(n, manager),
+      bank_name: ['Maybank', 'CIMB', 'Public Bank', 'RHB'][n % 4],
+      bank_account: String(100000000 + n * 7919).padStart(12, '5'),
+      epf_no: `EPF${pad(20000 + n, 8)}`,
+      socso_no: `SOC${pad(30000 + n, 8)}`,
+      tax_no: `SG${pad(40000 + n, 9)}`,
+      emergency_contact_name: `Waris ${name.split(' ')[0]}`,
+      emergency_contact_phone: `+60 13-555 ${pad(2000 + n * 41, 4)}`,
+    };
+  });
+
+  const leave: LeaveRequest[] = LEAVE.map(([n, type, from, to, days, reason, status, applied], index) => ({
+    id: `seed-leave-${index + 1}`,
+    employee_id: employeeId(n),
+    employee_name: nameOf.get(n)!,
+    leave_type: type,
+    start_date: addDays(today, from),
+    end_date: addDays(today, to),
+    days,
+    reason,
+    status,
+    created_at: ago(applied),
+  }));
+
+  const balances: LeaveBalance[] = employees.flatMap((employee) =>
+    ([['annual', 16], ['medical', 14], ['emergency', 3]] as [LeaveType, number][]).map(([type, entitled]) => ({
+      id: `seed-balance-${employee.id}-${type}`,
+      employee_id: employee.id,
+      leave_type: type,
+      year,
+      entitled_days: entitled,
+      used_days: leave
+        .filter(
+          (r) =>
+            r.employee_id === employee.id &&
+            r.leave_type === type &&
+            r.status === 'approved' &&
+            Number(r.start_date.slice(0, 4)) === year,
+        )
+        .reduce((sum, r) => sum + r.days, 0),
+    })),
+  );
+
+  const timeOff: TimeOffRequest[] = TIME_OFF.map(([n, day, start, end, reason, status], index) => ({
+    id: `seed-timeoff-${index + 1}`,
+    employee_id: employeeId(n),
+    employee_name: nameOf.get(n)!,
+    off_date: addDays(today, day),
+    start_time: `${start}:00`,
+    end_time: `${end}:00`,
+    reason,
+    status,
+    created_at: ago(Math.max(0, 3 - day)),
+  }));
+
+  const claims: Claim[] = CLAIMS.map(([n, category, amount, day, description, receipt, status], index) => ({
+    id: `seed-claim-${index + 1}`,
+    employee_id: employeeId(n),
+    employee_name: nameOf.get(n)!,
+    category,
+    amount_cents: amount,
+    claim_date: addDays(today, day),
+    description,
+    has_receipt: receipt,
+    status,
+    created_at: ago(-day),
+  }));
+
+  const overtime: OvertimeRecord[] = OVERTIME.map(([n, day, hours, rate, status], index) => ({
+    id: `seed-ot-${index + 1}`,
+    employee_id: employeeId(n),
+    employee_name: nameOf.get(n)!,
+    work_date: addDays(today, day),
+    hours,
+    rate_multiplier: rate,
+    amount_cents: Math.round(hours * rate * 2500),
+    status,
+    created_at: ago(-day),
+  }));
+
+  // Every weekday of the last eight weeks. h is a stable 0..39 per employee and
+  // day: 0 is absent, 1 to 4 late, the rest on time.
+  const attendance: AttendanceDay[] = [];
+  const timesheet: TimesheetEntry[] = [];
+  for (let back = 55; back >= 0; back -= 1) {
+    const date = addDays(today, -back);
+    if (!isWeekday(date)) continue;
+    for (const [n] of PEOPLE) {
+      const id = employeeId(n);
+      const h = (n * 31 + back * 17) % 40;
+      const away = leave.some(
+        (r) => r.employee_id === id && r.status === 'approved' && between(date, r.start_date, r.end_date),
+      );
+      const status: AttendanceStatus = away ? 'on_leave' : h === 0 ? 'absent' : h <= 4 ? 'late' : 'present';
+      const worked = status === 'present' || status === 'late';
+      // 09:00 in Kuala Lumpur is 01:00 UTC.
+      const nine = Date.parse(`${date}T01:00:00Z`);
+      attendance.push({
+        id: `seed-att-${n}-${date}`,
+        employee_id: id,
+        work_date: date,
+        clock_in: worked
+          ? new Date(nine + (status === 'late' ? 10 + h * 5 : -(h % 10)) * 60_000).toISOString()
+          : null,
+        clock_out: worked && date !== today ? new Date(nine + (9 * 60 + (h % 30)) * 60_000).toISOString() : null,
+        status,
+      });
+      if (worked) {
+        const hours = 7.5 + ((n + back) % 3) * 0.5;
+        timesheet.push({
+          id: `seed-ts-${n}-${date}`,
+          employee_id: id,
+          work_date: date,
+          hours,
+          billable_hours: Math.round(hours * 0.8 * 2) / 2,
+        });
+      }
+    }
+  }
+
+  const monday = weekStart(today);
+  const shifts: Shift[] = PEOPLE.filter(([, , , dept]) => dept === 'Operations').flatMap(([n]) =>
+    Array.from({ length: 7 }, (_, i): Shift => {
+      const turn = (n + i) % 4;
+      return {
+        id: `seed-shift-${n}-${i}`,
+        employee_id: employeeId(n),
+        work_date: addDays(monday, i),
+        shift: turn === 0 ? 'off' : turn === 1 ? 'night' : 'morning',
+      };
+    }),
+  );
+
+  const holidays: PublicHoliday[] = HOLIDAYS.map(([name, month, day, scope, state], index) => ({
+    id: `seed-holiday-${index + 1}`,
+    name,
+    holiday_date: `${year}-${pad(month, 2)}-${pad(day, 2)}`,
+    scope,
+    state,
+  }));
+
+  const thisMonth = monthStart(today);
+  const runs: PayrollRun[] = Array.from({ length: 8 }, (_, m) => {
+    const period = addMonths(thisMonth, -m);
+    return {
+      id: `seed-run-${m}`,
+      period_month: period,
+      status: m === 0 ? 'draft' : 'paid',
+      paid_at: m === 0 ? null : new Date(Date.parse(`${addDays(period, 27)}T02:00:00Z`)).toISOString(),
+    };
+  });
+
+  const payslips: Payslip[] = runs.flatMap((run) =>
+    employees
+      .filter((employee) => employee.join_date! < addMonths(run.period_month, 1))
+      .map((employee): Payslip => {
+        const gross = privates.find((p) => p.employee_id === employee.id)!.base_salary_cents!;
+        const cut = deductions(gross);
+        return {
+          id: `seed-slip-${run.id}-${employee.id}`,
+          employee_id: employee.id,
+          employee_name: employee.name,
+          payroll_run_id: run.id,
+          period_month: run.period_month,
+          gross_cents: gross,
+          ...cut,
+          net_cents: gross - cut.epf_cents - cut.socso_cents - cut.eis_cents - cut.pcb_cents,
+          status: run.status === 'paid' ? 'paid' : 'pending',
+        };
+      }),
+  );
+
+  const goals: Goal[] = PEOPLE.filter(([n]) => n <= 10).flatMap(([n, name]) =>
+    GOALS.map(([title, base, due], index): Goal => {
+      const progress = Math.min(100, base + ((n * 7) % 20));
+      return {
+        id: `seed-goal-${n}-${index + 1}`,
+        employee_id: employeeId(n),
+        employee_name: name,
+        title,
+        progress,
+        due_date: addDays(today, due),
+        status: progress >= 100 ? 'done' : base < 40 ? 'at_risk' : 'on_track',
+      };
+    }),
+  );
+
+  const scorecards: Scorecard[] = PEOPLE.map(([n, name]) => ({
+    id: `seed-score-${n}`,
+    employee_id: employeeId(n),
+    employee_name: name,
+    period: `H1 ${year}`,
+    score: 3 + ((n * 7) % 19) / 10,
+    competencies: {
+      Delivery: 3 + ((n * 3) % 20) / 10,
+      Teamwork: 3 + ((n * 5) % 20) / 10,
+      Ownership: 3 + ((n * 11) % 20) / 10,
+      Communication: 3 + ((n * 13) % 20) / 10,
+    },
+  }));
+
+  const reviews: Review[] = scorecards.map((card) => ({
+    id: card.id.replace('score', 'review'),
+    employee_id: card.employee_id,
+    employee_name: card.employee_name,
+    period: card.period,
+    rating: card.score >= 4.3 ? 'exceeds' : card.score >= 3.4 ? 'meets' : 'below',
+    score: card.score,
+    reviewer_name: 'Kavitha Nair',
+    reviewed_at: addDays(today, -45),
+  }));
+
+  const trainings: Training[] = TRAININGS.map(([title, category, provider, from, to, status], index) => ({
+    id: `seed-training-${index + 1}`,
+    title,
+    category,
+    provider,
+    starts_on: addDays(today, from),
+    ends_on: addDays(today, to),
+    status,
+  }));
+
+  const enrolments: TrainingEnrolment[] = PEOPLE.flatMap(([n]) =>
+    trainings
+      .map((training, index) => ({ training, k: index + 1 }))
+      .filter(({ k }) => (n + k) % 3 === 0 || (n === 1 && k <= 3))
+      .map(({ training }): TrainingEnrolment => ({
+        id: `seed-enrol-${n}-${training.id}`,
+        employee_id: employeeId(n),
+        training_id: training.id,
+        completed: training.status === 'completed',
+      })),
+  );
+
+  const announcements: Announcement[] = ANNOUNCEMENTS.map(([title, body, category, days], index) => ({
+    id: `seed-announcement-${index + 1}`,
+    title,
+    body,
+    category,
+    published_at: ago(days),
+    author_name: 'Siti Lestari',
+  }));
+
+  const newestFirst = <T extends { created_at: string }>(rows: T[]) =>
+    [...rows].sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+  return {
+    listDepartments: async () => departments,
+    listEmployees: async () => employees,
+    getEmployeePrivate: async (id) => privates.find((p) => p.employee_id === id) ?? null,
+    listLeaveRequests: async () => newestFirst(leave),
+    listLeaveBalances: async (wanted) => balances.filter((b) => b.year === wanted),
+    listTimeOffRequests: async () => newestFirst(timeOff),
+    listClaims: async () => newestFirst(claims),
+    listOvertime: async () => newestFirst(overtime),
+    listAttendance: async (from, to) => attendance.filter((d) => between(d.work_date, from, to)),
+    listTimesheet: async (from, to) => timesheet.filter((d) => between(d.work_date, from, to)),
+    listShifts: async (from, to) => shifts.filter((s) => between(s.work_date, from, to)),
+    listPublicHolidays: async () => holidays,
+    listPayrollRuns: async () => runs,
+    listPayslips: async () => payslips,
+    listGoals: async () => goals,
+    listScorecards: async () => scorecards,
+    listReviews: async () => reviews,
+    listTrainings: async () => trainings,
+    listTrainingEnrolments: async () => enrolments,
+    listAnnouncements: async () => announcements,
+  };
+}

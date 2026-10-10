@@ -15,13 +15,16 @@ import {
   crmProduct,
   hireProduct,
   kasturiSharedProduct,
+  peopleProduct,
   reachProduct,
   type HireAccess,
+  type PeopleAccess,
   type ReachAccess,
 } from '@/lib/ai/products';
 import {
   JEBAT_SYSTEM,
   LEKIR_SYSTEM,
+  LEKIU_SYSTEM,
   kasturiSystem,
   tuahSystem,
   tuahTeamSystem,
@@ -32,7 +35,7 @@ import type { Screen } from '@/lib/chat/screen';
 /** Tools that change data: each one pauses for the owner's approval before running. */
 export const WRITE_TOOL_NAMES = REACH_WRITE_TOOL_NAMES;
 
-export type { HireAccess, ReachAccess };
+export type { HireAccess, PeopleAccess, ReachAccess };
 
 export function runJebat(
   messages: ModelMessage[],
@@ -112,12 +115,39 @@ export function runLekir(
   });
 }
 
+/**
+ * "Lekiu, your HR co-pilot": the same single agent as Jebat, holding the HR
+ * lookups. It has no change tools yet, so nothing asks for approval.
+ */
+export function runLekiu(
+  messages: ModelMessage[],
+  people: PeopleAccess,
+  abortSignal?: AbortSignal,
+  /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
+  apiKey?: string,
+) {
+  const { tools, toolApproval } = combineToolkits([peopleProduct(people)]);
+  return streamText({
+    model: getModel('orchestrator', apiKey),
+    system: LEKIU_SYSTEM,
+    messages,
+    tools,
+    toolApproval,
+    onLanguageModelCallEnd: logModelCall('lekiu', pickModelId('orchestrator')),
+    stopWhen: stepCountIs(8),
+    // A drafted notice or letter runs longer than a data answer.
+    maxOutputTokens: 1400,
+    abortSignal,
+  });
+}
+
 /** What each specialist is for, as Tuah's instructions put it. */
 const TEAM_AREA = {
   reach:
     'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
   crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact) and the calendar. A lead is not a contact yet: anything about a lead goes to Jebat',
   hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Existing staff, leave and payroll are not hiring',
+  people: 'HR: existing staff, leave, claims, overtime, attendance, payroll and performance. Lookups only for now. Hiring new people is not HR',
 } as const;
 
 /**

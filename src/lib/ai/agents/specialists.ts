@@ -239,6 +239,7 @@ const AREA: Record<ProductToolkit['key'], string> = {
   reach: 'marketing (ads, campaigns, creatives, leads, lead forms, appointments, ad settings)',
   crm: 'the CRM (contacts, deals, pipelines and their stages)',
   hire: 'hiring (jobs, candidates, applications, the hiring funnel, interviews, the talent pool)',
+  people: 'HR (existing staff, leave, claims, overtime, attendance, payroll, performance)',
 };
 
 /** Runs a prepared change through the product's own change tool, after checking its input again. */
