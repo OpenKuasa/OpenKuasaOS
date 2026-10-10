@@ -34,29 +34,12 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { buildPoolModel, type PoolModel } from '@/lib/hire/lists';
-import { LOAD_FAILED, Muted, loadHire } from '@/screens/hire/parts';
+import { LOAD_FAILED, Muted, loadHire, topSlices } from '@/screens/hire/parts';
 
 type Candidate = PoolModel['rows'][number];
 type Status = Candidate['status'];
 
 const SKILL_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)'];
-
-/** At most `max` slices: the biggest, with the rest folded into 'Other'. */
-function topSlices(groups: { label: string; value: number }[], max: number): Slice[] {
-  const slices = groups.map((g) => ({ key: g.label, label: g.label, value: g.value }));
-  const kept =
-    slices.length <= max
-      ? slices
-      : [
-          ...slices.slice(0, max - 1),
-          {
-            key: 'other',
-            label: 'Other',
-            value: slices.slice(max - 1).reduce((sum, r) => sum + r.value, 0),
-          },
-        ];
-  return kept.map((slice, index) => ({ ...slice, color: SKILL_COLORS[index % SKILL_COLORS.length] }));
-}
 
 const SOURCE_SERIES: Series[] = [
   { key: 'count', label: 'Candidates', color: 'var(--chart-2)' },
@@ -111,7 +94,11 @@ function Rating({ value }: { value: number | null }) {
 export default async function TalentPoolScreen() {
   const { model } = await loadHire('talent-pool', (data) => buildPoolModel(data));
   const capped = model ? model.size > model.rows.length : false;
-  const roleSlices = topSlices(model?.byTitle ?? [], 4);
+  const roleSlices: Slice[] = topSlices(
+    model?.byTitle ?? [],
+    (r) => r.value,
+    (r) => r.label,
+  ).map((slice, index) => ({ ...slice, color: SKILL_COLORS[index % SKILL_COLORS.length] }));
   const statusCount = (key: Status) =>
     model ? (model.statusCounts.find((s) => s.key === key)?.value ?? 0) : '—';
 
@@ -139,13 +126,13 @@ export default async function TalentPoolScreen() {
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat label="Available" value={statusCount('Available')} />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat label="Shortlisted" value={statusCount('Shortlisted')} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat label="Passive" value={statusCount('Passive')} />
+        </BentoCard>
+        <BentoCard className="col-span-1 md:col-span-3">
+          <BentoStat label="Re-engaged" value={statusCount('Re-engaged')} />
         </BentoCard>
 
         {/* Skill mix + source breakdown */}
