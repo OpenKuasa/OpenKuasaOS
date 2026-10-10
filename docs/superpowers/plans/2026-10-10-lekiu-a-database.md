@@ -1078,7 +1078,7 @@ git commit -m "feat(people): announcement, document, letter and settings tables 
 
 **Interfaces:**
 - Consumes: all 24 tables from Tasks 1–7; the demo workspace `public.orgs.slug = 'rimba-ventures-demo'`.
-- Produces: `private.reseed_demo_people()`. Employee ids are `md5('rimba-emp-' || n)::uuid` for `n` in 1..20. **The demo employee (Aisyah Rahim, n = 1) is always `dea97d89-a5b6-f264-bd42-c6df73f664a7`**; plan B's `viewer.ts` uses this constant. Always true after a reseed: 20 active employees in 5 departments (Sales 6, Operations 5, Marketing 3, Finance 3, Management 3); 3 approved leave requests covering today; 6 pending approvals (3 leave, 2 claims, 1 overtime); 8 payroll runs, the current month `draft` and the 7 before it `paid`.
+- Produces: `private.reseed_demo_people()`. Employee ids are `md5('rimba-emp-' || n)::uuid` for `n` in 1..20. **The demo employee (Aisyah Rahim, n = 1) is always `dea97d89-a5b6-f264-bd42-c6df73f664a7`**; plan B's `viewer.ts` uses this constant. Always true after a reseed: 20 active employees in 5 departments (Sales 6, Operations 5, Marketing 3, Finance 3, Management 3); 3 approved leave requests covering today; 6 pending approvals (3 leave, 2 claims, 1 overtime, none in time-off); 8 payroll runs, the current month `draft` and the 7 before it `paid`.
 
 - [ ] **Step 1: Write the failing test** — `tests/people-demo-seed.test.ts`
 
@@ -1127,6 +1127,15 @@ describe('Lekiu demo seed', () => {
     expect(text).toContain(
       "select cron.schedule('reseed-demo-people', '15 * * * *', $$select private.reseed_demo_people()$$);",
     );
+  });
+
+  test('leaves no time-off request waiting, so pending approvals stay at six', () => {
+    const text = seed();
+    const start = text.indexOf('insert into public.time_off_requests');
+    const block = text.slice(start, text.indexOf(') as v(n, day, start_time, end_time, reason, status);', start));
+    const rows = block.split('\n').filter((line) => /^\s+\(\d+, -?\d+, '\d\d:\d\d'/.test(line));
+    expect(rows).toHaveLength(6);
+    for (const row of rows) expect(row).not.toContain("'pending'");
   });
 });
 ```
@@ -1266,7 +1275,7 @@ begin
   from (values
     (1, -9, '15:00', '17:00', 'Bank appointment', 'approved'),
     (1, -30, '09:00', '11:00', 'School event', 'approved'),
-    (2, 2, '14:00', '16:00', 'Clinic follow-up', 'pending'),
+    (2, 2, '14:00', '16:00', 'Clinic follow-up', 'approved'),
     (5, -14, '16:00', '18:00', 'JPJ appointment', 'approved'),
     (10, -6, '09:00', '10:30', 'Car service', 'rejected'),
     (14, -20, '13:00', '15:00', 'Bank appointment', 'approved')
@@ -1506,7 +1515,7 @@ select cron.schedule('reseed-demo-people', '15 * * * *', $$select private.reseed
 - [ ] **Step 5: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-demo-seed`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1673,7 +1682,13 @@ testWithSupabase('one workspace cannot see or change another workspace\'s HR dat
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
-  await owner.c.from('employee_private').insert({ employee_id: emp.data!.id, org_id: owner.orgId, base_salary_cents: 500000 });
+  const priv = await owner.c
+    .from('employee_private')
+    .insert({ employee_id: emp.data!.id, org_id: owner.orgId, base_salary_cents: 500000 });
+  expect(priv.error, priv.error?.message).toBeNull();
+  // The rows are really there: the zeros below are not zeros of an empty table.
+  expect(await count(owner.c, 'employees', owner.orgId)).toBe(1);
+  expect(await count(owner.c, 'employee_private', owner.orgId)).toBe(1);
 
   expect(await count(other.c, 'employees', owner.orgId)).toBe(0);
   expect(await count(other.c, 'employee_private', owner.orgId)).toBe(0);
@@ -1720,6 +1735,7 @@ testWithSupabase('a demo guest reads the whole demo workspace, and it has the pr
   expect(await pending('leave_requests')).toBe(3);
   expect(await pending('claims')).toBe(2);
   expect(await pending('overtime_records')).toBe(1);
+  expect(await pending('time_off_requests')).toBe(0);
 
   const draft = await d.c.from('payroll_runs').select('period_month').eq('org_id', d.demoId).eq('status', 'draft');
   expect(draft.data ?? []).toHaveLength(1);
@@ -1743,9 +1759,9 @@ testWithSupabase('a demo guest cannot change anything', async () => {
 
 testWithSupabase('being in the demo opens the demo only', async () => {
   // Someone who is not in the demo sees none of it.
-  const demoIdRes = await demoGuest();
+  const guest = await demoGuest();
   for (const table of ['employees', 'payslips', 'payroll_runs']) {
-    expect(await count(owner.c, table, demoIdRes.demoId), table).toBe(0);
+    expect(await count(owner.c, table, guest.demoId), table).toBe(0);
   }
   // A demo guest sees nothing of a real workspace.
   const emp = await owner.c
@@ -1754,20 +1770,23 @@ testWithSupabase('being in the demo opens the demo only', async () => {
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
-  expect(await count(demoIdRes.c, 'employees', owner.orgId)).toBe(0);
+  expect(await count(guest.c, 'employees', owner.orgId)).toBe(0);
   await owner.c.from('employees').delete().eq('id', emp.data!.id);
-  await demoIdRes.c.auth.signOut();
+  await guest.c.auth.signOut();
 });
 ```
 
 - [ ] **Step 2: Write the member-tier check** — `supabase/tests/people_rls_check.sql`
 
-This is one `do` block. It builds a workspace with an admin and two members, acts as each of them, and **always ends by raising**, which rolls everything back. It is run as the database owner through the MCP in Task 10.
+This is one `do` block. It first checks every table's read rule, policies and grants in the catalogue, then builds a workspace with an admin and two members, acts as each of them, and **always ends by raising**, which rolls everything back. It is run as the database owner through the MCP in Task 10.
 
 ```sql
 -- Lekiu member-tier access check. Leaves nothing behind: the block always ends
 -- with RAISE, so every insert below is rolled back. Read the message:
 --   PEOPLE_RLS_CHECK PASSED ...   or   PEOPLE_RLS_CHECK FAILED: <what went wrong>
+-- It rebuilds the demo HR rows inside its transaction and holds them until the
+-- rollback, so do not start it at minute 15 of the hour, when the scheduled
+-- demo reseed runs.
 do $$
 declare
   org uuid := gen_random_uuid();
@@ -1783,10 +1802,66 @@ declare
   linked uuid;
   n int;
   t text;
+  k text;
+  q text;
+  core text[] := array['departments','employees','employee_private'];
+  shared text[] := array['departments','public_holidays','trainings','announcements'];
   fails text[] := '{}';
   personal text[] := array['employee_private','leave_requests','claims','payslips','reviews','documents'];
   hr_only text[] := array['payroll_runs','payment_vouchers','people_settings'];
 begin
+  -- ---- every table: the right read rule, and no write it should not have --
+  for t, k in
+    select x.t, x.k from (values
+      ('departments','shared'), ('employees','shared'), ('employee_private','personal'),
+      ('leave_requests','personal'), ('leave_balances','personal'), ('time_off_requests','personal'),
+      ('claims','personal'), ('overtime_records','personal'),
+      ('attendance_days','personal'), ('timesheet_entries','personal'), ('shifts','personal'), ('public_holidays','shared'),
+      ('payroll_runs','hr'), ('payslips','personal'), ('payment_vouchers','hr'),
+      ('goals','personal'), ('scorecards','personal'), ('reviews','personal'), ('trainings','shared'), ('training_enrolments','personal'),
+      ('announcements','shared'), ('documents','personal'), ('letters','personal'), ('people_settings','hr')
+    ) as x(t, k)
+  loop
+    select p.qual into q from pg_policies p
+    where p.schemaname = 'public' and p.tablename = t and p.policyname = t || '_select' and p.cmd = 'SELECT';
+    if q is null then
+      fails := array_append(fails, format('%s has no read policy', t));
+    elsif k = 'shared' and (q not like '%is_org_member(org_id)%' or q like '%is_org_admin%' or q like '%is_own_employee%') then
+      fails := array_append(fails, format('%s should be readable by every member, its rule is: %s', t, q));
+    elsif k = 'personal' and not (q like '%is_org_admin(org_id)%' and q like '%is_own_employee(employee_id)%'
+        and q like '%is_demo_org(org_id)%' and q like '%is_org_member(org_id)%') then
+      fails := array_append(fails, format('%s should be HR-or-own, its rule is: %s', t, q));
+    elsif k = 'hr' and (q not like '%is_org_admin(org_id)%' or q not like '%is_demo_org(org_id)%' or q like '%is_own_employee%') then
+      fails := array_append(fails, format('%s should be HR only, its rule is: %s', t, q));
+    end if;
+
+    select count(*) into n from pg_policies p
+    where p.schemaname = 'public' and p.tablename = t and p.policyname = 'mfa_required' and p.permissive = 'RESTRICTIVE';
+    if n <> 1 then fails := array_append(fails, format('%s has no restrictive second-factor policy', t)); end if;
+
+    select count(*) into n from pg_policies p
+    where p.schemaname = 'public' and p.tablename = t
+      and p.policyname not in (t || '_select', 'mfa_required')
+      and not (t = any(core) and p.policyname = t || '_write');
+    if n <> 0 then fails := array_append(fails, format('%s has %s policies nobody expected', t, n)); end if;
+
+    if not (select c.relrowsecurity from pg_class c where c.oid = ('public.' || t)::regclass) then
+      fails := array_append(fails, format('%s does not have row level security on', t));
+    end if;
+    if has_table_privilege('anon', 'public.' || t, 'SELECT, INSERT, UPDATE, DELETE')
+       or has_any_column_privilege('anon', 'public.' || t, 'SELECT, INSERT, UPDATE') then
+      fails := array_append(fails, format('signed-out visitors hold a privilege on %s', t));
+    end if;
+    if not has_table_privilege('authenticated', 'public.' || t, 'SELECT') then
+      fails := array_append(fails, format('signed-in users cannot read %s at all', t));
+    end if;
+    if not (t = any(core)) and (
+         has_table_privilege('authenticated', 'public.' || t, 'INSERT, UPDATE, DELETE')
+         or has_any_column_privilege('authenticated', 'public.' || t, 'INSERT, UPDATE')) then
+      fails := array_append(fails, format('%s is meant to be read-only this slice but has a write grant', t));
+    end if;
+  end loop;
+
   -- ---- people and a workspace ----------------------------------------
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password,
     email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data, is_anonymous)
@@ -1816,7 +1891,10 @@ begin
   begin
     update public.employees set user_id = outsider where id = e2;
     fails := array_append(fails, 'linked an employee to a non-member');
-  exception when others then null;
+  exception when others then
+    if sqlerrm not like '%not a member of this workspace%' then
+      fails := array_append(fails, 'linking a non-member was refused for another reason: ' || sqlerrm);
+    end if;
   end;
 
   -- ---- one personal row each, and the HR-only rows --------------------
@@ -1836,6 +1914,10 @@ begin
   insert into public.payment_vouchers (org_id, voucher_no, payee, voucher_type, amount_cents, issued_date)
   values (org, 'PV-1', 'Someone', 'Advance', 1000, current_date);
   insert into public.people_settings (org_id) values (org);
+  insert into public.departments (org_id, name) values (org, 'Sales');
+  insert into public.public_holidays (org_id, name, holiday_date) values (org, 'Labour Day', current_date);
+  insert into public.trainings (org_id, title) values (org, 'Safety refresher');
+  insert into public.announcements (org_id, title) values (org, 'Welcome');
 
   -- ---- as member one ---------------------------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', m1, 'role', 'authenticated', 'aal', 'aal1')::text, true);
@@ -1853,6 +1935,10 @@ begin
   end loop;
   execute format('select count(*) from public.employees where org_id = %L', org) into n;
   if n <> 2 then fails := array_append(fails, format('a member sees %s of 2 colleagues in the directory', n)); end if;
+  foreach t in array shared loop
+    execute format('select count(*) from public.%I where org_id = %L', t, org) into n;
+    if n <> 1 then fails := array_append(fails, format('a member reads %s rows of shared %s, expected 1', n, t)); end if;
+  end loop;
 
   begin
     execute format('insert into public.employees (org_id, employee_no, name) values (%L, ''X'', ''Planted'')', org);
@@ -1884,7 +1970,7 @@ begin
   -- ---- as the owner of another workspace -------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', outsider, 'role', 'authenticated', 'aal', 'aal1')::text, true);
   set local role authenticated;
-  foreach t in array personal || hr_only || array['employees'] loop
+  foreach t in array personal || hr_only || shared || array['employees'] loop
     execute format('select count(*) from public.%I where org_id = %L', t, org) into n;
     if n <> 0 then fails := array_append(fails, format('another workspace reads %s rows of %s', n, t)); end if;
   end loop;
@@ -1914,8 +2000,9 @@ begin
   if n <> 3 then fails := array_append(fails, format('%s people on leave today in the demo, expected 3', n)); end if;
   select (select count(*) from public.leave_requests where org_id = demo and status = 'pending')
        + (select count(*) from public.claims where org_id = demo and status = 'pending')
-       + (select count(*) from public.overtime_records where org_id = demo and status = 'pending') into n;
-  if n <> 6 then fails := array_append(fails, format('%s pending approvals in the demo, expected 6', n)); end if;
+       + (select count(*) from public.overtime_records where org_id = demo and status = 'pending')
+       + (select count(*) from public.time_off_requests where org_id = demo and status = 'pending') into n;
+  if n <> 6 then fails := array_append(fails, format('%s pending approvals across the four queues in the demo, expected 6', n)); end if;
 
   -- ---- a workspace with HR data can still be deleted --------------------
   begin
@@ -1939,7 +2026,7 @@ Expected on this machine, where the Supabase variables are in the shell environm
 - [ ] **Step 4: Run the rest of the suite**
 
 Run: `pnpm vitest run --dir tests --exclude '**/people.rls.test.ts'`
-Expected: everything passes, including `people-schema` (55) and `people-demo-seed` (5).
+Expected: everything passes, including `people-schema` (55) and `people-demo-seed` (6).
 
 - [ ] **Step 5: Commit**
 
