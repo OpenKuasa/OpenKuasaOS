@@ -64,6 +64,7 @@ These bind every screen task.
 - Modify: `src/lib/people/types.ts`, `src/lib/people/supabase.ts`, `src/lib/people/seed.ts`, `src/lib/people/dates.ts`
 - Create: `src/lib/people/series.ts`, `src/lib/people/own.ts`, `src/lib/people/overtime.ts`
 - Modify: `src/screens/people/parts.tsx`, `src/screens/people/assistant.tsx` (use the extracted card only)
+- Modify, to keep them compiling: every hand-built `PeopleData` object in the tests gains the four new methods (find them with `grep -rln "listAnnouncements:" tests`; `tests/people-tools.test.ts` has one called `EMPTY`, and `tests/setup/people-member-view.ts` spreads the data it is given: its `listDocuments` and `listLetters` must filter to the member's own rows, `listPaymentVouchers` must return `[]`, and `getSettings` the defaults)
 - Test: `tests/people-dates.test.ts`, `tests/people-seed.test.ts`, `tests/people-provider.test.ts`, `tests/people-provider.rls.test.ts` (extend each); `tests/people-series.test.ts`, `tests/people-own.test.ts`, `tests/people-overtime.test.ts`, `tests/people-parts.test.tsx` (create)
 
 **Interfaces (produced; Tasks 2–8 rely on these exact names):**
@@ -159,9 +160,10 @@ export type OvertimeModel = {
   by_department: { department: string; hours: number }[];   // pending hours
   people_with_overtime: number;                         // distinct employees this month
 };
-/** Cancelled and rejected records count toward nothing but their own rows. `month` is today's calendar month by work_date. */
+/** `month` is today's calendar month by work_date. Pass `[]` for employees when the records are one person's: by_department is then empty. */
 export function overtimeModel(records: OvertimeRecord[], employees: Employee[], today: string): OvertimeModel;
 ```
+Which records feed which field (three tasks depend on this, so it is fixed here): rejected and cancelled records feed nothing. `month.hours` and `month.amount_cents` = approved + pending in the month; `month.approved_hours` = approved in the month; `month.pending_hours` and `month.pending_count` = pending, **any date** (a queue, not a month figure); `by_month` = approved + pending hours by work_date month; `by_rate` = approved + pending, all dates; `by_department` = pending hours, all dates, department looked up through `employees` (an employee not found is left out); `people_with_overtime` = distinct employees with an approved or pending record in the month.
 
 `src/screens/people/parts.tsx` (added; existing exports unchanged)
 ```tsx
@@ -194,13 +196,13 @@ git commit -m "feat(people): shared surface for the remaining Lekiu screens — 
 
 ---
 
-### Tasks 2–8: the screen groups (run in parallel after Task 1)
+## Screen groups: Tasks 2 to 8 (run in parallel after Task 1)
 
 Each task owns the files it lists and nothing else. For each screen: read its survey section, apply the Screen Rules, keep and remove what the task says, and put every computed figure in the task's module as a pure function of rows and `today`, tested on the sample data (`createSeedPeopleData(new Date('2026-10-09T04:00:00Z'))`) and on no rows. Each module's tests must include the Review Focus cases named for the task.
 
 Every task ends the same way: run its own test file and `pnpm eslint` on its own files, write its report, and stop without committing. The coordinator typechecks and commits.
 
-#### Task 2: My requests — Leave, Time-Off, Financial Claims, OT Claims
+### Task 2: My requests — Leave, Time-Off, Financial Claims, OT Claims
 
 **Files:** rewrite `src/screens/people/leave.tsx`, `time-off.tsx`, `claims.tsx`, `ot-claims.tsx`; create `src/screens/people/my-requests.tsx` (the shared layout: header with one `LaterButton`, KPI row, two summary cards, the "My requests" table); create `src/lib/people/requests.ts`; test `tests/people-requests.test.ts`. Survey: A.7–A.10, C2.
 
@@ -210,14 +212,14 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 - **OT Claims.** Keep: OT hours this month, OT pay this month, Pending hours, Approved hours (from `overtimeModel` over the viewer's own records); "OT by month" bars (`by_month`); "By rate" list (`by_rate`); the table (Date, Hours, Rate, Amount, Status). Remove: "cap 104 h/month" from the subtitle; sparklines and deltas.
 - **Tests must cover:** an HR viewer linked to employee 2 gets employee 2's rows only, on each of the four models; a viewer with `employeeId` null yields the not-linked state for all four; the demo employee's leave model on the sample data (3 requests, 1 pending); no rows gives zeros and `null`s with no `NaN`.
 
-#### Task 3: Approvals — Leave, Financial Claims, Overtime, Time-Off
+### Task 3: Approvals — Leave, Financial Claims, Overtime, Time-Off
 
 **Files:** rewrite `src/screens/people/approve-leave.tsx`, `approve-claims.tsx`, `approve-overtime.tsx`, `approve-time-off.tsx`; create `src/screens/people/approvals-screen.tsx` (the shared layout); create `src/lib/people/approvals.ts`; test `tests/people-approvals.test.ts`. Survey: A.11–A.14, C1.
 
 - **All four.** HR-only (Rule 7). Keep: Pending (count, with the queue's own caption: days, ringgit or hours), Approved this month, Rejected this month (month by the request's own date: `start_date`, `claim_date`, `work_date`, `off_date`); "… over time" chart, 8 weeks by `created_at` via `malaysiaDate`, series Submitted and "Approved since" (of those submitted that week, how many are approved now; the subtitle says so); the "Pending by …" breakdown (leave by type, claims by category in ringgit, overtime by department in hours via `overtimeModel`, time-off: remove the breakdown, reasons are free text); the table, newest first, with `EmployeeCell`, a `StatusPill` and, for pending rows, disabled Approve and Reject (`LaterButton`). Remove: "Avg turnaround"; the period `Select`; sparklines and deltas; the card buttons "Calendar", "Batch pay", "Timesheets" (they lead nowhere). Keep "Export" as a `LaterButton`.
 - **Tests must cover:** the sample data's queues (3 pending leave, 2 pending claims totalling RM 420.00, 1 pending overtime of 4 hours, 0 pending time-off); a plain member's viewer makes each builder return without calling any read (assert with a `PeopleData` whose methods throw); no rows gives empty queues and zeros.
 
-#### Task 4: Attendance — My Attendance, Timesheet, Shift Calendar, Overtime
+### Task 4: Attendance — My Attendance, Timesheet, Shift Calendar, Overtime
 
 **Files:** rewrite `src/screens/people/my-attendance.tsx`, `timesheet.tsx`, `shift-calendar.tsx`, `overtime.tsx`; create `src/lib/people/attendance.ts`; test `tests/people-attendance.test.ts`. Survey: A.3, A.17–A.19, C3.
 
@@ -227,7 +229,7 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 - **Overtime** (team, Rule 8). Keep: hours and cost this month, pending hours, people with overtime (`overtimeModel`); hours by month; the records table with `EmployeeCell`. Remove: "Avg OT per employee" against a cap and the "Rate policy" tile's legal claims; show the rate multipliers actually present (`by_rate`) instead.
 - **Tests must cover:** My Attendance for an HR viewer linked to employee 3 uses employee 3's days only; a member's timesheet model flags `team: false` so the screen can say "Your records" and hide totals titled as the team's; the average clock-in of no days is `null`; a week with no shifts gives an empty roster, not rows of blanks for every employee.
 
-#### Task 5: Payroll — Payroll, Payment Vouchers
+### Task 5: Payroll — Payroll, Payment Vouchers
 
 **Files:** rewrite `src/screens/people/payroll.tsx`, `payment-vouchers.tsx`; create `src/lib/people/payroll.ts`; test `tests/people-payroll.test.ts`. Survey: A.20–A.21, C5.
 
@@ -236,7 +238,7 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 - **Payment Vouchers.** Keep: total issued and paid this month, drafts (count), outstanding (issued, not paid); amount by month (`bucketByMonth` on `issued_date`); by type donut (`sumBy` on `voucher_type`); the table (Voucher no, Payee, Type, Amount, Date, Status). "New voucher" and "Export" are `LaterButton`s.
 - **Tests must cover:** the sample data's latest run (gross RM 105,200.00, status draft, 20 payslips) and the six vouchers (total RM 27,465.00; 4 paid, 1 issued, 1 draft); a plain member's viewer reads nothing; a workspace with no runs gives a model that says so (`latest: null`) rather than zeros dressed as a run.
 
-#### Task 6: Performance — My Goals, Scorecard, Review Scores, Training
+### Task 6: Performance — My Goals, Scorecard, Review Scores, Training
 
 **Files:** rewrite `src/screens/people/my-goals.tsx`, `scorecard.tsx`, `review-scores.tsx`, `training.tsx`; create `src/lib/people/performance.ts`; test `tests/people-performance.test.ts`. Survey: A.4, A.22–A.24, C5.
 
@@ -246,7 +248,7 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 - **Training.** Courses are shared; enrolments are personal. Keep: courses by status (Upcoming, In progress, Completed); the course table (title, category, provider, dates, status) with, for a team view, enrolled and completed counts, and for a member, "You are enrolled" / "Completed" from their own enrolments. Remove: hours; completion "rate" for a member; sparklines. "Add course" and "Enrol" are `LaterButton`s.
 - **Tests must cover:** My Goals for the demo employee on the sample data (4 goals; 3 on track, 1 at risk); a member's scorecard model has `team: false` and no department averages; the sample data's ratings (6 exceeds, 10 meets, 4 below); a member's training model never carries a headcount.
 
-#### Task 7: Records and documents — Records, My Documents, Letters, Settings
+### Task 7: Records and documents — Records, My Documents, Letters, Settings
 
 **Files:** rewrite `src/screens/people/records.tsx`, `my-documents.tsx`, `letters.tsx`, `settings.tsx`; create `src/lib/people/documents.ts`; test `tests/people-documents.test.ts`. Survey: A.5, A.6, A.16, A.25, section B.
 
@@ -254,9 +256,9 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 - **My Documents** (personal). Keep: Documents, Pending signature, Expiring within 90 days, Payslips; "By type" donut; the table (Document, Type, Date or "Expires …", Status). Remove: the per-row "PDF" button and file size (no file is stored): replace the Action column's button with a `LaterButton`; "Upload" is a `LaterButton`; sparklines.
 - **Letters** (team, Rule 8: a member sees letters addressed to them, under "Your letters"). Keep: Issued, Drafts, Issued this month; by-type donut (`sumBy` on `letter_type`); the table (employee, letter, type, status, issued on). Remove: the "Templates" list; "EA Form" as a letter type; download buttons become `LaterButton`s; "New letter" is a `LaterButton`.
 - **Settings.** HR-only (Rule 7). Shows what `getSettings()` returns, read-only: working days, default annual leave days, the three overtime multipliers, and the notification switches (rendered disabled). Every other field on the sample screen (company name, registration number, HR email, pay day, statutory rates, approval policy, hours per day and the rest) is removed: nothing stores it. One `LaterButton` "Save changes". A line under the header: "These are the workspace's HR defaults."
-- **Tests must cover:** the demo employee's documents on the sample data (7; 1 pending signature; 1 expiring); a document whose `expires_on` is 91 days away is not "expiring soon" and one 90 days away is; records for a viewer with no private row show "Not recorded", never `undefined` or `null` as text; an HR viewer linked to employee 5 gets employee 5's documents on My Documents; a plain member's settings builder reads nothing; `maskAccount('1234567890')` is `'••••7890'` and a 3-character account is fully masked.
+- **Tests must cover:** the demo employee's documents on the sample data (7; 1 pending signature; 1 expiring); `maskAccount` is exported from `src/lib/people/documents.ts`; a document whose `expires_on` is 91 days away is not "expiring soon" and one 90 days away is; records for a viewer with no private row show "Not recorded", never `undefined` or `null` as text; an HR viewer linked to employee 5 gets employee 5's documents on My Documents; a plain member's settings builder reads nothing; `maskAccount('1234567890')` is `'••••7890'` and a 3-character account is fully masked.
 
-#### Task 8: Company — Dashboard, Announcements, Public Holidays
+### Task 8: Company — Dashboard, Announcements, Public Holidays
 
 **Files:** rewrite `src/screens/people/dashboard.tsx`, `announcements.tsx`, `public-holidays.tsx`; create `src/lib/people/company.ts`; test `tests/people-company.test.ts`. Survey: A.1, A.2, A.15.
 
@@ -269,7 +271,7 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 
 ### Task 9: Bring it together (coordinator)
 
-- [ ] **Step 1: Land the groups.** As each of Tasks 2–8 reports, run `pnpm tsc --noEmit` and its test file, send type errors back to the task that owns the file, review the group (spec and quality), and commit the group's files as one commit named for the group.
+- [ ] **Step 1: Land the groups.** As each of Tasks 2–8 reports: run its test file; commit its files by path as one commit named for the group; build the review package over that commit; review the group (spec and quality); send findings back to the task's own implementer. Do not run `pnpm tsc` yet: other groups are still mid-write. Once all seven have reported, run `pnpm tsc --noEmit` and `pnpm lint` and send each error to the task that owns the file.
 - [ ] **Step 2: Mark the screens live.** Add all 25 `people/<slug>` keys to `LIVE_SCREENS` in `src/config/live-screens.ts`. Rewrite `tests/people-live-screens.test.ts`: all 27 Lekiu screens are live; `people/calendar` is still a sample. A group that has not landed keeps its keys out, and the final report says so.
 - [ ] **Step 3: No sample data left.** `grep -rn "Saudara\|Rimba Ventures\|openkuasa.com" src/screens/people` returns nothing (the chat card's demo answer in `ask-lekiu-hero.tsx` may keep "Saudara" in its heading only). Every screen file imports `loadPeople`.
 - [ ] **Step 4: Whole-branch checks.** `pnpm tsc --noEmit`, `pnpm lint`, `pnpm test`, `pnpm build` (the route list still has all 27 `/people/*` pages). `pnpm vitest run --dir tests people.rls people-provider.rls people-capabilities.rls` passes against the live database.
