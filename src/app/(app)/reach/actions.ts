@@ -52,9 +52,11 @@ import {
   updateLead,
   updateLeadInput,
 } from '@/lib/reach/capabilities';
-import { createSupabaseReachData } from '@/lib/reach/supabase';
+import { createSupabaseReachData, getReachData } from '@/lib/reach/supabase';
 import { FORM_MESSAGES } from '@/lib/reach/forms';
+import { leadsToCsv } from '@/lib/reach/csv';
 import type { FormSubmission } from '@/lib/reach/types';
+import type { ReportRange } from '@/lib/reach/reports';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
 
@@ -254,4 +256,19 @@ export async function setAppointmentStatusAction(input: unknown) {
 }
 export async function deleteAppointmentAction(input: unknown) {
   return runAppointments(deleteAppointmentInput, input, deleteAppointment);
+}
+
+export async function exportLeadsCsv(
+  range: ReportRange,
+): Promise<{ ok: true; filename: string; csv: string } | { ok: false; error: string }> {
+  const viewer = await getViewer();
+  if (!viewer.orgId) return { ok: false, error: 'Please sign in to export.' };
+  const days = { '7d': 7, '30d': 30, '90d': 90 }[range];
+  if (!days) return { ok: false, error: 'That range is not valid.' };
+  const supabase = await createClient();
+  const leads = await (await getReachData(supabase)).listLeads();
+  const cutoff = Date.now() - days * 86_400_000;
+  const inRange = leads.filter((l) => new Date(l.created_at).getTime() >= cutoff);
+  const stamp = new Date().toISOString().slice(0, 10);
+  return { ok: true, filename: `leads-${range}-${stamp}.csv`, csv: leadsToCsv(inRange) };
 }
