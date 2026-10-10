@@ -2,8 +2,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createDepartment,
   createDepartmentInput,
+  createEmployee,
+  createEmployeeInput,
   deleteDepartment,
+  deleteEmployee,
+  linkEmployeeToMember,
+  setEmployeeStatus,
   updateDepartment,
+  updateEmployee,
+  updateEmployeeInput,
 } from '@/lib/people/capabilities';
 import { fakeSupabase } from './setup/fake-supabase';
 
@@ -118,6 +125,304 @@ describe('deleteDepartment', () => {
     expect(await deleteDepartment(ctxOf(client), { id: DEPT })).toEqual({
       ok: false,
       error: 'That department was not found.',
+    });
+  });
+});
+
+const EMP = '22222222-2222-4222-8222-222222222222';
+const USER = '33333333-3333-4333-8333-333333333333';
+const saved = { id: EMP, name: 'Farah Idris', employee_no: 'EMP-021' };
+
+describe('employee schemas', () => {
+  it('needs a name to add someone', () => {
+    const parsed = createEmployeeInput.safeParse({ name: ' ' });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues[0].message).toBe('Give the employee a name.');
+  });
+  it('refuses a date that is not YYYY-MM-DD', () => {
+    expect(createEmployeeInput.safeParse({ name: 'A', join_date: '1 Nov 2026' }).success).toBe(false);
+  });
+  it('refuses a negative salary', () => {
+    expect(createEmployeeInput.safeParse({ name: 'A', private: { base_salary: -1 } }).success).toBe(false);
+  });
+  it('lets an edit carry only what changes', () => {
+    expect(updateEmployeeInput.parse({ id: EMP, designation: 'Senior Designer' })).toEqual({
+      id: EMP,
+      designation: 'Senior Designer',
+    });
+  });
+});
+
+describe('createEmployee', () => {
+  it('assigns the next EMP number after the highest, ignoring irregular ones', async () => {
+    const { client, calls } = fakeSupabase({
+      'hr_employees.select': { data: [{ employee_no: 'EMP-001' }, { employee_no: 'A17' }, { employee_no: 'EMP-020' }] },
+      'hr_employees.insert': { data: saved },
+    });
+    const result = await createEmployee(ctxOf(client), { name: 'Farah Idris', designation: 'Sales Executive' });
+    expect(result).toEqual({ ok: true, data: saved });
+    const insert = calls.find((c) => c.op === 'insert')!;
+    expect(insert.values).toMatchObject({
+      org_id: ORG,
+      name: 'Farah Idris',
+      employee_no: 'EMP-021',
+      designation: 'Sales Executive',
+    });
+    // No pay or identity detail was given, so no private row is made.
+    expect(calls.some((c) => c.table === 'hr_employee_private')).toBe(false);
+  });
+
+  it('starts at EMP-001 in an empty workspace', async () => {
+    const { client, calls } = fakeSupabase({
+      'hr_employees.select': { data: [] },
+      'hr_employees.insert': { data: { ...saved, employee_no: 'EMP-001' } },
+    });
+    await createEmployee(ctxOf(client), { name: 'Farah Idris' });
+    expect(calls.find((c) => c.op === 'insert')!.values).toMatchObject({ employee_no: 'EMP-001' });
+  });
+
+  it('keeps a number that was given, and does not read the others', async () => {
+    const { client, calls } = fakeSupabase({ 'hr_employees.insert': { data: { ...saved, employee_no: 'S-9' } } });
+    await createEmployee(ctxOf(client), { name: 'Farah Idris', employee_no: 'S-9' });
+    expect(calls.map((c) => c.op)).toEqual(['insert']);
+    expect(calls[0].values).toMatchObject({ employee_no: 'S-9' });
+  });
+
+  it('stores a blank work email as empty and a given one in lower case', async () => {
+    const blank = fakeSupabase({ 'hr_employees.select': { data: [] }, 'hr_employees.insert': { data: saved } });
+    await createEmployee(ctxOf(blank.client), { name: 'Farah Idris', work_email: '  ' });
+    expect(blank.calls.find((c) => c.op === 'insert')!.values).toMatchObject({ work_email: null });
+
+    const given = fakeSupabase({ 'hr_employees.select': { data: [] }, 'hr_employees.insert': { data: saved } });
+    await createEmployee(ctxOf(given.client), { name: 'Farah Idris', work_email: ' Farah@Example.com ' });
+    expect(given.calls.find((c) => c.op === 'insert')!.values).toMatchObject({ work_email: 'farah@example.com' });
+  });
+
+  it('refuses a work email that is not one, before touching the database', async () => {
+    const { client, calls } = fakeSupabase();
+    expect(await createEmployee(ctxOf(client), { name: 'Farah Idris', work_email: 'farah-at-example' })).toEqual({
+      ok: false,
+      error: 'That work email does not look right.',
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a date that does not exist', async () => {
+    const { client } = fakeSupabase();
+    expect(await createEmployee(ctxOf(client), { name: 'Farah Idris', join_date: '2026-02-31' })).toEqual({
+      ok: false,
+      error: 'Join date must be a real date, as YYYY-MM-DD.',
+    });
+  });
+
+  it('saves pay and identity details in the private table, in cents, with the birthday on the directory row', async () => {
+    const { client, calls } = fakeSupabase({
+      'hr_employees.select': { data: [] },
+      'hr_employees.insert': { data: saved },
+    });
+    await createEmployee(ctxOf(client), {
+      name: 'Farah Idris',
+      private: { base_salary: 3500.5, nric: ' 900101-14-5678 ', date_of_birth: '1990-01-09', phone: '' },
+    });
+    expect(calls.find((c) => c.table === 'hr_employees' && c.op === 'insert')!.values).toMatchObject({
+      date_of_birth_day: 9,
+      date_of_birth_month: 1,
+    });
+    const priv = calls.find((c) => c.table === 'hr_employee_private')!;
+    expect(priv.op).toBe('insert');
+    expect(priv.values).toEqual({
+      employee_id: EMP,
+      org_id: ORG,
+      base_salary_cents: 350050,
+      nric: '900101-14-5678',
+      date_of_birth: '1990-01-09',
+      phone: null,
+    });
+  });
+
+  it('removes the employee again when the private details cannot be saved', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client, calls } = fakeSupabase({
+      'hr_employees.select': { data: [] },
+      'hr_employees.insert': { data: saved },
+      'hr_employee_private.insert': { error: { code: '42501', message: 'permission denied' } },
+    });
+    const result = await createEmployee(ctxOf(client), { name: 'Farah Idris', private: { base_salary: 3000 } });
+    expect(result).toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    const undo = calls.find((c) => c.table === 'hr_employees' && c.op === 'delete')!;
+    expect(undo.filters).toEqual({ id: EMP, org_id: ORG });
+  });
+
+  it('names the clash when the employee number or email is taken', async () => {
+    const no = fakeSupabase({
+      'hr_employees.insert': {
+        error: { code: '23505', message: 'duplicate key value violates unique constraint "hr_employees_org_id_employee_no_key"' },
+      },
+    });
+    expect(await createEmployee(ctxOf(no.client), { name: 'A', employee_no: 'EMP-001' })).toEqual({
+      ok: false,
+      error: 'Another employee already has that employee number.',
+    });
+    const email = fakeSupabase({
+      'hr_employees.insert': {
+        error: { code: '23505', message: 'duplicate key value violates unique constraint "hr_employees_org_email_idx"' },
+      },
+    });
+    expect(await createEmployee(ctxOf(email.client), { name: 'A', employee_no: 'X1', work_email: 'a@b.co' })).toEqual({
+      ok: false,
+      error: 'Another employee already has that work email.',
+    });
+  });
+
+  it('never logs what was typed', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = fakeSupabase({
+      'hr_employees.insert': { error: { code: '42501', message: 'permission denied' } },
+    });
+    await createEmployee(ctxOf(client), {
+      name: 'Farah Idris',
+      employee_no: 'X1',
+      private: { nric: '900101-14-5678', bank_account: '1234567890', base_salary: 9999 },
+    });
+    const logged = JSON.stringify(log.mock.calls);
+    for (const secret of ['900101-14-5678', '1234567890', '9999', 'Farah']) expect(logged).not.toContain(secret);
+  });
+});
+
+describe('updateEmployee', () => {
+  const current = { 'hr_employees.select': { data: saved } };
+
+  it('sends only what changed, and never the columns the database will not let it set', async () => {
+    const { client, calls } = fakeSupabase({
+      ...current,
+      'hr_employees.update': { data: { ...saved, name: 'Farah I.' } },
+    });
+    const result = await updateEmployee(ctxOf(client), { id: EMP, name: 'Farah I.', designation: '' });
+    expect(result).toEqual({ ok: true, data: { ...saved, name: 'Farah I.' } });
+    const update = calls.find((c) => c.op === 'update')!;
+    expect(update.values).toEqual({ name: 'Farah I.', designation: null });
+    expect(update.filters).toEqual({ id: EMP, org_id: ORG });
+  });
+
+  it('says there is nothing to update when no field was given', async () => {
+    const { client, calls } = fakeSupabase();
+    expect(await updateEmployee(ctxOf(client), { id: EMP })).toEqual({ ok: false, error: 'Nothing to update.' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('says when the employee is not there', async () => {
+    const { client } = fakeSupabase({ 'hr_employees.select': { data: null } });
+    expect(await updateEmployee(ctxOf(client), { id: EMP, name: 'X' })).toEqual({
+      ok: false,
+      error: 'That employee was not found.',
+    });
+  });
+
+  it('inserts the private row when there is none yet, and never upserts', async () => {
+    const { client, calls } = fakeSupabase({ ...current, 'hr_employee_private.select': { data: null } });
+    const result = await updateEmployee(ctxOf(client), { id: EMP, private: { bank_name: 'Maybank' } });
+    expect(result).toEqual({ ok: true, data: saved });
+    const writes = calls.filter((c) => c.table === 'hr_employee_private' && c.op !== 'select');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({ op: 'insert', values: { employee_id: EMP, org_id: ORG, bank_name: 'Maybank' } });
+  });
+
+  it('updates the private row when there is one, without the key columns', async () => {
+    const { client, calls } = fakeSupabase({ ...current, 'hr_employee_private.select': { data: { employee_id: EMP } } });
+    await updateEmployee(ctxOf(client), { id: EMP, private: { base_salary: null, phone: '012-3456789' } });
+    const write = calls.find((c) => c.table === 'hr_employee_private' && c.op === 'update')!;
+    expect(write.values).toEqual({ base_salary_cents: null, phone: '012-3456789' });
+    expect(write.filters).toEqual({ employee_id: EMP, org_id: ORG });
+  });
+
+  it('makes no empty private row when every private value is blank and none exists', async () => {
+    const { client, calls } = fakeSupabase({ ...current, 'hr_employee_private.select': { data: null } });
+    const result = await updateEmployee(ctxOf(client), { id: EMP, private: { phone: '', nric: null } });
+    expect(result.ok).toBe(true);
+    expect(calls.some((c) => c.table === 'hr_employee_private' && c.op === 'insert')).toBe(false);
+  });
+
+  it('says which half was saved when the private details fail after the directory ones', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = fakeSupabase({
+      ...current,
+      'hr_employees.update': { data: saved },
+      'hr_employee_private.select': { data: { employee_id: EMP } },
+      'hr_employee_private.update': { error: { code: '42501', message: 'permission denied' } },
+    });
+    expect(await updateEmployee(ctxOf(client), { id: EMP, name: 'Farah Idris', private: { phone: '1' } })).toEqual({
+      ok: false,
+      error: 'The directory details were saved, but the private details were not. Please try again.',
+    });
+  });
+
+  it('says when the department is not there', async () => {
+    const { client } = fakeSupabase({
+      ...current,
+      'hr_employees.update': { error: { code: '23503', message: 'violates foreign key constraint' } },
+    });
+    expect(await updateEmployee(ctxOf(client), { id: EMP, department_id: DEPT })).toEqual({
+      ok: false,
+      error: 'That department was not found.',
+    });
+  });
+});
+
+describe('setEmployeeStatus, deleteEmployee', () => {
+  it('deactivates by changing the status only', async () => {
+    const { client, calls } = fakeSupabase({
+      'hr_employees.select': { data: saved },
+      'hr_employees.update': { data: saved },
+    });
+    expect((await setEmployeeStatus(ctxOf(client), { id: EMP, status: 'inactive' })).ok).toBe(true);
+    expect(calls.find((c) => c.op === 'update')!.values).toEqual({ status: 'inactive' });
+  });
+
+  it('deletes within the workspace and hands back who it was', async () => {
+    const { client, calls } = fakeSupabase({ 'hr_employees.delete': { data: { id: EMP, name: 'Farah Idris' } } });
+    expect(await deleteEmployee(ctxOf(client), { id: EMP })).toEqual({ ok: true, data: { id: EMP, name: 'Farah Idris' } });
+    expect(calls[0].filters).toEqual({ id: EMP, org_id: ORG });
+  });
+
+  it('says when the employee is not there', async () => {
+    const { client } = fakeSupabase({ 'hr_employees.delete': { data: null } });
+    expect(await deleteEmployee(ctxOf(client), { id: EMP })).toEqual({ ok: false, error: 'That employee was not found.' });
+  });
+});
+
+describe('linkEmployeeToMember', () => {
+  it('links by setting user_id only, and unlinks with null', async () => {
+    const link = fakeSupabase({ 'hr_employees.update': { data: { id: EMP, name: 'Farah Idris', user_id: USER } } });
+    expect(await linkEmployeeToMember(ctxOf(link.client), { id: EMP, user_id: USER })).toEqual({
+      ok: true,
+      data: { id: EMP, name: 'Farah Idris', user_id: USER },
+    });
+    expect(link.calls[0]).toMatchObject({ values: { user_id: USER }, filters: { id: EMP, org_id: ORG } });
+
+    const unlink = fakeSupabase({ 'hr_employees.update': { data: { id: EMP, name: 'Farah Idris', user_id: null } } });
+    await linkEmployeeToMember(ctxOf(unlink.client), { id: EMP, user_id: null });
+    expect(unlink.calls[0].values).toEqual({ user_id: null });
+  });
+
+  it('says so when that member is already linked to someone else', async () => {
+    const { client } = fakeSupabase({
+      'hr_employees.update': {
+        error: { code: '23505', message: 'duplicate key value violates unique constraint "hr_employees_org_user_idx"' },
+      },
+    });
+    expect(await linkEmployeeToMember(ctxOf(client), { id: EMP, user_id: USER })).toEqual({
+      ok: false,
+      error: 'That member is already linked to another employee.',
+    });
+  });
+
+  it('says so when the person is not in the workspace', async () => {
+    const { client } = fakeSupabase({
+      'hr_employees.update': { error: { code: 'P0001', message: 'that user is not a member of this workspace' } },
+    });
+    expect(await linkEmployeeToMember(ctxOf(client), { id: EMP, user_id: USER })).toEqual({
+      ok: false,
+      error: 'That person is not a member of this workspace.',
     });
   });
 });
