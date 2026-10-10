@@ -25,6 +25,7 @@ describe('hire settings migration', () => {
     expect(sql).toContain('create policy hire_settings_select on public.hire_settings for select to authenticated');
     expect(sql).toContain('create policy hire_settings_write on public.hire_settings for all to authenticated');
     expect(sql).toContain('drop policy if exists mfa_required on public.hire_settings');
+    expect(sql).toContain('create policy mfa_required on public.hire_settings as restrictive for all to authenticated');
     expect(sql).toContain('revoke all on public.hire_settings from anon, authenticated');
     expect(sql).toContain('grant select, insert on public.hire_settings to authenticated');
     const update = sql.match(/grant update \(([^)]*)\) on public\.hire_settings to authenticated;/);
@@ -46,7 +47,8 @@ describe('hire settings migration', () => {
     expect(body).toContain("o.slug is distinct from 'rimba-ventures-demo'");
     expect(body).toContain("j.status = 'open'");
     // An open job with a blank description is not shown.
-    expect(body).toContain("nullif(btrim(j.description), '') is not null");
+    // Any non-space character: a description of only spaces or line breaks counts as blank.
+    expect(body).toContain("j.description ~ '\\S'");
     expect(body).not.toMatch(/execute\s/i);
   });
 

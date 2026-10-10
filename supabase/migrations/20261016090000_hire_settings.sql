@@ -47,7 +47,7 @@ language sql security definer stable set search_path = '' as $$
   from public.orgs o
   join public.hire_settings s on s.org_id = o.id and s.careers_enabled
   left join public.hire_jobs j
-    on j.org_id = o.id and j.status = 'open' and nullif(btrim(j.description), '') is not null
+    on j.org_id = o.id and j.status = 'open' and j.description ~ '\S'
   where o.id = p_org_id
     and o.slug is distinct from 'rimba-ventures-demo'
   order by j.opened_at desc nulls last, j.title;
@@ -76,7 +76,7 @@ language sql security definer stable set search_path = '' as $$
   from public.orgs o
   join public.hire_settings s on s.org_id = o.id and s.careers_enabled
   join public.hire_jobs j
-    on j.org_id = o.id and j.status = 'open' and nullif(btrim(j.description), '') is not null
+    on j.org_id = o.id and j.status = 'open' and j.description ~ '\S'
   where o.id = p_org_id
     and j.id = p_job_id
     and o.slug is distinct from 'rimba-ventures-demo';
