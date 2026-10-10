@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
+import { convertFileListToFileUIParts, type FileUIPart } from 'ai';
 import {
   Sparkles,
   Plus,
@@ -59,6 +60,16 @@ import {
 } from '@/lib/chat/threads';
 import { screenFromPath, screenLabel } from '@/lib/chat/screen';
 import {
+  ATTACH_ACCEPT,
+  MAX_ATTACHMENTS,
+  MAX_ATTACHMENT_CHARS,
+  attachmentChars,
+  attachmentNote,
+  isAttachable,
+  isFilePart,
+  type FilePart,
+} from '@/lib/chat/attachments';
+import {
   createChat,
   dropChat,
   isAnswering,
@@ -71,7 +82,14 @@ import {
 import { cn } from '@/lib/utils';
 
 type Role = 'user' | 'assistant';
-type Message = { id: number | string; role: Role; text: string; card?: CardType };
+type Message = {
+  id: number | string;
+  role: Role;
+  text: string;
+  card?: CardType;
+  /** Files sent with a question, while they are still in memory. */
+  files?: FilePart[];
+};
 type Reply = { text: string; card?: CardType };
 
 /** Sample answers for demo guests, who never reach a model: a canned reply + optional data card. */
@@ -724,8 +742,9 @@ function ChatPane({
       text: m.parts
         .map((part) => (part.type === 'text' ? part.text : ''))
         .join(''),
+      files: m.role === 'user' ? m.parts.filter(isFilePart) : [],
     }))
-    .filter((m) => m.text.trim().length > 0);
+    .filter((m) => m.text.trim().length > 0 || m.files.length > 0);
   const messages = live ? liveMessages : demoMessages;
 
   // A thread read back moments after its question (a reload mid-answer): the
@@ -765,19 +784,57 @@ function ChatPane({
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, thinking]);
 
+  // Files waiting to go with the next question.
+  const [attachments, setAttachments] = useState<FileUIPart[]>([]);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
+
+  async function pickFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const picked = await convertFileListToFileUIParts(list);
+    const usable = picked.filter(isAttachable);
+    const next = [...attachments, ...usable].slice(0, MAX_ATTACHMENTS);
+    // Earlier files stay in the conversation and travel with every question.
+    const carried = attachmentChars(chat.messages) + attachmentChars([{ parts: next }]);
+    if (carried > MAX_ATTACHMENT_CHARS) {
+      setAttachNote(
+        'That is too much to attach in one chat (about 7 MB in total). Try a smaller file, or start a new chat.',
+      );
+      return;
+    }
+    setAttachments(next);
+    setAttachNote(
+      usable.length < picked.length
+        ? 'Only pictures, PDFs and text files (.txt, .csv, .md) can be attached.'
+        : attachments.length + usable.length > MAX_ATTACHMENTS
+          ? `Up to ${MAX_ATTACHMENTS} files can go with one question.`
+          : null,
+    );
+  }
+
   function send(raw: string) {
     const q = raw.trim();
-    if (!q) return;
     if (live) {
+      if (!q && attachments.length === 0) return;
       // A reply still on its way must land before the next question goes out.
       if (busy || locked || awaiting === 'coming') return;
       if (keep) keepChat(viewer.userId, liveChat);
       setAwaiting('settled');
-      void chat.sendMessage({ text: q }, pathname ? { body: { pathname } } : undefined);
-      onAsk(q);
+      const options = pathname ? { body: { pathname } } : undefined;
+      void chat.sendMessage(
+        attachments.length === 0
+          ? { text: q }
+          : q
+            ? { text: q, files: attachments }
+            : { files: attachments },
+        options,
+      );
+      onAsk(q || (attachmentNote(attachments) ?? ''));
       setInput('');
+      setAttachments([]);
+      setAttachNote(null);
       return;
     }
+    if (!q) return;
     if (demoThinking) return;
     setDemoMessages((m) => [...m, { id: idRef.current++, role: 'user', text: q }]);
     setInput('');
@@ -838,6 +895,13 @@ function ChatPane({
                   onChange={setInput}
                   onSend={() => send(input)}
                   disabled={locked}
+                  attachments={live ? attachments : undefined}
+                  attachNote={attachNote}
+                  onPickFiles={pickFiles}
+                  onRemoveFile={(index) => {
+                    setAttachments((files) => files.filter((_, i) => i !== index));
+                    setAttachNote(null);
+                  }}
                 />
                 <ChatKeyNotice status={chatStatus} className="mt-2" />
                 <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -888,10 +952,35 @@ function ChatPane({
               <div className={cn('space-y-6 px-4 py-6 sm:px-6', width)}>
                 {messages.map((m) =>
                   m.role === 'user' ? (
-                    <div key={m.id} className="flex justify-end">
-                      <div className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
-                        {m.text}
-                      </div>
+                    <div key={m.id} className="flex flex-col items-end gap-1.5">
+                      {m.files && m.files.length > 0 ? (
+                        <div className="flex max-w-[80%] flex-wrap justify-end gap-1.5">
+                          {m.files.map((file, i) =>
+                            file.mediaType.startsWith('image/') ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                key={i}
+                                src={file.url}
+                                alt={file.filename ?? 'Attached picture'}
+                                className="max-h-40 max-w-full rounded-xl border object-cover"
+                              />
+                            ) : (
+                              <span
+                                key={i}
+                                className="flex max-w-full items-center gap-1.5 rounded-xl border bg-muted px-3 py-2 text-xs font-medium"
+                              >
+                                <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                                <span className="truncate">{file.filename ?? 'File'}</span>
+                              </span>
+                            ),
+                          )}
+                        </div>
+                      ) : null}
+                      {m.text.trim() ? (
+                        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+                          {m.text.trim()}
+                        </div>
+                      ) : null}
                     </div>
                   ) : (
                     <div key={m.id} className="flex gap-3">
@@ -942,6 +1031,13 @@ function ChatPane({
                   onChange={setInput}
                   onSend={() => send(input)}
                   disabled={locked}
+                  attachments={live ? attachments : undefined}
+                  attachNote={attachNote}
+                  onPickFiles={pickFiles}
+                  onRemoveFile={(index) => {
+                    setAttachments((files) => files.filter((_, i) => i !== index));
+                    setAttachNote(null);
+                  }}
                 />
                 <ChatKeyNotice status={chatStatus} className="mt-2" />
                 <p className="mt-2 text-center text-xs text-muted-foreground">
@@ -968,54 +1064,126 @@ function Composer({
   onChange,
   onSend,
   disabled = false,
+  attachments,
+  attachNote = null,
+  onPickFiles,
+  onRemoveFile,
 }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
   disabled?: boolean;
+  /** Files waiting to be sent. Left out where files cannot be sent (the demo). */
+  attachments?: FileUIPart[];
+  /** Why a picked file was not added, if one was not. */
+  attachNote?: string | null;
+  onPickFiles?: (files: FileList | null) => void;
+  onRemoveFile?: (index: number) => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canAttach = !!attachments && !disabled;
+  const files = attachments ?? [];
+  const hasFiles = files.length > 0;
+
   return (
-    <div className="flex items-end gap-2 rounded-2xl border bg-background p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
-      <button
-        type="button"
-        aria-label="Attach"
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
-      >
-        <Plus className="size-4" />
-      </button>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            onSend();
-          }
-        }}
-        rows={1}
-        placeholder={
-          disabled ? 'Add an OpenRouter key to keep chatting' : 'Ask anything…'
-        }
-        disabled={disabled}
-        aria-label="Ask anything"
-        className="max-h-40 flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
-      />
-      <button
-        type="button"
-        aria-label="Voice"
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
-      >
-        <Mic className="size-4" />
-      </button>
-      <button
-        type="button"
-        aria-label="Send"
-        onClick={onSend}
-        disabled={disabled || !value.trim()}
-        className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
-      >
-        <ArrowUp className="size-4" />
-      </button>
+    <div>
+      <div className="rounded-2xl border bg-background p-2 shadow-sm focus-within:ring-2 focus-within:ring-ring">
+        {hasFiles ? (
+          <ul className="mb-1 flex flex-wrap gap-1.5 px-1 pt-1" aria-label="Files to send">
+            {files.map((file, i) => (
+              <li
+                key={`${file.filename ?? 'file'}-${i}`}
+                className="flex max-w-full items-center gap-1.5 rounded-lg border bg-muted py-1 pl-2 pr-1 text-xs font-medium"
+              >
+                {file.mediaType.startsWith('image/') ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={file.url} alt="" className="size-6 shrink-0 rounded object-cover" />
+                ) : (
+                  <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                )}
+                <span className="max-w-40 truncate">{file.filename ?? 'File'}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveFile?.(i)}
+                  aria-label={`Remove ${file.filename ?? 'file'}`}
+                  className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X className="size-3.5" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <div className="flex items-end gap-2">
+          {attachments ? (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                accept={ATTACH_ACCEPT}
+                className="hidden"
+                tabIndex={-1}
+                onChange={(e) => {
+                  onPickFiles?.(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Attach files"
+                title="Attach pictures, PDFs or text files"
+                disabled={!canAttach}
+                onClick={() => fileRef.current?.click()}
+                className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Plus className="size-4" aria-hidden />
+              </button>
+            </>
+          ) : null}
+          <textarea
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+            rows={1}
+            placeholder={
+              disabled ? 'Add an OpenRouter key to keep chatting' : 'Ask anything…'
+            }
+            disabled={disabled}
+            aria-label="Ask anything"
+            className={cn(
+              'max-h-40 flex-1 resize-none bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground',
+              attachments ? 'px-1' : 'px-3',
+            )}
+          />
+          <button
+            type="button"
+            aria-label="Voice"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent"
+          >
+            <Mic className="size-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Send"
+            onClick={onSend}
+            disabled={disabled || (!value.trim() && !hasFiles)}
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-foreground text-background transition-opacity disabled:opacity-40"
+          >
+            <ArrowUp className="size-4" />
+          </button>
+        </div>
+      </div>
+      {attachNote ? (
+        <p role="status" className="mt-1.5 px-1 text-xs text-muted-foreground">
+          {attachNote}
+        </p>
+      ) : null}
     </div>
   );
 }
