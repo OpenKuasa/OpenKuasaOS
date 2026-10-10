@@ -217,6 +217,15 @@ export async function syncCadenceSchedule(
     })
     .select('id')
     .single();
+  if (ins.error?.code === '23505') {
+    // A concurrent sync already created the preset (partial unique index): update it instead.
+    const retry = await scope();
+    if (retry.error || !retry.data) {
+      console.error('[schedules] cadence retry failed:', retry.error?.code);
+      return FAILED;
+    }
+    return { ok: true, data: null };
+  }
   if (ins.error || !ins.data) {
     console.error('[schedules] cadence insert failed:', ins.error?.code);
     return FAILED;

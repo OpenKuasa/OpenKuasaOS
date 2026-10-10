@@ -215,8 +215,24 @@ describe('syncCadenceSchedule', () => {
     });
     for (const k of FORBIDDEN) expect(calls[1].payload).not.toHaveProperty(k);
   });
-  it('off: completes the preset row and never inserts', async () => {
-    const { client, calls } = fakeClient([ok(null)]);
+  it('adopts migrated rows: filters on all three tags and re-tags nl_text', async () => {
+    const { client, calls } = fakeClient([ok(row)]);
+    await syncCadenceSchedule({ client, orgId: ORG }, 'daily');
+    const inFilter = calls[0].eq.find(([c]) => c === 'nl_text');
+    expect(inFilter?.[1]).toEqual(
+      expect.arrayContaining(['cadence preset', 'Migrated from daily cadence', 'Migrated from weekly cadence']),
+    );
+    expect(calls[0].payload).toMatchObject({ nl_text: 'cadence preset' });
+  });
+  it('23505 on insert (concurrent sync) falls back to the update, not a failure', async () => {
+    const { client, calls } = fakeClient([ok(null), { data: null, error: { code: '23505' } }, ok(row)]);
+    const r = await syncCadenceSchedule({ client, orgId: ORG }, 'weekly');
+    expect(r.ok).toBe(true);
+    expect(calls.map((c) => c.op)).toEqual(['update', 'insert', 'update']);
+    expect(calls[2].payload).toMatchObject({ interval_seconds: 604800, status: 'active', nl_text: 'cadence preset' });
+  });
+  it('off: completes the matched preset row and never inserts', async () => {
+    const { client, calls } = fakeClient([ok(row)]);
     const r = await syncCadenceSchedule({ client, orgId: ORG }, 'off');
     expect(r.ok).toBe(true);
     expect(calls).toHaveLength(1);
