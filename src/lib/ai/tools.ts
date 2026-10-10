@@ -14,6 +14,8 @@ import { rm } from '@/lib/reach/format';
 import { z } from 'zod';
 import {
   type ReachWriteContext,
+  createAppointment as capCreateAppointment,
+  createAppointmentInput,
   createCampaign as capCreateCampaign,
   createCampaignInput,
   createCreative as capCreateCreative,
@@ -22,6 +24,8 @@ import {
   createFormInput,
   createLead as capCreateLead,
   createLeadInput,
+  deleteAppointment as capDeleteAppointment,
+  deleteAppointmentInput,
   deleteCampaign as capDeleteCampaign,
   deleteCampaignInput,
   deleteCreative as capDeleteCreative,
@@ -32,6 +36,8 @@ import {
   deleteLeadInput,
   promoteLeadToContact as capPromoteLeadToContact,
   promoteLeadToContactInput,
+  setAppointmentStatus as capSetAppointmentStatus,
+  setAppointmentStatusInput,
   setCampaignStatus as capSetCampaignStatus,
   setCampaignStatusInput,
   setFormStatus as capSetFormStatus,
@@ -39,6 +45,8 @@ import {
   setLeadStage as capSetLeadStage,
   setLeadStageInput,
   updateAdSettings as capUpdateAdSettings,
+  updateAppointment as capUpdateAppointment,
+  updateAppointmentInput,
   updateAdSettingsInput,
   updateCampaign as capUpdateCampaign,
   updateCampaignInput,
@@ -191,9 +199,11 @@ export function filterUpcomingAppointments(
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
     .slice(0, limit)
     .map((a) => ({
+      id: a.id,
       contact_name: a.contact_name,
       kind: a.kind,
       via: a.via,
+      status: a.status,
       scheduled_at: a.scheduled_at,
     }));
 }
@@ -517,6 +527,28 @@ export function createReachTools(
       description: 'Promote a lead to a CRM contact by id. Creates a Kasturi contact. Needs approval.',
       inputSchema: promoteLeadToContactInput,
       execute: async (input) => capPromoteLeadToContact(ctx, input),
+    }),
+    createAppointment: tool({
+      description:
+        'Book an appointment. scheduled_at is UTC ISO 8601. Needs the owner’s approval before it is saved.',
+      inputSchema: createAppointmentInput,
+      execute: async (input) => capCreateAppointment(ctx, input),
+    }),
+    updateAppointment: tool({
+      description:
+        'Edit an appointment by id (contact, kind, time, channel). scheduled_at is UTC ISO 8601. Needs approval.',
+      inputSchema: updateAppointmentInput,
+      execute: async (input) => capUpdateAppointment(ctx, input),
+    }),
+    setAppointmentStatus: tool({
+      description: 'Mark an appointment by id scheduled, completed, cancelled or no_show. Needs approval.',
+      inputSchema: setAppointmentStatusInput,
+      execute: async (input) => capSetAppointmentStatus(ctx, input),
+    }),
+    deleteAppointment: tool({
+      description: 'Delete an appointment by id. Cannot be undone; needs approval.',
+      inputSchema: deleteAppointmentInput,
+      execute: async (input) => capDeleteAppointment(ctx, input),
     }),
   };
 }

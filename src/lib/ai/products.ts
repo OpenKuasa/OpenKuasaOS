@@ -39,6 +39,10 @@ export const REACH_WRITE_TOOL_NAMES = [
   'setLeadStage',
   'deleteLead',
   'promoteLeadToContact',
+  'createAppointment',
+  'updateAppointment',
+  'setAppointmentStatus',
+  'deleteAppointment',
 ] as const;
 
 export type ProductKey = 'reach' | 'crm';

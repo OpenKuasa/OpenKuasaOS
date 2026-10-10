@@ -3,19 +3,23 @@ import { z } from 'zod';
 import { type ReachTools, createReachTools } from '@/lib/ai/tools';
 import { createSeedReachData } from '@/lib/reach/seed';
 import {
+  createAppointmentInput,
   createCampaignInput,
   createCreativeInput,
   createFormInput,
   createLeadInput,
+  deleteAppointmentInput,
   deleteCampaignInput,
   deleteCreativeInput,
   deleteFormInput,
   deleteLeadInput,
   promoteLeadToContactInput,
+  setAppointmentStatusInput,
   setCampaignStatusInput,
   setFormStatusInput,
   setLeadStageInput,
   updateAdSettingsInput,
+  updateAppointmentInput,
   updateCampaignInput,
   updateCreativeInput,
   updateFormInput,
@@ -49,6 +53,10 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect(tools.setLeadStage.inputSchema).toBe(setLeadStageInput);
     expect(tools.deleteLead.inputSchema).toBe(deleteLeadInput);
     expect(tools.promoteLeadToContact.inputSchema).toBe(promoteLeadToContactInput);
+    expect(tools.createAppointment.inputSchema).toBe(createAppointmentInput);
+    expect(tools.updateAppointment.inputSchema).toBe(updateAppointmentInput);
+    expect(tools.setAppointmentStatus.inputSchema).toBe(setAppointmentStatusInput);
+    expect(tools.deleteAppointment.inputSchema).toBe(deleteAppointmentInput);
   });
 
   it('every write tool is approval-gated', () => {
@@ -75,5 +83,7 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect('deleteCampaign' in denied).toBe(false);
     expect('createForm' in readonly).toBe(false);
     expect('deleteForm' in denied).toBe(false);
+    expect('createAppointment' in readonly).toBe(false);
+    expect('deleteAppointment' in denied).toBe(false);
   });
 });

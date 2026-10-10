@@ -171,6 +171,10 @@ export function approvalTitle(
     case 'setLeadStage': return `Move ${the('lead', 'lead')} to “${i.stage ?? ''}”?`;
     case 'deleteLead': return `Delete ${the('lead', 'lead')}?`;
     case 'promoteLeadToContact': return `Promote ${the('lead', 'lead')} to a CRM contact?`;
+    case 'createAppointment': return `Book appointment with “${i.contact_name ?? ''}”?`;
+    case 'updateAppointment': return 'Save changes to this appointment?';
+    case 'setAppointmentStatus': return `Mark this appointment “${i.status ?? ''}”?`;
+    case 'deleteAppointment': return 'Delete this appointment?';
     default: return 'Approve this change?';
   }
 }
@@ -182,7 +186,8 @@ export function approvalDetail(toolName: string): string | null {
     toolName === 'deleteCreative' ||
     toolName === 'deleteForm' ||
     toolName === 'deleteDeal' ||
-    toolName === 'deleteLead'
+    toolName === 'deleteLead' ||
+    toolName === 'deleteAppointment'
   ) {
     return 'This cannot be undone.';
   }

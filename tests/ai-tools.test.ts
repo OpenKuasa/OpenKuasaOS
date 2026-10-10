@@ -112,6 +112,13 @@ describe('filterUpcomingAppointments', () => {
     expect(times).toEqual([...times].sort((a, b) => a - b));
   });
 
+  it('carries each appointment id and status so the model can target one', () => {
+    const [first] = filterUpcomingAppointments(seedAppointments(NOW), NOW, 1);
+    expect(typeof first.id).toBe('string');
+    expect(first.id.length).toBeGreaterThan(0);
+    expect(first.status).toBe('scheduled');
+  });
+
   it('excludes appointments already in the past', () => {
     const past: Appointment = {
       id: 'past',
