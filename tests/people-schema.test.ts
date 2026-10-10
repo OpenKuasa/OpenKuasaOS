@@ -1,0 +1,153 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
+
+type Kind = 'shared' | 'personal' | 'hr';
+
+const DIR = join(process.cwd(), 'supabase/migrations');
+const CORE = '20261014090000_people_core.sql';
+const LEAVE = '20261014090100_people_leave.sql';
+const CLAIMS = '20261014090200_people_claims_overtime.sql';
+const ATTENDANCE = '20261014090300_people_attendance.sql';
+const PAYROLL = '20261014090400_people_payroll.sql';
+const PERFORMANCE = '20261014090500_people_performance.sql';
+const COMMS = '20261014090600_people_comms_documents.sql';
+
+/** Every Lekiu table, the file that creates it, and who may read it. */
+const TABLES: { file: string; table: string; kind: Kind }[] = [
+  { file: CORE, table: 'hr_departments', kind: 'shared' },
+  { file: CORE, table: 'hr_employees', kind: 'shared' },
+  { file: CORE, table: 'hr_employee_private', kind: 'personal' },
+  { file: LEAVE, table: 'hr_leave_requests', kind: 'personal' },
+  { file: LEAVE, table: 'hr_leave_balances', kind: 'personal' },
+  { file: LEAVE, table: 'hr_time_off_requests', kind: 'personal' },
+  { file: CLAIMS, table: 'hr_claims', kind: 'personal' },
+  { file: CLAIMS, table: 'hr_overtime_records', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_attendance_days', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_timesheet_entries', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_shifts', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_public_holidays', kind: 'shared' },
+  { file: PAYROLL, table: 'hr_payroll_runs', kind: 'hr' },
+  { file: PAYROLL, table: 'hr_payslips', kind: 'personal' },
+  { file: PAYROLL, table: 'hr_payment_vouchers', kind: 'hr' },
+  { file: PERFORMANCE, table: 'hr_goals', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_scorecards', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_reviews', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_trainings', kind: 'shared' },
+  { file: PERFORMANCE, table: 'hr_training_enrolments', kind: 'personal' },
+  { file: COMMS, table: 'hr_announcements', kind: 'shared' },
+  { file: COMMS, table: 'hr_documents', kind: 'personal' },
+  { file: COMMS, table: 'hr_letters', kind: 'personal' },
+  { file: COMMS, table: 'hr_settings', kind: 'hr' },
+];
+
+const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
+
+describe('Lekiu schema', () => {
+  test.each(TABLES)('$table is created and secured as $kind', ({ file, table, kind }) => {
+    const text = sql(file);
+    expect(text).toContain(`create table public.${table} (`);
+    expect(text).toContain(`select private.people_secure_table('${table}', '${kind}');`);
+  });
+
+  test.each(TABLES)('$table belongs to a workspace', ({ file, table }) => {
+    const text = sql(file);
+    const start = text.indexOf(`create table public.${table} (`);
+    const body = text.slice(start, text.indexOf('\n);', start));
+    expect(body).toContain('references public.orgs(id) on delete cascade');
+  });
+
+  test('a table with employee_id cannot point at another workspace', () => {
+    for (const { file, table } of TABLES) {
+      const text = sql(file);
+      const start = text.indexOf(`create table public.${table} (`);
+      const body = text.slice(start, text.indexOf('\n);', start));
+      if (!body.includes('employee_id uuid')) continue;
+      expect(body, table).toContain(
+        'foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade',
+      );
+    }
+  });
+
+  test('the three read rules are the ones in the spec', () => {
+    const text = sql(CORE);
+    expect(text).toContain("when 'shared' then 'private.is_org_member(org_id)'");
+    expect(text).toContain(
+      "when 'personal' then 'private.is_org_admin(org_id) or private.is_own_employee(employee_id) "
+        + "or (private.is_demo_org(org_id) and private.is_org_member(org_id))'"
+    );
+    expect(text).toContain(
+      "when 'hr' then 'private.is_org_admin(org_id) "
+        + "or (private.is_demo_org(org_id) and private.is_org_member(org_id))'"
+    );
+    expect(text).toContain('create policy mfa_required on public.%I as restrictive');
+    expect(text).toContain("execute format('revoke all on public.%I from anon, authenticated', t)");
+  });
+
+  test('only the core file grants writes, and only to admins', () => {
+    const files = [...new Set(TABLES.map((t) => t.file))];
+    for (const file of files) {
+      const grants = sql(file).match(/grant (insert|update|delete)[^;]*;/g) ?? [];
+      if (file === CORE) {
+        for (const g of grants) expect(g).toMatch(/on public\.hr_(departments|employees|employee_private) to authenticated;/);
+      } else {
+        expect(grants, file).toEqual([]);
+      }
+    }
+    const core = sql(CORE);
+    for (const table of ['hr_departments', 'hr_employees', 'hr_employee_private']) {
+      expect(core).toContain(
+        `create policy ${table}_write on public.${table} for all to authenticated\n`
+          + '  using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));',
+      );
+    }
+  });
+
+  test('pay and identity fields are not on the directory table', () => {
+    const text = sql(CORE);
+    const start = text.indexOf('create table public.hr_employees (');
+    const directory = text.slice(start, text.indexOf('\n);', start));
+    for (const column of ['nric', 'base_salary_cents', 'bank_account', 'address', 'date_of_birth date']) {
+      expect(directory).not.toContain(column);
+    }
+  });
+
+  test('own-record access needs current membership, and links are guarded', () => {
+    const text = sql(CORE);
+    expect(text).toContain('join public.org_members m on m.org_id = e.org_id and m.user_id = e.user_id');
+    expect(text).toContain("raise exception 'that user is not a member of this workspace'");
+    expect(text).toContain('create unique index hr_employees_org_user_idx on public.hr_employees (org_id, user_id) where user_id is not null');
+    expect(text).toContain('after delete on public.org_members');
+    expect(text).not.toContain('on delete restrict');
+  });
+
+  test('a member leaving does not touch employees of a workspace that is being deleted', () => {
+    expect(sql(CORE)).toContain('and exists (select 1 from public.orgs o where o.id = old.org_id);');
+  });
+
+  test('a department name is unique whatever its capitals or spaces', () => {
+    const text = sql(CORE);
+    expect(text).toContain(
+      'create unique index hr_departments_org_name_idx on public.hr_departments (org_id, lower(trim(name)));',
+    );
+    expect(text).not.toContain('unique (org_id, name)');
+  });
+
+  test('a payslip carries its own month and a derived net pay', () => {
+    const text = sql(PAYROLL);
+    const start = text.indexOf('create table public.hr_payslips (');
+    const body = text.slice(start, text.indexOf('\n);', start));
+    // A member cannot read hr_payroll_runs, so the month must be on the payslip.
+    expect(body).toContain('period_month date not null');
+    expect(body).toContain('unique (employee_id, period_month)');
+    expect(body).toContain(
+      'net_cents bigint generated always as (gross_cents - epf_cents - socso_cents - eis_cents - pcb_cents) stored',
+    );
+  });
+
+  test('all 24 tables are listed, each once', () => {
+    const names = TABLES.map((t) => t.table);
+    expect(names).toHaveLength(24);
+    expect(new Set(names).size).toBe(24);
+  });
+});
