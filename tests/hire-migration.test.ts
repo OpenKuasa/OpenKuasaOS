@@ -53,6 +53,11 @@ const cronSql = readFileSync(
 );
 
 describe('hire demo seed migration', () => {
+  test('drops its scratch table from the temp schema only', () => {
+    expect(seedSql).toContain('drop table if exists pg_temp._hire_gen');
+    expect(seedSql).not.toContain('drop table if exists _hire_gen');
+  });
+
   test('reseeds only the demo org, as a definer function nobody else can call', () => {
     expect(seedSql).toContain('create or replace function private.reseed_demo_hire()');
     expect(seedSql).toContain('security definer');

@@ -40,7 +40,7 @@ begin
     (demo,'Marketing Lead','Marketing','Kuala Lumpur','full_time','draft',      null, null, now()-interval '2 days');
 
   -- One row per application, with every derived field.
-  drop table if exists _hire_gen;
+  drop table if exists pg_temp._hire_gen;
   create temp table _hire_gen on commit drop as
   with base as (
     select i, (i * 37) % 248 as k, (i * 91) % 248 as s, (i * 53) % 248 as w

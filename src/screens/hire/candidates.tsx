@@ -68,7 +68,11 @@ function CandidateCard({ candidate }: { candidate: Candidate }) {
         <LiveDot active={candidate.active} />
       </div>
       <div className="flex items-center justify-between gap-2">
-        <Stars rating={candidate.rating} />
+        {candidate.rating === null ? (
+          <span className="text-xs text-muted-foreground">Not rated</span>
+        ) : (
+          <Stars rating={candidate.rating} />
+        )}
         <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
           {candidate.source}
         </span>
@@ -110,7 +114,7 @@ export default async function CandidatesScreen() {
       <BentoGrid className="mb-6">
         {/* KPI row: headline figures only, the tables hold no history to chart */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat label="Candidates" value={model ? model.total : '—'} onPrimary />
+          <BentoStat label="Active applications" value={model ? model.total : '—'} onPrimary />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat label="In pipeline" value={model ? model.inPipeline : '—'} />

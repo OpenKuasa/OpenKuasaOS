@@ -93,7 +93,7 @@ export async function buildJobsModel(data: HireData, now: Date): Promise<JobsMod
       value: jobs.filter((j) => j.status === key).length,
     })),
     byJob: counted
-      .filter((row) => row.job.status === 'open')
+      .filter((row) => row.job.status === 'open' && row.applicants > 0)
       .slice(0, 6)
       .map((row) => ({ label: row.job.title, applicants: row.applicants })),
     totalApplicants: apps.length,
@@ -126,7 +126,7 @@ export type BoardModel = {
     name: string;
     /** Live applications in this stage, over all applications (the list below is cut at ROWS_SHOWN). */
     count: number;
-    candidates: { id: string; name: string; role: string; source: string; rating: number; lastTouch: string; active: boolean }[];
+    candidates: { id: string; name: string; role: string; source: string; rating: number | null; lastTouch: string; active: boolean }[];
   }[];
   total: number;
   hired: number;
@@ -154,7 +154,7 @@ export async function buildBoardModel(data: HireData, now: Date): Promise<BoardM
         name: a.candidate_name,
         role: a.job_title,
         source: a.source ?? 'Unknown',
-        rating: a.rating ?? 0,
+        rating: a.rating,
         lastTouch: `${ago(a.hired_at ?? a.offered_at ?? a.applied_at, now)} ago`,
         active: now.getTime() - Date.parse(a.applied_at) < 7 * DAY,
       })),
@@ -225,7 +225,7 @@ export async function buildInterviewsModel(data: HireData, now: Date): Promise<I
     const at = Date.parse(i.scheduled_at);
     return i.status === 'scheduled' && at >= now.getTime() && at < now.getTime() + 7 * DAY;
   });
-  const weekday = (iso: string) => new Date(iso).toLocaleDateString('en-MY', { weekday: 'short', timeZone: TZ });
+  const weekday = (iso: string) => new Date(iso).toLocaleDateString('en-US', { weekday: 'short', timeZone: TZ });
   // Scheduled first (soonest first), then the past ones, latest first.
   const ordered = [
     ...interviews.filter((i) => i.status === 'scheduled'),

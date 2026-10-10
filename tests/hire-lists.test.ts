@@ -9,7 +9,7 @@ import {
   buildPoolModel,
 } from '@/lib/hire/lists';
 import { createSeedHireData } from '@/lib/hire/seed';
-import type { Application, Candidate, HireData } from '@/lib/hire/types';
+import type { Application, Candidate, HireData, Job } from '@/lib/hire/types';
 
 const NOW = new Date('2026-10-10T04:00:00Z');
 const data = createSeedHireData(NOW);
@@ -30,6 +30,30 @@ describe('jobs', () => {
     expect(model.rows.find((r) => r.title === 'Marketing Lead')).toMatchObject({ applicants: 0, status: 'Draft', posted: '—' });
     expect(model.statusMix.map((s) => [s.key, s.value])).toEqual([['open', 6], ['paused', 1], ['closed', 1], ['draft', 1]]);
     expect(model.byJob).toHaveLength(6);
+  });
+
+  it('charts no bars for open jobs that have no applications', async () => {
+    const job = (id: string): Job => ({
+      id, title: id, department: null, location: null, employment_type: 'full_time', status: 'open',
+      opened_at: '2026-09-01T00:00:00Z', closed_at: null, created_at: '2026-09-01T00:00:00Z',
+    });
+    const model = await buildJobsModel({ ...EMPTY, listJobs: async () => [job('j1'), job('j2')] }, NOW);
+    expect(model.openJobs).toBe(2);
+    expect(model.byJob).toEqual([]);
+  });
+
+  it('gives an unrated application a null rating on the board', async () => {
+    const base: Application = {
+      id: 'a1', candidate_id: 'c1', job_id: 'j1', candidate_name: 'Aina', job_title: 'Role', stage: 'applied',
+      outcome: 'active', rating: null, source: null, applied_at: '2026-10-01T00:00:00Z', offered_at: null,
+      hired_at: null, created_at: '2026-10-01T00:00:00Z',
+    };
+    const board = await buildBoardModel(
+      { ...EMPTY, listApplications: async () => [base, { ...base, id: 'a2', rating: 4 }] },
+      NOW,
+    );
+    const ratings = board.stages.flatMap((s) => s.candidates).map((c) => [c.id, c.rating]);
+    expect(ratings).toEqual([['a1', null], ['a2', 4]]);
   });
 });
 
@@ -79,7 +103,7 @@ describe('interviews', () => {
     for (const i of await data.listInterviews()) {
       const at = Date.parse(i.scheduled_at);
       if (i.status !== 'scheduled' || at < NOW.getTime() || at >= NOW.getTime() + 7 * 86_400_000) continue;
-      const day = new Date(i.scheduled_at).toLocaleDateString('en-MY', { weekday: 'short', timeZone: 'Asia/Kuala_Lumpur' });
+      const day = new Date(i.scheduled_at).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Kuala_Lumpur' });
       if (day in expected) expected[day] += 1;
     }
     expect(model.weekLoad.map((d) => d.count)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((d) => expected[d]));

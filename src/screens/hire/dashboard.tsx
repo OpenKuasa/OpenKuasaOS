@@ -117,11 +117,13 @@ export default async function DashboardScreen() {
             <Muted>No offers or hires yet</Muted>
           ) : (
             <AreaTrend
-              data={model.timeByMonth.map((m) => ({
-                label: m.label,
-                hire: m.hire ?? 0,
-                offer: m.offer ?? 0,
-              }))}
+              data={model.timeByMonth
+                .filter((m) => m.hire !== null || m.offer !== null)
+                .map((m) => ({
+                  label: m.label,
+                  hire: m.hire ?? 0,
+                  offer: m.offer ?? 0,
+                }))}
               series={TIME_SERIES}
               height={240}
               showLegend
