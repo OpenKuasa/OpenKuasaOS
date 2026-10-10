@@ -29,13 +29,14 @@ export const WRITE_TOOL_NAMES = [
   'deleteForm',
 ] as const;
 
-export function runJebat(
-  messages: ModelMessage[],
-  reach: { data: ReachData; write?: { ctx: ReachWriteContext; canWrite: boolean } },
-  abortSignal?: AbortSignal,
-  /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
-  apiKey?: string,
-) {
+/** The marketing data an agent works on, and whether this caller may change it. */
+export type ReachAccess = {
+  data: ReachData;
+  write?: { ctx: ReachWriteContext; canWrite: boolean };
+};
+
+/** The marketing tools for one request, shared by Jebat and Tuah. */
+function reachToolkit(reach: ReachAccess) {
   const tools = createReachTools(reach.data, () => new Date(), reach.write);
   // Read tools auto-run; every write tool actually present requires approval.
   const toolApproval = reach.write?.canWrite
@@ -43,6 +44,17 @@ export function runJebat(
         WRITE_TOOL_NAMES.filter((n) => n in tools).map((n) => [n, 'user-approval' as const]),
       )
     : undefined;
+  return { tools, toolApproval };
+}
+
+export function runJebat(
+  messages: ModelMessage[],
+  reach: ReachAccess,
+  abortSignal?: AbortSignal,
+  /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
+  apiKey?: string,
+) {
+  const { tools, toolApproval } = reachToolkit(reach);
   return streamText({
     model: getModel('orchestrator', apiKey),
     system: JEBAT_SYSTEM,
@@ -58,21 +70,27 @@ export function runJebat(
 
 /**
  * Tuah, the cross-app assistant on the Command page and the floating button.
- * No tools yet: it explains and advises, and says so rather than inventing
- * workspace data.
+ * It has the marketing tools Jebat has (lookups, and changes behind an
+ * approval), runs on the same model those tools were tuned on, and says so
+ * rather than inventing data from the products it cannot see yet.
  */
 export function runTuah(
   messages: ModelMessage[],
+  reach: ReachAccess,
   abortSignal?: AbortSignal,
   apiKey?: string,
   /** The screen the question was asked from, if it came from the floating assistant. */
   screen?: Screen | null,
 ) {
+  const { tools, toolApproval } = reachToolkit(reach);
   return streamText({
-    model: getModel('worker', apiKey),
+    model: getModel('orchestrator', apiKey),
     system: tuahSystem(screen),
     messages,
-    maxOutputTokens: 800,
+    tools,
+    toolApproval,
+    stopWhen: stepCountIs(8),
+    maxOutputTokens: 1000,
     abortSignal,
   });
 }
