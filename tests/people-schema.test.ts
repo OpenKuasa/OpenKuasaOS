@@ -7,6 +7,7 @@ type Kind = 'shared' | 'personal' | 'hr';
 const DIR = join(process.cwd(), 'supabase/migrations');
 const CORE = '20261013090000_people_core.sql';
 const LEAVE = '20261013090100_people_leave.sql';
+const CLAIMS = '20261013090200_people_claims_overtime.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
@@ -16,6 +17,8 @@ const TABLES: { file: string; table: string; kind: Kind }[] = [
   { file: LEAVE, table: 'leave_requests', kind: 'personal' },
   { file: LEAVE, table: 'leave_balances', kind: 'personal' },
   { file: LEAVE, table: 'time_off_requests', kind: 'personal' },
+  { file: CLAIMS, table: 'claims', kind: 'personal' },
+  { file: CLAIMS, table: 'overtime_records', kind: 'personal' },
 ];
 
 const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
