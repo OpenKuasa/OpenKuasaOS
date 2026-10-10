@@ -6,6 +6,7 @@ import { BarGroup, FunnelFlow, type Series, type Slice } from '@/components/char
 import { LeadFunnelTable } from '@/components/reach/lead-funnel-table';
 import { createClient } from '@/lib/supabase/server';
 import { getReachData } from '@/lib/reach/supabase';
+import { clearDanglingPromotions } from '@/lib/reach/leads-view';
 import { getViewer } from '@/lib/auth/viewer';
 import { can } from '@/lib/auth/permissions';
 import { deriveLeadSummary } from '@/lib/ai/tools';
@@ -52,6 +53,22 @@ export default async function LeadsScreen() {
   const leads: Lead[] = await data.listLeads();
   const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
   const summary = deriveLeadSummary(leads, new Date());
+
+  // A promoted lead stores the contact's id, but the contact can be deleted in
+  // Kasturi (no FK). Show such a lead as promotable again — otherwise its
+  // "Promoted ✓" sticks forever even though the contact is gone.
+  const promotedIds = leads
+    .map((l) => l.promoted_contact_id)
+    .filter((id): id is string => id !== null);
+  let existingContactIds: ReadonlySet<string> = new Set();
+  if (promotedIds.length > 0) {
+    const { data: contacts } = await supabase
+      .from('crm_contacts')
+      .select('id')
+      .in('id', promotedIds);
+    existingContactIds = new Set((contacts ?? []).map((c) => (c as { id: string }).id));
+  }
+  const displayLeads = clearDanglingPromotions(leads, existingContactIds);
 
   const funnelSlices: Slice[] = LEAD_STAGES.map((stage) => ({
     key: stage,
@@ -115,7 +132,7 @@ export default async function LeadsScreen() {
           icon={Users}
           className="col-span-2 md:col-span-12"
         >
-          <LeadFunnelTable leads={leads} canEdit={canEdit} />
+          <LeadFunnelTable leads={displayLeads} canEdit={canEdit} />
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
