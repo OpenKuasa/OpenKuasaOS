@@ -249,16 +249,17 @@ function savedSession(userId: string, id: string): Session {
 }
 
 /**
- * Whether Tuah answers with its team of specialists. Off unless switched on
- * for this browser: open any page with `?team=1` (or `?team=0` to switch off).
+ * Whether Tuah answers with its team of specialists, which it does unless
+ * switched off for this browser: open any page with `?team=0` (and `?team=1`
+ * to switch it back on).
  */
 function teamMode(): boolean {
   try {
     const asked = new URL(window.location.href).searchParams.get('team');
     if (asked === '1' || asked === '0') window.localStorage.setItem('ok.tuah.team', asked);
-    return window.localStorage.getItem('ok.tuah.team') === '1';
+    return window.localStorage.getItem('ok.tuah.team') !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -868,10 +869,11 @@ function ChatPane({
       }
       if (keep) keepChat(viewer.userId, liveChat);
       setAwaiting('settled');
-      const team = teamMode();
+      // The team is the default; only switching it off needs saying.
+      const solo = !teamMode();
       const options =
-        pathname || team
-          ? { body: { ...(pathname ? { pathname } : {}), ...(team ? { team: true } : {}) } }
+        pathname || solo
+          ? { body: { ...(pathname ? { pathname } : {}), ...(solo ? { team: false } : {}) } }
           : undefined;
       void chat.sendMessage(
         attachments.length === 0
