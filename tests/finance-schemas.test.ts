@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { saveBillInput } from '@/lib/finance/bills';
+import { billIdInput, saveBillInput } from '@/lib/finance/bills';
 import { createContactInput, updateContactInput } from '@/lib/finance/contacts';
-import { markPaymentPaidInput, recordPaymentOutInput } from '@/lib/finance/money';
+import { markPaymentPaidInput, paymentIdInput, recordPaymentOutInput } from '@/lib/finance/money';
 import { createProductInput, updateProductInput } from '@/lib/finance/products';
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -33,6 +33,16 @@ const cases: [string, { parse: (v: unknown) => unknown }, unknown][] = [
     allocations: [{ bill_id: ID, amount: 0.005 }],
   }],
   ['markPaymentPaidInput', markPaymentPaidInput, { id: ID, paid_on: '2026-10-09' }],
+  ['billIdInput', billIdInput, { id: ID }],
+  ['paymentIdInput', paymentIdInput, { id: ID }],
+  ['saveBillInput (a draft being changed, with a product)', saveBillInput, {
+    id: ID, supplier_id: ID, bill_date: '2026-10-01', due_date: '2026-10-01', supplier_ref: ' INV 88 ', notes: ' urgent ',
+    lines: [{ product_id: ID, description: 'Ink', quantity: 2, uom: ' box ', unit_price: 14.5, sst_rate: 6 }],
+  }],
+  ['recordPaymentOutInput (scheduled, two bills)', recordPaymentOutInput, {
+    account_id: ID, txn_date: '2026-10-20', method: 'cheque', reference: ' CHQ 001 ', notes: '', scheduled: true,
+    allocations: [{ bill_id: ID, amount: 10.005 }, { bill_id: '22222222-2222-4222-8222-222222222222', amount: 5 }],
+  }],
 ];
 
 describe('finance schemas parse their own output unchanged', () => {
