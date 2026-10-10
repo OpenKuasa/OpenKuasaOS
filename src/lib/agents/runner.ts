@@ -25,11 +25,17 @@ async function overBudget(client: SupabaseClient, orgId: string): Promise<string
   const daily = (cfg?.daily_cap_cents as number | undefined) ?? 500;
   const weekly = (cfg?.weekly_cap_cents as number | undefined) ?? 2000;
   const spentSince = async (sinceIso: string): Promise<number> => {
-    const { data } = await client
+    // Zero-cost rows (monitor-skips) are excluded: they add nothing and would
+    // otherwise push the window past PostgREST's row cap and undercount the sum.
+    const { data, error } = await client
       .from('agent_runs')
       .select('cost_cents')
       .eq('org_id', orgId)
+      .gt('cost_cents', 0)
       .gte('started_at', sinceIso);
+    // Fail closed: an unreadable spend must never read as "under budget". The
+    // per-schedule catch counts it failed and the next tick retries (no pause).
+    if (error) throw new Error('spend query failed');
     return (data ?? []).reduce(
       (a: number, r: { cost_cents: number | null }) => a + (r.cost_cents ?? 0),
       0,
@@ -113,7 +119,8 @@ export async function runSchedules(client: SupabaseClient): Promise<RunSchedules
           .from('agent_schedules')
           .update({ status: 'completed', updated_at: nowIso })
           .eq('id', s.id)
-          .eq('org_id', s.org_id);
+          .eq('org_id', s.org_id)
+          .eq('status', 'active');
         summary.completed += 1;
         continue;
       }
@@ -179,11 +186,13 @@ export async function runSchedules(client: SupabaseClient): Promise<RunSchedules
           last_run_at: nowIso,
           runs_used: runsUsed,
           spent_cents: spent,
-          status: nowDone ? 'completed' : 'active',
+          // Never write 'active': a user may have paused/cancelled mid-run.
+          ...(nowDone ? { status: 'completed' } : {}),
           updated_at: nowIso,
         })
         .eq('id', s.id)
-        .eq('org_id', s.org_id);
+        .eq('org_id', s.org_id)
+        .eq('status', 'active');
       summary.ran += 1;
     } catch {
       summary.failed += 1;

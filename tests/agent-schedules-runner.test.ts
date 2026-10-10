@@ -47,12 +47,22 @@ type Opts = {
   recentRuns?: { cost_cents: number }[];
   runCost?: number;
   newData?: boolean;
+  runsFor?: (ageMs: number) => { cost_cents: number }[];
+  spendError?: boolean;
 };
 
-type Write = { table: string; kind: 'update' | 'insert'; patch: Record<string, unknown>; eqs: [string, unknown][] };
+type Write = {
+  table: string;
+  kind: 'update' | 'insert';
+  patch: Record<string, unknown>;
+  eqs: [string, unknown][];
+  ltes: [string, unknown][];
+};
 
 function fakeClient(schedules: Sched[], opts: Opts = {}) {
   const writes: Write[] = [];
+  const gteArgs: string[] = [];
+  const gtCalls: [string, unknown][] = [];
   const o = { claim: true, cfg: null, recentRuns: [], runCost: 0, newData: false, ...opts };
   const client = {
     from(table: string) {
@@ -61,8 +71,9 @@ function fakeClient(schedules: Sched[], opts: Opts = {}) {
           const q: Record<string, unknown> = {};
           const eqs: [string, unknown][] = [];
           q.eq = (c: string, v: unknown) => (eqs.push([c, v]), q);
-          q.gte = () => q;
-          q.gt = () => q;
+          let since = '';
+          q.gte = (_c: string, v: string) => (gteArgs.push(v), (since = v), q);
+          q.gt = (c: string, v: unknown) => (gtCalls.push([c, v]), q);
           q.lte = () => q;
           q.limit = () => q;
           q.maybeSingle = async () => {
@@ -72,30 +83,34 @@ function fakeClient(schedules: Sched[], opts: Opts = {}) {
           };
           q.then = (res: (v: unknown) => void) => {
             if (table === 'agent_schedules') return res({ data: schedules, error: null });
-            if (table === 'agent_runs') return res({ data: o.recentRuns, error: null });
+            if (table === 'agent_runs') {
+              if (o.spendError) return res({ data: null, error: { message: 'x' } });
+              const rows = o.runsFor ? o.runsFor(Date.now() - new Date(since).getTime()) : o.recentRuns;
+              return res({ data: rows, error: null });
+            }
             return res({ data: [], error: null });
           };
           return q;
         },
         update(patch: Record<string, unknown>) {
-          const w: Write = { table, kind: 'update', patch, eqs: [] };
+          const w: Write = { table, kind: 'update', patch, eqs: [], ltes: [] };
           writes.push(w);
           const q: Record<string, unknown> = {};
           q.eq = (c: string, v: unknown) => (w.eqs.push([c, v]), q);
-          q.lte = () => q;
+          q.lte = (c: string, v: unknown) => (w.ltes.push([c, v]), q);
           q.select = () => q;
           q.maybeSingle = async () => ({ data: o.claim ? { id: 's1' } : null, error: null });
           q.then = (res: (v: unknown) => void) => res({ error: null });
           return q;
         },
         insert(row: Record<string, unknown>) {
-          writes.push({ table, kind: 'insert', patch: row, eqs: [] });
+          writes.push({ table, kind: 'insert', patch: row, eqs: [], ltes: [] });
           return Promise.resolve({ error: null });
         },
       };
     },
   };
-  return { client: client as never, writes };
+  return { client: client as never, writes, gteArgs, gtCalls };
 }
 
 const schedUpdates = (writes: Write[]) => writes.filter((w) => w.table === 'agent_schedules' && w.kind === 'update');
@@ -125,17 +140,23 @@ describe('runSchedules', () => {
     const u = schedUpdates(writes);
     expect(u).toHaveLength(1);
     expect(u[0].patch).toMatchObject({ status: 'completed' });
+    expect(u[0].eqs).toContainEqual(['status', 'active']);
     expect(u[0].eqs).toContainEqual(['org_id', ORG]);
     expect(out).toMatchObject({ completed: 1, ran: 0 });
   });
 
   it('pauses the org schedules with a reason when over the weekly ceiling, without running', async () => {
-    const { client, writes } = fakeClient([sched()], {
+    const { client, writes, gteArgs, gtCalls } = fakeClient([sched()], {
       cfg: { daily_cap_cents: 5000, weekly_cap_cents: 1000 },
       recentRuns: [{ cost_cents: 1500 }],
     });
     const out = await runSchedules(client);
     expect(runWeeklyStudio).not.toHaveBeenCalled();
+    expect(gteArgs).toHaveLength(2);
+    const ages = gteArgs.map((v) => Date.now() - new Date(v).getTime());
+    expect(Math.abs(ages[0] - 24 * 3600_000)).toBeLessThan(5000);
+    expect(Math.abs(ages[1] - 7 * 24 * 3600_000)).toBeLessThan(5000);
+    expect(gtCalls).toContainEqual(['cost_cents', 0]);
     const u = schedUpdates(writes);
     expect(u).toHaveLength(1);
     expect(u[0].patch).toMatchObject({ status: 'paused', paused_reason: 'weekly budget reached' });
@@ -144,11 +165,34 @@ describe('runSchedules', () => {
     expect(out).toMatchObject({ paused: 1, ran: 0 });
   });
 
+  it('pauses on the daily ceiling when only the daily window is over', async () => {
+    const { client, writes } = fakeClient([sched()], {
+      cfg: { daily_cap_cents: 100, weekly_cap_cents: 100000 },
+      runsFor: (age) => (age < 2 * 24 * 3600_000 ? [{ cost_cents: 150 }] : [{ cost_cents: 50 }]),
+    });
+    const out = await runSchedules(client);
+    expect(runWeeklyStudio).not.toHaveBeenCalled();
+    expect(schedUpdates(writes)[0].patch).toMatchObject({ status: 'paused', paused_reason: 'daily budget reached' });
+    expect(out.paused).toBe(1);
+  });
+
+  it('fails closed (counts failed, no run, no pause) when the spend query errors', async () => {
+    const { client, writes } = fakeClient([sched()], { spendError: true });
+    const out = await runSchedules(client);
+    expect(runWeeklyStudio).not.toHaveBeenCalled();
+    expect(schedUpdates(writes)).toHaveLength(0);
+    expect(out).toMatchObject({ failed: 1, ran: 0, paused: 0 });
+  });
+
   it('does not run when the conditional claim returns no row (double-tick safety)', async () => {
     const { client, writes } = fakeClient([sched()], { claim: false });
     const out = await runSchedules(client);
     expect(runWeeklyStudio).not.toHaveBeenCalled();
     expect(writes.filter((w) => w.table === 'agent_runs')).toHaveLength(0);
+    const claim = schedUpdates(writes).find((w) => 'next_run_at' in w.patch)!;
+    expect(claim.eqs).toContainEqual(['status', 'active']);
+    expect(claim.eqs).toContainEqual(['id', 's1']);
+    expect(claim.ltes.map(([c]) => c)).toContain('next_run_at');
     expect(out).toMatchObject({ ran: 0, skipped: 1 });
   });
 
@@ -184,7 +228,9 @@ describe('runSchedules', () => {
     const out = await runSchedules(client);
     expect(runWeeklyStudio).toHaveBeenCalledWith(client, 'org-9', 'schedule');
     const last = schedUpdates(writes).at(-1)!;
-    expect(last.patch).toMatchObject({ runs_used: 3, spent_cents: 140, status: 'active' });
+    expect(last.patch).toMatchObject({ runs_used: 3, spent_cents: 140 });
+    expect(last.patch).not.toHaveProperty('status');
+    expect(last.eqs).toContainEqual(['status', 'active']);
     expect(last.patch.last_run_at).toBeTruthy();
     expect(out).toMatchObject({ ran: 1, failed: 0 });
   });
