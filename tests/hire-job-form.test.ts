@@ -1,6 +1,12 @@
 // tests/hire-job-form.test.ts
 import { describe, expect, it } from 'vitest';
-import { JOB_HAS_APPLICATIONS, JOB_LIVE_NEEDS_DESCRIPTION, JOB_NEEDS_DESCRIPTION } from '@/lib/hire/capabilities';
+import {
+  CLOSES_IN_PAST,
+  JOB_HAS_APPLICATIONS,
+  JOB_LIVE_NEEDS_DESCRIPTION,
+  JOB_NEEDS_DESCRIPTION,
+  SALARY_RANGE,
+} from '@/lib/hire/capabilities';
 import {
   EMPTY_JOB_FORM,
   HAS_APPLICATIONS,
@@ -93,6 +99,9 @@ describe('job form helpers', () => {
   it('knows which field a refusal from the server belongs to', () => {
     expect(fieldForServerError('Maximum salary can\'t be lower than the minimum.')).toBe('salaryMax');
     expect(fieldForServerError('The closing date can\'t be in the past.')).toBe('closesOn');
+    // The capability's own sentences: if either is reworded, its refusal must still land under its field.
+    expect(fieldForServerError(SALARY_RANGE)).toBe('salaryMax');
+    expect(fieldForServerError(CLOSES_IN_PAST)).toBe('closesOn');
     expect(fieldForServerError(JOB_LIVE_NEEDS_DESCRIPTION)).toBe('description');
     expect(fieldForServerError(JOB_NEEDS_DESCRIPTION)).toBe('description');
     expect(fieldForServerError('An open or paused job needs a description.')).toBe('description');

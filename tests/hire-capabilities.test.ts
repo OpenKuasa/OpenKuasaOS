@@ -114,6 +114,16 @@ describe('createJob', () => {
     expect((await createJob(ctx, { title: 'Barista', closes_on: '2026-10-10' }, NOW)).ok).toBe(false);
     expect((await createJob(ctx, { title: 'Barista', closes_on: '2026-10-11' }, NOW)).ok).toBe(true);
   });
+  it('refuses a date that does not exist, and says so rather than failing at the database', async () => {
+    const { ctx, writes } = fake([]);
+    const realDate = { ok: false, error: 'Use a real date, like 2026-10-31.' };
+    expect(await createJob(ctx, { title: 'Barista', closes_on: '2026-02-31' }, NOW)).toEqual(realDate);
+    expect(await createJob(ctx, { title: 'Barista', closes_on: '2027-02-30' }, NOW)).toEqual(realDate);
+    expect(await createJob(ctx, { title: 'Barista', closes_on: '2026-13-01' }, NOW)).toEqual(realDate);
+    expect(writes).toHaveLength(0);
+    expect(await createJob(ctx, { title: 'Barista', closes_on: '2026-10-31' }, NOW)).toMatchObject({ ok: true, data: { closes_on: '2026-10-31' } });
+    expect(await createJob(ctx, { title: 'Barista', closes_on: '2028-02-29' }, NOW)).toMatchObject({ ok: true });
+  });
   it('uses the Kuala Lumpur date when it is already the next day in UTC', async () => {
     const lateUtc = new Date('2026-10-10T17:00:00Z'); // 01:00 on 11 Oct in Kuala Lumpur
     const { ctx } = fake([]);
@@ -156,6 +166,12 @@ describe('updateJob', () => {
     const { ctx } = fake([job({ closes_on: '2026-10-01' })]);
     expect(await updateJob(ctx, { id: ID, closes_on: '2026-10-01', title: 'New title' }, NOW)).toMatchObject({ ok: true, data: { title: 'New title' } });
     expect((await updateJob(ctx, { id: ID, closes_on: '2026-10-05' }, NOW)).ok).toBe(false);
+  });
+  it('refuses changing the closing date to one that does not exist', async () => {
+    const { ctx, writes } = fake([job({ closes_on: '2026-10-31' })]);
+    expect(await updateJob(ctx, { id: ID, closes_on: '2026-11-31' }, NOW)).toEqual({ ok: false, error: 'Use a real date, like 2026-10-31.' });
+    expect(writes).toHaveLength(0);
+    expect(await updateJob(ctx, { id: ID, closes_on: '2026-11-30' }, NOW)).toMatchObject({ ok: true, data: { closes_on: '2026-11-30' } });
   });
   it('reports a failed lookup as a generic failure and writes nothing', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -16,8 +16,9 @@ export const JOB_NOT_FOUND = 'That job could not be found.';
 export const JOB_HAS_APPLICATIONS = 'This job has applications. Close it instead.';
 export const JOB_NEEDS_DESCRIPTION = 'Add a description before opening this job.';
 export const JOB_LIVE_NEEDS_DESCRIPTION = 'An open or paused job needs a description.';
-const SALARY_RANGE = 'Maximum salary can\'t be lower than the minimum.';
-const CLOSES_IN_PAST = 'The closing date can\'t be in the past.';
+export const SALARY_RANGE = 'Maximum salary can\'t be lower than the minimum.';
+export const CLOSES_IN_PAST = 'The closing date can\'t be in the past.';
+const NOT_A_REAL_DATE = 'Use a real date, like 2026-10-31.';
 const WRITE_FAILED = 'That change could not be saved. Please try again.';
 
 /** Logs the DB error for triage; callers only ever see the generic user-facing message. */
@@ -95,8 +96,19 @@ function ruleError(
 ): string | null {
   const { salary_min_cents: min, salary_max_cents: max, closes_on } = fields;
   if (min !== null && max !== null && max < min) return SALARY_RANGE;
-  if (checkDate && closes_on && closes_on < klToday(now)) return CLOSES_IN_PAST;
+  if (checkDate && closes_on) {
+    // Before the past check: "2026-02-31" would otherwise only fail at the database, with the generic line.
+    if (!isRealDate(closes_on)) return NOT_A_REAL_DATE;
+    if (closes_on < klToday(now)) return CLOSES_IN_PAST;
+  }
   return null;
+}
+
+/** Whether a YYYY-MM-DD string names a day that exists: 31 February and month 13 do not. */
+function isRealDate(value: string): boolean {
+  const date = new Date(`${value}T00:00:00Z`);
+  // Some dates that do not exist roll over to a later day, others do not parse at all.
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 type Lookup = { state: 'found'; job: Job } | { state: 'missing' } | { state: 'failed'; error: string };
