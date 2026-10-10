@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
 import {
   createCrmDeal,
@@ -15,15 +16,21 @@ import {
 } from '@/lib/crm/deals';
 import type { CrmDealActions, CrmFormState } from '@/lib/crm/form-state';
 import {
+  addCrmPipelineStage,
   createCrmPipeline,
   deleteCrmPipeline,
+  deleteCrmPipelineStage,
   ensureDefaultPipeline,
   listCrmPipelines,
+  moveCrmPipelineStage,
   needsDefaultPipeline,
   parseCrmPipelineForm,
   parsePipelineName,
+  parseStageName,
   readPipelineId,
+  readStageDirection,
   renameCrmPipeline,
+  renameCrmPipelineStage,
   setDefaultCrmPipeline,
 } from '@/lib/crm/pipelines';
 import { runCrmWrite } from '@/lib/crm/run-write';
@@ -44,6 +51,17 @@ const CONTACTS_OFFERED = 1000;
 
 function runWrite(formData: FormData, failure: string, write: () => Promise<void>) {
   return runCrmWrite(DEALS_PATH, formData, failure, write);
+}
+
+/**
+ * A change to a pipeline's stages. Some are several writes in a row, so one
+ * that stopped part-way, or found the stages changed by someone else, has
+ * still left the page out of date: it is loaded afresh on a failure too.
+ */
+async function runStageWrite(formData: FormData, failure: string, write: () => Promise<void>) {
+  const state = await runWrite(formData, failure, write);
+  if (state && !state.ok) revalidatePath(DEALS_PATH);
+  return state;
 }
 
 async function saveDealAction(_prev: CrmFormState, formData: FormData) {
@@ -149,6 +167,63 @@ async function deletePipelineAction(_prev: CrmFormState, formData: FormData) {
   );
 }
 
+async function addStageAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runStageWrite(formData, 'Could not add the stage.', async () => {
+    await addCrmPipelineStage(
+      supabase,
+      orgId,
+      readPipelineId(formData),
+      parseStageName(String(formData.get('name') ?? '')),
+    );
+  });
+}
+
+async function renameStageAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runStageWrite(formData, 'Could not rename the stage.', () =>
+    renameCrmPipelineStage(
+      supabase,
+      orgId,
+      readPipelineId(formData),
+      readStageId(formData),
+      parseStageName(String(formData.get('name') ?? '')),
+    ),
+  );
+}
+
+async function moveStageAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runStageWrite(formData, 'Could not move the stage.', () =>
+    moveCrmPipelineStage(
+      supabase,
+      orgId,
+      readPipelineId(formData),
+      readStageId(formData),
+      readStageDirection(formData),
+    ),
+  );
+}
+
+async function removeStageAction(_prev: CrmFormState, formData: FormData) {
+  'use server';
+  const { orgId } = await getViewer();
+  const supabase = await createClient();
+
+  return runStageWrite(formData, 'Could not remove the stage.', () =>
+    deleteCrmPipelineStage(supabase, orgId, readPipelineId(formData), readStageId(formData)),
+  );
+}
+
 const ACTIONS: CrmDealActions = {
   save: saveDealAction,
   move: moveDealAction,
@@ -159,6 +234,10 @@ const ACTIONS: CrmDealActions = {
   renamePipeline: renamePipelineAction,
   makeDefaultPipeline: makeDefaultPipelineAction,
   removePipeline: deletePipelineAction,
+  addStage: addStageAction,
+  renameStage: renameStageAction,
+  moveStage: moveStageAction,
+  removeStage: removeStageAction,
 };
 
 export default async function CrmDealsPage() {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { Check, Pencil, Plus, Star, Trash2, Workflow } from 'lucide-react';
+import { Check, ListOrdered, Pencil, Plus, Star, Trash2, Workflow } from 'lucide-react';
 import { BentoCard } from '@/components/bento/bento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import {
   type CrmPipeline,
 } from '@/lib/crm/pipelines';
 import { useCrmForm } from './crm-form';
+import { PipelineStagesEditor } from './deal-stages';
 
 function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`;
@@ -80,6 +81,9 @@ function PipelineRow({
   isDefault,
   dealCount,
   only,
+  stageDealCounts,
+  stagesOpen,
+  onStagesOpenChange,
   actions,
   onDeleted,
 }: {
@@ -90,6 +94,11 @@ function PipelineRow({
   dealCount: number;
   /** True when it is the workspace's only pipeline. */
   only: boolean;
+  /** How many of the loaded deals are in each stage, by stage id. */
+  stageDealCounts: Map<string, number>;
+  /** True while this pipeline's stages are open for editing. */
+  stagesOpen: boolean;
+  onStagesOpenChange: (open: boolean) => void;
   actions: CrmDealActions;
   onDeleted: (id: string) => void;
 }) {
@@ -98,12 +107,18 @@ function PipelineRow({
   const renameInputId = useId();
   const renameButtonRef = useRef<HTMLButtonElement>(null);
   const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const stagesButtonRef = useRef<HTMLButtonElement>(null);
   // The button to go back to once what it opened has closed.
   const returnTo = useRef<'rename' | 'delete' | null>(null);
 
   const close = () => {
     returnTo.current = mode === 'view' ? null : mode;
     setMode('view');
+  };
+  // Renaming or deleting the pipeline takes the place of its stage list.
+  const start = (next: 'rename' | 'delete') => {
+    onStagesOpenChange(false);
+    setMode(next);
   };
 
   const rename = useCrmForm(actions.renamePipeline, close);
@@ -143,7 +158,7 @@ function PipelineRow({
               {plural(dealCount, 'deal', 'deals')}
             </span>
           </div>
-          {pipeline.stages.length > 0 ? (
+          {stagesOpen ? null : pipeline.stages.length > 0 ? (
             <ul aria-label={`Stages of ${pipeline.name}`} className="flex flex-wrap gap-1.5">
               {pipeline.stages.map((stage) => (
                 <li
@@ -168,10 +183,22 @@ function PipelineRow({
               variant="outline"
               size="sm"
               aria-describedby={nameId}
-              onClick={() => setMode('rename')}
+              onClick={() => start('rename')}
             >
               <Pencil />
               Rename
+            </Button>
+            <Button
+              ref={stagesButtonRef}
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={stagesOpen}
+              aria-describedby={nameId}
+              onClick={() => onStagesOpenChange(!stagesOpen)}
+            >
+              <ListOrdered />
+              Edit stages
             </Button>
             {isDefault ? null : (
               <form action={makeDefault.formAction}>
@@ -194,7 +221,7 @@ function PipelineRow({
               variant="destructive"
               size="sm"
               aria-describedby={nameId}
-              onClick={() => setMode('delete')}
+              onClick={() => start('delete')}
             >
               <Trash2 />
               Delete
@@ -207,6 +234,19 @@ function PipelineRow({
         <p role="alert" className="text-sm text-destructive">
           {makeDefault.error}
         </p>
+      ) : null}
+
+      {stagesOpen && mode === 'view' ? (
+        <PipelineStagesEditor
+          pipeline={pipeline}
+          dealCounts={stageDealCounts}
+          actions={actions}
+          onClose={() => {
+            onStagesOpenChange(false);
+            // Back to the button that opened it.
+            stagesButtonRef.current?.focus();
+          }}
+        />
       ) : null}
 
       {mode === 'rename' ? (
@@ -322,14 +362,20 @@ export function ManagePipelinesCard({
   closeRef: RefObject<HTMLButtonElement | null>;
 }) {
   const counts = new Map<string, number>();
-  for (const deal of deals) counts.set(deal.pipelineId, (counts.get(deal.pipelineId) ?? 0) + 1);
+  const stageCounts = new Map<string, number>();
+  for (const deal of deals) {
+    counts.set(deal.pipelineId, (counts.get(deal.pipelineId) ?? 0) + 1);
+    stageCounts.set(deal.stageId, (stageCounts.get(deal.stageId) ?? 0) + 1);
+  }
+  // One pipeline's stages are open at a time.
+  const [stagesOpenId, setStagesOpenId] = useState<string | null>(null);
   // The one the page opens on. With two marked by mistake, the first.
   const defaultId = pipelines.find((pipeline) => pipeline.isDefault)?.id ?? null;
 
   return (
     <BentoCard
       title="Pipelines"
-      subtitle="Add, rename or delete"
+      subtitle="Add, rename or delete, and edit stages"
       // The card's icon chip only draws icons from the animated set.
       icon={Workflow}
       action={
@@ -347,6 +393,13 @@ export function ManagePipelinesCard({
               isDefault={pipeline.id === defaultId}
               dealCount={counts.get(pipeline.id) ?? 0}
               only={pipelines.length === 1}
+              stageDealCounts={stageCounts}
+              stagesOpen={stagesOpenId === pipeline.id}
+              onStagesOpenChange={(open) =>
+                setStagesOpenId((current) =>
+                  open ? pipeline.id : current === pipeline.id ? null : current,
+                )
+              }
               actions={actions}
               onDeleted={(id) => {
                 // Its row is about to go.
