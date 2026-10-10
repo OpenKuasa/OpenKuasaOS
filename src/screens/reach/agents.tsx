@@ -7,11 +7,13 @@ import { createClient } from '@/lib/supabase/server';
 import { getViewer } from '@/lib/auth/viewer';
 import { can } from '@/lib/auth/permissions';
 import { listAgentConfigs } from '@/lib/agents/config';
+import { listSchedules } from '@/lib/reach/schedule-capabilities';
 import {
   WEEKLY_STUDIO,
   type AgentConfig,
   type AgentRun,
   type AgentRunAsset,
+  type AgentSchedule,
 } from '@/lib/agents/types';
 
 /** Shown when the org has no saved config yet. Never written on read. */
@@ -31,6 +33,11 @@ function defaultConfig(orgId: string): AgentConfig {
   };
 }
 
+/** ISO timestamp `ms` before now (kept out of the component body for render purity). */
+function isoAgo(ms: number): string {
+  return new Date(Date.now() - ms).toISOString();
+}
+
 export default async function AgentsScreen() {
   const viewer = await getViewer();
   const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
@@ -39,11 +46,30 @@ export default async function AgentsScreen() {
   let runs: AgentRun[] = [];
   let assets: AgentRunAsset[] = [];
   const assetUrls: Record<string, string> = {};
+  let schedules: AgentSchedule[] = [];
+  let spentTodayCents = 0;
+  let spentWeekCents = 0;
 
   if (!viewer.isDemo && viewer.orgId) {
     const supabase = await createClient();
-    const [configs, runsRes] = await Promise.all([
+    const sumCost = (rows: { cost_cents: number | null }[] | null) =>
+      (rows ?? []).reduce((n, r) => n + (r.cost_cents ?? 0), 0);
+    const [configs, scheduleRows, dayRes, weekRes, runsRes] = await Promise.all([
       listAgentConfigs(supabase, viewer.orgId),
+      listSchedules(supabase, viewer.orgId),
+      // Same basis as the runner's ceiling: only runs that actually cost something.
+      supabase
+        .from('agent_runs')
+        .select('cost_cents')
+        .eq('org_id', viewer.orgId)
+        .gt('cost_cents', 0)
+        .gte('started_at', isoAgo(24 * 3600_000)),
+      supabase
+        .from('agent_runs')
+        .select('cost_cents')
+        .eq('org_id', viewer.orgId)
+        .gt('cost_cents', 0)
+        .gte('started_at', isoAgo(7 * 24 * 3600_000)),
       supabase
         .from('agent_runs')
         .select('*')
@@ -52,6 +78,9 @@ export default async function AgentsScreen() {
         .limit(10),
     ]);
     config = configs.find((c) => c.agent_key === WEEKLY_STUDIO) ?? config;
+    schedules = scheduleRows;
+    spentTodayCents = sumCost(dayRes.data);
+    spentWeekCents = sumCost(weekRes.data);
     runs = (runsRes.data ?? []) as AgentRun[];
     if (runs.length > 0) {
       const { data } = await supabase
@@ -90,7 +119,18 @@ export default async function AgentsScreen() {
           icon={Bot}
           className="col-span-2 md:col-span-12"
         >
-          <AgentsPanel config={config} runs={runs} assets={assets} assetUrls={assetUrls} canEdit={canEdit} />
+          <AgentsPanel
+            config={config}
+            runs={runs}
+            assets={assets}
+            assetUrls={assetUrls}
+            canEdit={canEdit}
+            schedules={schedules}
+            dailyCapCents={config.daily_cap_cents}
+            weeklyCapCents={config.weekly_cap_cents}
+            spentTodayCents={spentTodayCents}
+            spentWeekCents={spentWeekCents}
+          />
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
