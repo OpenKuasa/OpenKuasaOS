@@ -80,8 +80,10 @@ const SOURCES = [
 ];
 
 /** The 5 campaigns, mirroring the Jebat Overview campaign table exactly. */
-export function seedCampaigns(now: Date): Campaign[] {
-  const rows: Array<Omit<Campaign, 'id' | 'spend_cents' | 'created_at'> & { ageDays: number }> = [
+export function seedCampaigns(now: Date): Array<Campaign & { cpl_cents: number }> {
+  const rows: Array<
+    Omit<Campaign, 'id' | 'spend_cents' | 'created_at' | 'cpl_cents'> & { cpl_cents: number; ageDays: number }
+  > = [
     { name: 'Ramadan–Raya Promo', channel: 'facebook', status: 'active', leads_count: 96, cpl_cents: 1250, ageDays: 40 },
     { name: 'Lead Magnet — eBook', channel: 'whatsapp', status: 'active', leads_count: 61, cpl_cents: 688, ageDays: 33 },
     { name: 'Retargeting — Cart', channel: 'instagram', status: 'active', leads_count: 54, cpl_cents: 1185, ageDays: 26 },
