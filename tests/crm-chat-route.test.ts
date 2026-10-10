@@ -34,6 +34,10 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => ctl.org }));
+vi.mock('@/lib/reach/supabase', async () => {
+  const { createSeedReachData } = await import('@/lib/reach/seed');
+  return { getReachData: async () => createSeedReachData() };
+});
 vi.mock('@/lib/auth/viewer', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/viewer')>()),
   hasSupabaseEnv: () => true,
@@ -77,6 +81,7 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
 const SECRET = 'test-secret-for-sealing-workspace-keys-0123456789';
 const { encryptApiKey } = await import('@/lib/ai/key-crypto');
 const { CRM_WRITE_TOOL_NAMES } = await import('@/lib/ai/crm-tools');
+const { KASTURI_SHARED_TOOL_NAMES, REACH_WRITE_TOOL_NAMES } = await import('@/lib/ai/products');
 
 const { POST } = await import('@/app/api/crm/chat/route');
 
@@ -149,7 +154,7 @@ describe('POST /api/crm/chat gating', () => {
 });
 
 describe('POST /api/crm/chat happy path', () => {
-  it('answers as Kasturi, with the CRM tools and none of the marketing ones', async () => {
+  it('answers as Kasturi, with the CRM tools and only the marketing ones for its shared screens', async () => {
     const res = await POST(post(validBody));
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('RM 12,000.00');
@@ -161,7 +166,14 @@ describe('POST /api/crm/chat happy path', () => {
     expect(call.tools).toEqual(
       expect.arrayContaining(['listCrmContacts', 'listDeals', 'listPipelines', 'getDealStats', ...CRM_WRITE_TOOL_NAMES]),
     );
+    expect(call.tools).toEqual(
+      expect.arrayContaining(['listFollowUps', 'getCalendar', ...KASTURI_SHARED_TOOL_NAMES]),
+    );
+    expect(call.system).toContain('TODAY');
+    // Appointments and lead forms are Kasturi screens too; ads and leads are not.
+    expect(call.tools).toHaveLength(4 + 2 + CRM_WRITE_TOOL_NAMES.length + KASTURI_SHARED_TOOL_NAMES.length);
     expect(call.tools).not.toContain('getCampaigns');
+    expect(call.tools).not.toContain('createLead');
     expect(call.tools).not.toContain('promoteLeadToContact');
   });
 
@@ -172,7 +184,12 @@ describe('POST /api/crm/chat happy path', () => {
     await res.text();
     const [call] = ctl.calls;
     expect(call.tools).toContain('listDeals');
-    for (const name of CRM_WRITE_TOOL_NAMES) expect(call.tools).not.toContain(name);
+    expect(call.tools).toEqual(
+      expect.arrayContaining(['listFollowUps', 'getCalendar', 'getUpcomingAppointments', 'listForms']),
+    );
+    for (const name of [...CRM_WRITE_TOOL_NAMES, ...REACH_WRITE_TOOL_NAMES]) {
+      expect(call.tools).not.toContain(name);
+    }
   });
 
   it('runs on the workspace key without touching the free allowance', async () => {
