@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
+  AdSettings,
   Appointment,
   Automation,
   Broadcast,
@@ -46,6 +47,15 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
       rows<Creative>('creatives', 'id,campaign_id,name,type,channel,status,body,ctr,created_at', {
         col: 'created_at', asc: false,
       }),
+    getAdSettings: async (): Promise<AdSettings | null> => {
+      const { data, error } = await client
+        .from('ad_settings')
+        .select('daily_cap_cents,monthly_cap_cents,currency,automation,notifications,updated_at')
+        .eq('org_id', orgId)
+        .maybeSingle();
+      if (error) throw error;
+      return (data as AdSettings) ?? null;
+    },
     listForms: async (): Promise<Form[]> => [],
     listBroadcasts: async (): Promise<Broadcast[]> => [],
     listAutomations: async (): Promise<Automation[]> => [],
@@ -60,6 +70,7 @@ const EMPTY_REACH_DATA: ReachData = {
   listBroadcasts: async () => [],
   listAutomations: async () => [],
   listCreatives: async () => [],
+  getAdSettings: async () => null,
 };
 
 /**

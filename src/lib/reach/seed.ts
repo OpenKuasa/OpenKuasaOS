@@ -18,6 +18,7 @@ import type {
   Broadcast,
   Campaign,
   Channel,
+  AdSettings,
   Creative,
   Form,
   Lead,
@@ -213,6 +214,17 @@ export function seedAutomations(now: Date): Automation[] {
   }));
 }
 
+export function seedAdSettings(now: Date): AdSettings {
+  return {
+    daily_cap_cents: 15000,
+    monthly_cap_cents: 300000,
+    currency: 'MYR',
+    automation: { auto_pause_low_ctr: true, auto_boost_winners: false, daily_budget_guard: true },
+    notifications: { spend_alerts: true, weekly_summary: true },
+    updated_at: daysAgo(now, 1),
+  };
+}
+
 export function seedCreatives(now: Date): Creative[] {
   const rows: Array<Omit<Creative, 'id' | 'created_at'> & { ageDays: number }> = [
     { campaign_id: 'camp_1', name: 'Raya hero image', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/raya-hero.jpg', ctr: 3.2, ageDays: 39 },
@@ -240,6 +252,7 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
   const broadcasts = seedBroadcasts(now);
   const automations = seedAutomations(now);
   const creatives = seedCreatives(now);
+  const adSettings = seedAdSettings(now);
   return {
     listCampaigns: async () => campaigns,
     listLeads: async () => leads,
@@ -248,5 +261,6 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
     listBroadcasts: async () => broadcasts,
     listAutomations: async () => automations,
     listCreatives: async () => creatives,
+    getAdSettings: async () => adSettings,
   };
 }

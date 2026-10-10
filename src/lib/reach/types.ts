@@ -105,6 +105,15 @@ export type Creative = {
   created_at: string;
 };
 
+export type AdSettings = {
+  daily_cap_cents: number | null;
+  monthly_cap_cents: number | null;
+  currency: string;
+  automation: Record<string, boolean>;
+  notifications: Record<string, boolean>;
+  updated_at: string;
+};
+
 /**
  * The data seam the AI tools read through. The seed provider returns in-memory
  * fixtures today; the data slice adds a Supabase provider whose methods query
@@ -118,4 +127,5 @@ export interface ReachData {
   listBroadcasts(): Promise<Broadcast[]>;
   listAutomations(): Promise<Automation[]>;
   listCreatives(): Promise<Creative[]>;
+  getAdSettings(): Promise<AdSettings | null>;
 }

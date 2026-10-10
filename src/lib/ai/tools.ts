@@ -382,6 +382,23 @@ export function createReachTools(
       }),
       execute: async ({ type, limit }) => summarizeCreatives(await data.listCreatives(), { type, limit }),
     }),
+
+    getAdSettings: tool({
+      description: 'The org’s ad settings: budget caps (RM), currency, and automation/notification toggles.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const s = await data.getAdSettings();
+        if (!s) return { configured: false };
+        return {
+          configured: true,
+          daily_cap: s.daily_cap_cents == null ? null : rm(s.daily_cap_cents),
+          monthly_cap: s.monthly_cap_cents == null ? null : rm(s.monthly_cap_cents),
+          currency: s.currency,
+          automation: s.automation,
+          notifications: s.notifications,
+        };
+      },
+    }),
   };
 
   // A caller who cannot write gets no write tools at all (not merely gated ones).

@@ -11,3 +11,13 @@ describe('seed provider — creatives', () => {
     }
   });
 });
+
+describe('seed provider — ad settings', () => {
+  it('returns a settings row with currency and toggle maps', async () => {
+    const s = await createSeedReachData().getAdSettings();
+    expect(s).not.toBeNull();
+    expect(s!.currency).toHaveLength(3);
+    expect(typeof s!.automation).toBe('object');
+    expect(typeof s!.notifications).toBe('object');
+  });
+});
