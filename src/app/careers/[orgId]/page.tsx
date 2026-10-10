@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { connection } from 'next/server';
-import { PublicCareersShell } from '@/components/hire/public-careers-shell';
+import { CAREERS_LINK_FOCUS, PublicCareersShell } from '@/components/hire/public-careers-shell';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import {
   ARRANGEMENT_LABEL,
@@ -98,12 +98,12 @@ export default async function CareersBoardPage({ params }: Props) {
                 <Link
                   href={careersJobPath(orgId, job.id)}
                   prefetch={false}
-                  className="font-semibold break-words underline-offset-4 after:absolute after:inset-0 after:rounded-xl hover:underline focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                  className={`rounded-sm font-semibold break-words underline-offset-4 after:absolute after:inset-0 after:rounded-xl hover:underline ${CAREERS_LINK_FOCUS}`}
                 >
                   {job.title}
                 </Link>
                 <p className="break-words text-muted-foreground">{jobFacts(job)}</p>
-                {job.accepting ? null : <p className="text-sm font-medium">Applications closed</p>}
+                {job.accepting ? null : <p className="font-medium">Applications closed</p>}
               </li>
             ))}
           </ul>
