@@ -7,6 +7,7 @@ import {
   amountText,
   billsOf,
   chooseSupplier,
+  keepPayable,
   newPaymentForm,
   payableBills,
   paymentFormError,
@@ -306,5 +307,27 @@ describe('paymentPayload', () => {
     expect(Object.keys(paymentPayload(form(payable))).sort()).toEqual(
       ['account_id', 'allocations', 'method', 'notes', 'reference', 'scheduled', 'txn_date'],
     );
+  });
+});
+
+describe('keepPayable', () => {
+  const payable = payableBills([bill(1, { balance: 250.5 }), bill(2, { balance: 80 })], []);
+  const [first, second] = payable;
+
+  it('drops an amount whose bill is no longer payable', () => {
+    const ticked = form(payable, { amounts: { [first.id]: '250.50', [second.id]: '80.00' } });
+    expect(keepPayable(ticked, [second]).amounts).toEqual({ [second.id]: '80.00' });
+  });
+  it('keeps everything else about the form untouched', () => {
+    const ticked = form(payable, { amounts: { [first.id]: '10', [second.id]: '20' }, reference: 'CHQ 1', notes: 'n' });
+    const kept = keepPayable(ticked, [second]);
+    expect(kept).toMatchObject({ supplierId: ticked.supplierId, accountId: ticked.accountId, reference: 'CHQ 1', notes: 'n' });
+    expect(kept.amounts[second.id]).toBe('20');
+  });
+  it('returns the same form when nothing is dropped', () => {
+    const ticked = form(payable, { amounts: { [first.id]: '10' } });
+    expect(keepPayable(ticked, payable)).toBe(ticked);
+    const empty = form(payable);
+    expect(keepPayable(empty, [])).toBe(empty);
   });
 });

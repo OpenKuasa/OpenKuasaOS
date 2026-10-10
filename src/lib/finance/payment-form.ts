@@ -146,6 +146,18 @@ export function toggleAll(form: PaymentForm, bills: PayableBill[], ticked: boole
   return { ...form, amounts: ticked ? Object.fromEntries(bills.map((b) => [b.id, amountText(b.payable)])) : {} };
 }
 
+/**
+ * After a refresh, a ticked bill that was paid off or voided meanwhile is no
+ * longer in `bills`. Its amount goes, so the total, the count and the save
+ * stay true to what the person can see. The same form when nothing goes.
+ */
+export function keepPayable(form: PaymentForm, bills: PayableBill[]): PaymentForm {
+  const ids = new Set(bills.map((b) => b.id));
+  const entries = Object.entries(form.amounts);
+  const kept = entries.filter(([id]) => ids.has(id));
+  return kept.length === entries.length ? form : { ...form, amounts: Object.fromEntries(kept) };
+}
+
 /** The running total: every ticked amount that is a number above 0. */
 export function paymentTotal(form: PaymentForm): number {
   let total = 0;

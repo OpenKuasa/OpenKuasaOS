@@ -134,7 +134,19 @@ export function PaymentsView({
     const id = row.transaction_id;
     const whole = rm(row.transaction_amount);
     const also = alsoCovers(rows, row);
-    const close = () => setOpen(null);
+    const close = () => {
+      confirm.clear();
+      setOpen(null);
+    };
+    const confirmPaid = () => {
+      if (asking.kind !== 'markPaid' || confirm.pending) return;
+      const parsed = markPaymentPaidInput.safeParse({ id, paid_on: asking.paidOn });
+      if (!parsed.success) {
+        confirm.fail(parsed.error.issues[0]?.message ?? 'Enter a valid date.');
+        return;
+      }
+      confirm.run(() => actions.markPaid(parsed.data), close);
+    };
 
     if (asking.kind === 'markPaid') {
       const paidOn = asking.paidOn;
@@ -149,14 +161,7 @@ export function PaymentsView({
           pendingLabel="Saving…"
           pending={confirm.pending}
           error={confirm.error}
-          onConfirm={() => {
-            const parsed = markPaymentPaidInput.safeParse({ id, paid_on: paidOn });
-            if (!parsed.success) {
-              confirm.fail(parsed.error.issues[0]?.message ?? 'Enter a valid date.');
-              return;
-            }
-            confirm.run(() => actions.markPaid(parsed.data), close);
-          }}
+          onConfirm={confirmPaid}
           onCancel={close}
         >
           <label className="flex flex-wrap items-center gap-2">
@@ -168,6 +173,11 @@ export function PaymentsView({
               type="date"
               className="w-40"
               value={paidOn}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                confirmPaid();
+              }}
               onChange={(e) => setOpen({ kind: 'markPaid', row, paidOn: e.target.value })}
             />
           </label>
@@ -224,7 +234,8 @@ export function PaymentsView({
             <Button
               size="sm"
               aria-expanded={open?.kind === 'form'}
-              onClick={() => setOpen({ kind: 'form', today: localIsoDate(new Date()) })}
+              disabled={confirm.pending}
+              onClick={() => ask({ kind: 'form', today: localIsoDate(new Date()) })}
             >
               <Plus className="size-4" />
               Record Payment
@@ -259,7 +270,11 @@ export function PaymentsView({
           <AreaTrend data={view.trend} series={PAID_SERIES} height={240} showLegend />
         </BentoCard>
         <BentoCard title="Paid by method" subtitle="Month to date · RM" icon={PieChart} className="col-span-2 md:col-span-4">
-          <DonutStat data={view.byMethod} height={240} centerValue={view.paidMtd} centerLabel="paid" />
+          {view.byMethod.every((slice) => slice.value === 0) ? (
+            <p className="grid h-60 place-items-center text-sm text-muted-foreground">Nothing paid yet this month.</p>
+          ) : (
+            <DonutStat data={view.byMethod} height={240} centerValue={view.paidMtd} centerLabel="paid" />
+          )}
         </BentoCard>
 
         <BentoCard
@@ -322,7 +337,7 @@ export function PaymentsView({
               <Download className="size-4" />
               Export
             </Button>
-            {confirm.error && !askingInView ? (
+            {confirm.error && asking && !askingInView ? (
               <p role="alert" className="text-sm text-destructive">
                 {confirm.error}
               </p>
@@ -391,7 +406,10 @@ export function PaymentsView({
                       {writer ? (
                         <TableCell>
                           {items.length ? (
-                            <RowMenu label={`${p.number ?? 'the scheduled payment'} to ${p.supplier_name}`} items={items} />
+                            // RowMenu has no disabled prop; an inert wrapper keeps its button from being used while an action runs.
+                            <span inert={confirm.pending} className={cn(confirm.pending && 'opacity-50')}>
+                              <RowMenu label={`${p.number ?? 'the scheduled payment'} to ${p.supplier_name}`} items={items} />
+                            </span>
                           ) : null}
                         </TableCell>
                       ) : null}

@@ -14,6 +14,7 @@ import {
   type PayableBill,
   billsOf,
   chooseSupplier,
+  keepPayable,
   newPaymentForm,
   paymentFormError,
   paymentPayload,
@@ -51,10 +52,12 @@ export function PaymentFormCard({
   onClose: () => void;
 }) {
   const id = useId();
-  const [form, setForm] = useState(() => newPaymentForm(payable, accounts, today, preselect));
+  const [typed, setForm] = useState(() => newPaymentForm(payable, accounts, today, preselect));
   const save = useFinanceAction();
 
   const suppliers = paymentSuppliers(payable);
+  // A ticked bill that was paid off since a refresh is dropped from everything below.
+  const form = keepPayable(typed, payable);
   const bills = billsOf(payable, form.supplierId);
   const tickedCount = Object.keys(form.amounts).length;
 
@@ -156,6 +159,7 @@ export function PaymentFormCard({
                           step="0.01"
                           aria-label={`Amount to pay on ${b.bill_no}`}
                           className="w-32 text-right tabular-nums"
+                          onWheel={(e) => e.currentTarget.blur()}
                           value={form.amounts[b.id]}
                           onChange={(e) => setForm((f) => ({ ...f, amounts: { ...f.amounts, [b.id]: e.target.value } }))}
                         />
