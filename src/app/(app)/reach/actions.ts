@@ -7,6 +7,8 @@ import { can } from '@/lib/auth/permissions';
 import {
   type CapResult,
   type ReachWriteContext,
+  createAppointment,
+  createAppointmentInput,
   createCampaign,
   createCampaignInput,
   createCreative,
@@ -15,6 +17,8 @@ import {
   createFormInput,
   createLead,
   createLeadInput,
+  deleteAppointment,
+  deleteAppointmentInput,
   deleteCampaign,
   deleteCampaignInput,
   deleteCreative,
@@ -27,6 +31,8 @@ import {
   deleteLeadInput,
   promoteLeadToContact,
   promoteLeadToContactInput,
+  setAppointmentStatus,
+  setAppointmentStatusInput,
   setCampaignStatus,
   setCampaignStatusInput,
   setFormStatus,
@@ -35,6 +41,8 @@ import {
   setLeadStageInput,
   updateAdSettings,
   updateAdSettingsInput,
+  updateAppointment,
+  updateAppointmentInput,
   updateCampaign,
   updateCampaignInput,
   updateCreative,
@@ -212,4 +220,38 @@ export async function listFormSubmissionsAction(
 
 export async function deleteFormSubmissionAction(input: unknown) {
   return runForm(deleteFormSubmissionInput, input, deleteFormSubmission);
+}
+
+// ─── appointments ────────────────────────────────────────────────────────────
+
+const APPOINTMENTS_PATHS = ['/reach/appointments'];
+
+/** Same shape as {@link runLeads}, refreshing the Appointments screen. */
+async function runAppointments<I, O>(
+  schema: ZodType<I>,
+  input: unknown,
+  fn: (ctx: ReachWriteContext, parsed: I) => Promise<CapResult<O>>,
+): Promise<CapResult<O>> {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'That input was not valid.' };
+  }
+  const result = await fn(ctx, parsed.data);
+  if (result.ok) for (const path of APPOINTMENTS_PATHS) revalidatePath(path);
+  return result;
+}
+
+export async function createAppointmentAction(input: unknown) {
+  return runAppointments(createAppointmentInput, input, createAppointment);
+}
+export async function updateAppointmentAction(input: unknown) {
+  return runAppointments(updateAppointmentInput, input, updateAppointment);
+}
+export async function setAppointmentStatusAction(input: unknown) {
+  return runAppointments(setAppointmentStatusInput, input, setAppointmentStatus);
+}
+export async function deleteAppointmentAction(input: unknown) {
+  return runAppointments(deleteAppointmentInput, input, deleteAppointment);
 }

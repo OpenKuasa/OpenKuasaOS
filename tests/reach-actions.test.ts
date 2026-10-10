@@ -18,6 +18,10 @@ vi.mock('@/lib/reach/capabilities', async (orig) => {
       ctl.created.push(input);
       return { ok: true, data: { id: 'c1' } };
     },
+    createAppointment: async (_ctx: unknown, input: unknown) => {
+      ctl.created.push(input);
+      return { ok: true, data: { id: 'a1' } };
+    },
     createLead: async (_ctx: unknown, input: unknown) => {
       ctl.created.push(input);
       return { ok: true, data: { id: 'l1' } };
@@ -25,7 +29,7 @@ vi.mock('@/lib/reach/capabilities', async (orig) => {
   };
 });
 
-const { createCampaignAction, createLeadAction } = await import('@/app/(app)/reach/actions');
+const { createCampaignAction, createLeadAction, createAppointmentAction } = await import('@/app/(app)/reach/actions');
 
 beforeEach(() => {
   ctl.viewer = { userId: 'u1', orgId: 'org1', role: 'member', isDemo: false };
@@ -74,6 +78,28 @@ describe('createLeadAction', () => {
   });
   it('calls the capability for a member with valid input', async () => {
     expect(await createLeadAction({ name: 'Aisyah', channel: 'whatsapp' })).toMatchObject({ ok: true });
+    expect(ctl.created).toHaveLength(1);
+  });
+});
+
+describe('createAppointmentAction', () => {
+  const valid = { contact_name: 'Aisyah', kind: 'Site visit', scheduled_at: '2026-11-01T09:00:00.000Z' };
+  it('forbids a demo guest', async () => {
+    ctl.viewer = { ...ctl.viewer, isDemo: true };
+    expect(await createAppointmentAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('forbids a viewer', async () => {
+    ctl.viewer = { ...ctl.viewer, role: 'viewer' };
+    expect(await createAppointmentAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('rejects invalid input before calling the capability', async () => {
+    expect(await createAppointmentAction({ contact_name: '', kind: '', scheduled_at: 'nope' })).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('calls the capability for a member with valid input', async () => {
+    expect(await createAppointmentAction(valid)).toMatchObject({ ok: true });
     expect(ctl.created).toHaveLength(1);
   });
 });
