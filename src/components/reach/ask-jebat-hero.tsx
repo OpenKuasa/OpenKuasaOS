@@ -12,7 +12,7 @@
  * sign-up gate (never POST, $0 LLM).
  */
 
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
 import {
@@ -24,90 +24,41 @@ import {
 import {
   convertFileListToFileUIParts,
   DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
   type FileUIPart,
   type UIMessage,
 } from 'ai';
 import {
   ArrowUp,
-  CalendarDays,
   Check,
-  ClipboardList,
-  Coins,
   FileText,
   ImageIcon,
   Loader2,
-  Megaphone,
   Mic,
   Paperclip,
-  PieChart,
-  Send,
   Sparkles,
-  TrendingUp,
-  Users,
-  Wrench,
   X,
-  Zap,
 } from 'lucide-react';
-
-type Icon = ComponentType<{ className?: string }>;
-
-const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
-  getAdsOverview: { label: 'Ads overview', Icon: PieChart },
-  getCampaigns: { label: 'Campaigns', Icon: Megaphone },
-  getLeadSummary: { label: 'Lead summary', Icon: TrendingUp },
-  getSpendByChannel: { label: 'Spend by channel', Icon: Coins },
-  getUpcomingAppointments: { label: 'Appointments', Icon: CalendarDays },
-  listContacts: { label: 'Contacts', Icon: Users },
-  listForms: { label: 'Lead forms', Icon: ClipboardList },
-  listBroadcasts: { label: 'Broadcasts', Icon: Send },
-  listAutomations: { label: 'Automations', Icon: Zap },
-};
-
-function humanize(name: string): string {
-  const spaced = name.replace(/^(get|list)/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
-  return (spaced.charAt(0).toUpperCase() + spaced.slice(1)).trim();
-}
-
-function toolMeta(name: string): { label: string; Icon: Icon } {
-  return TOOL_META[name] ?? { label: humanize(name) || 'Tool', Icon: Wrench };
-}
+import {
+  approvalDetail,
+  approvalTitle,
+  hasVisibleContent,
+  isText,
+  toPendingApproval,
+  toToolStep,
+  toolMeta,
+  type AnyPart,
+  type ToolStep,
+} from '@/components/chat/tool-parts';
 
 const CANNED_DEMO_ANSWER =
   'Jap, saya tengok dulu… Cost-per-lead terbaik awak ialah campaign "Lead Magnet — eBook" pada RM 6.88, manakala "Brand Awareness" paling mahal (RM 50.00). WhatsApp bawa paling banyak lead. Untuk Jebat jawab guna nombor sebenar bisnes awak, sila sign up akaun percuma.';
 
-type AnyPart = UIMessage['parts'][number];
-
-function isText(p: AnyPart): p is Extract<AnyPart, { type: 'text' }> {
-  return p.type === 'text';
-}
 function isFile(p: AnyPart): p is Extract<AnyPart, { type: 'file' }> {
   return p.type === 'file';
 }
 function textOf(message: UIMessage): string {
   return message.parts.filter(isText).map((p) => p.text).join('');
-}
-
-type ToolStep = { key: string; name: string; running: boolean; output: unknown };
-
-function toToolStep(part: AnyPart, messageId: string, index: number): ToolStep | null {
-  const type = part.type;
-  let name: string | null = null;
-  if (type === 'dynamic-tool') name = (part as { toolName?: string }).toolName ?? null;
-  else if (typeof type === 'string' && type.startsWith('tool-')) name = type.slice('tool-'.length);
-  if (!name) return null;
-  const state = 'state' in part ? (part.state as string) : undefined;
-  const running = state !== 'output-available' && state !== 'output-error';
-  const output = 'output' in part ? part.output : undefined;
-  const key = ('toolCallId' in part ? (part.toolCallId as string) : undefined) ?? `${messageId}-${index}`;
-  return { key, name, running, output };
-}
-
-function hasVisibleContent(message: UIMessage): boolean {
-  return message.parts.some(
-    (p) =>
-      (isText(p) && p.text.trim().length > 0) ||
-      (typeof p.type === 'string' && (p.type.startsWith('tool-') || p.type === 'dynamic-tool')),
-  );
 }
 
 export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: boolean }) {
@@ -119,7 +70,11 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
   const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
-  const { messages, sendMessage, status, error } = useChat({ transport, throttle: 50 });
+  const { messages, sendMessage, status, error, addToolApprovalResponse } = useChat({
+    transport,
+    throttle: 50,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+  });
 
   // Who is paying: the workspace's own key, or the user's free weekly questions.
   const { status: chatStatus, refresh: refreshChatStatus } = useChatStatus(!isDemo);
@@ -301,6 +256,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
               error={error}
               openSteps={openSteps}
               onToggleStep={(k) => setOpenSteps((s) => ({ ...s, [k]: !s[k] }))}
+              onApproval={(id, approved) => addToolApprovalResponse({ id, approved })}
             />
           </div>
           <button
@@ -325,6 +281,7 @@ function Thread({
   error,
   openSteps,
   onToggleStep,
+  onApproval,
 }: {
   isDemo: boolean;
   demoAsked: boolean;
@@ -333,6 +290,7 @@ function Thread({
   error: Error | undefined;
   openSteps: Record<string, boolean>;
   onToggleStep: (key: string) => void;
+  onApproval: (approvalId: string, approved: boolean) => void;
 }) {
   if (isDemo) return demoAsked ? <DemoBubble /> : null;
 
@@ -387,6 +345,35 @@ function Thread({
                       {part.text}
                     </div>
                   ) : null;
+                }
+                const pending = toPendingApproval(part);
+                if (pending) {
+                  const detail = approvalDetail(pending.toolName);
+                  return (
+                    <div
+                      key={`appr-${pending.approvalId}`}
+                      className="rounded-lg border border-border bg-card p-3 text-sm text-card-foreground"
+                    >
+                      <p className="font-medium">{approvalTitle(pending.toolName, pending.input)}</p>
+                      {detail && <p className="mt-1 text-muted-foreground">{detail}</p>}
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onApproval(pending.approvalId, true)}
+                          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onApproval(pending.approvalId, false)}
+                          className="rounded-md bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  );
                 }
                 const step = toToolStep(part, m.id, i);
                 return step ? (

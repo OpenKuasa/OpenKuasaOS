@@ -1,19 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  BarChart3,
-  CalendarClock,
-  ChevronDown,
-  Columns3,
-  Filter,
-  PieChart,
-  Plus,
-  Tag,
-  Target,
-  TrendingUp,
-  Users,
-} from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { BarChart3, PieChart, Plus, Target, TrendingUp, Users } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
@@ -37,22 +27,34 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import {
+  DEFAULT_FILTERS,
+  filterContacts,
+  filterOptions,
+  type ContactFilters,
+} from '@/lib/crm/contact-filters';
+import type { CrmContact } from '@/lib/crm/contacts';
+import type { CrmFollowUp } from '@/lib/crm/follow-ups';
+import type { CrmContactActions } from '@/lib/crm/form-state';
+import { useHiddenColumns } from '@/screens/crm/contact-columns';
+import { ContactImportCard } from '@/screens/crm/contact-import';
+import {
+  ContactFollowUps,
+  ContactFormCard,
+  ContactRowMenu,
+  ContactTags,
+  DeleteContactRow,
+} from '@/screens/crm/contact-parts';
+import {
+  AddContactMenu,
+  ColumnsMenu,
+  ContactFilterPanel,
+  ContactsToolbar,
+} from '@/screens/crm/contact-toolbar';
 
 /* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
 
-type Contact = {
-  id: string;
-  email: string;
-  company: string;
-  first: string;
-  last: string;
-  phone: string;
-  country: string;
-  status: string | null;
-  score: number;
-  pic: string | null;
-  lastInteraction: string | null;
-};
+type Contact = CrmContact;
 
 /** Total contacts in the book; the table below shows a recent sample. */
 const TOTAL_CONTACTS = 1284;
@@ -236,12 +238,103 @@ function StatusPill({ status }: { status: string | null }) {
   );
 }
 
-export default function ContactsScreen() {
-  const [selected, setSelected] = useState<string[]>([]);
-  const allChecked = selected.length === CONTACTS.length && CONTACTS.length > 0;
+/** `?contact=<id>` on the Contacts URL opens the page on that one contact. */
+export const CONTACT_PARAM = 'contact';
 
-  const toggleAll = () =>
-    setSelected(allChecked ? [] : CONTACTS.map((c) => c.id));
+/** Rows put on screen at a time; "Show more" adds another lot. */
+const PAGE_SIZE = 50;
+
+type ContactsScreenProps = {
+  /** Live contacts. Omitted on Jebat and when no database is configured. */
+  contacts?: Contact[];
+  totalContacts?: number;
+  /** Open follow-ups by contact id. */
+  followUps?: Record<string, CrmFollowUp[]>;
+  /** Present only when the signed-in person may change contacts. */
+  actions?: CrmContactActions;
+};
+
+export default function ContactsScreen({
+  contacts,
+  totalContacts,
+  followUps,
+  actions,
+}: ContactsScreenProps = {}) {
+  // With live contacts, only what is backed by real data is shown: the total
+  // and the table. The trend, score and pipeline cards are sample figures and
+  // stay hidden until they have a live source.
+  const live = contacts !== undefined;
+  const rows = contacts ?? CONTACTS;
+  const total = totalContacts ?? TOTAL_CONTACTS;
+  const [selected, setSelected] = useState<string[]>([]);
+  // One thing is open at a time: the edit card, a delete question, or a
+  // follow-up form.
+  const [editing, setEditing] = useState<Contact | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [followUpFor, setFollowUpFor] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  // The add form stays out of the way until Add Contact asks for it.
+  const [adding, setAdding] = useState(false);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+
+  // Filtering, search and the view all work on the contacts already loaded.
+  const [filters, setFilterState] = useState<ContactFilters>(DEFAULT_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { hidden, toggle: toggleColumn } = useHiddenColumns();
+  const setFilters = (next: ContactFilters) => {
+    setFilterState(next);
+    setPageSize(PAGE_SIZE);
+  };
+
+  const options = useMemo(() => filterOptions(rows), [rows]);
+  const filtered = useMemo(
+    () => filterContacts(rows, followUps ?? {}, filters),
+    [rows, followUps, filters],
+  );
+  // A link such as /crm/contacts?contact=<id> opens on that one contact,
+  // whatever the view and filters are, so it works for an archived contact too.
+  const pathname = usePathname();
+  const openedId = useSearchParams().get(CONTACT_PARAM);
+  const opened = openedId ? (rows.find((c) => c.id === openedId) ?? null) : null;
+  const shown = openedId ? (opened ? [opened] : []) : filtered.slice(0, pageSize);
+  // Fewer contacts than were loaded means a view, filter or search is narrowing the list.
+  const narrowed = !openedId && filtered.length < rows.length;
+  // Checkbox and Contact always show; the "⋯" column only for people who can edit.
+  const columns = 2 + (7 - hidden.size) + (actions ? 1 : 0);
+
+  // A menu holds on to focus until it has closed, so the form is focused then.
+  const focusFormOnClose = useRef(false);
+  const menuClosed = () => {
+    if (!focusFormOnClose.current) return;
+    focusFormOnClose.current = false;
+    firstFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    firstFieldRef.current?.focus({ preventScroll: true });
+  };
+  const startAdd = () => {
+    setAdding(true);
+    setEditing(null);
+    setDeletingId(null);
+    setImporting(false);
+    focusFormOnClose.current = true;
+  };
+  const closeForm = () => {
+    setAdding(false);
+    setEditing(null);
+  };
+  const startEdit = (contact: Contact) => {
+    setEditing(contact);
+    setDeletingId(null);
+    setFollowUpFor(null);
+    setImporting(false);
+    focusFormOnClose.current = true;
+  };
+  // Ticks only count for contacts that are on screen.
+  const shownIds = new Set(shown.map((c) => c.id));
+  const selectedShown = selected.filter((id) => shownIds.has(id));
+  const allChecked = shown.length > 0 && selectedShown.length === shown.length;
+
+  const toggleAll = () => setSelected(allChecked ? [] : shown.map((c) => c.id));
   const toggle = (id: string) =>
     setSelected((s) =>
       s.includes(id) ? s.filter((x) => x !== id) : [...s, id],
@@ -255,85 +348,122 @@ export default function ContactsScreen() {
         subtitle="All your leads and customers in one place, Saudara."
         actions={
           <>
-            <Button variant="outline" size="sm">
-              <Columns3 className="size-4" />
-              Columns
-            </Button>
-            <Button size="sm">
-              <Plus className="size-4" />
-              Add Contact
-            </Button>
+            <ColumnsMenu hidden={hidden} onToggle={toggleColumn} />
+            {actions ? (
+              <AddContactMenu
+                onAddOne={startAdd}
+                onClosed={menuClosed}
+                onImport={() => {
+                  closeForm();
+                  setImporting(true);
+                }}
+              />
+            ) : (
+              // Nothing to add to on the sample view.
+              <Button size="sm">
+                <Plus className="size-4" />
+                Add Contact
+              </Button>
+            )}
           </>
         }
       />
 
       <BentoGrid>
+        {actions && importing ? (
+          <ContactImportCard
+            action={actions.importContacts}
+            onClose={() => setImporting(false)}
+          />
+        ) : null}
+        {actions && (adding || editing) ? (
+          <ContactFormCard
+            // A fresh form for each contact, and for adding.
+            key={editing?.id ?? 'new'}
+            action={actions.save}
+            editing={editing}
+            // An edit is finished once saved. After adding, the cleared form
+            // stays for the next contact until it is closed.
+            onSaved={() => {
+              if (editing) closeForm();
+            }}
+            onClose={closeForm}
+            firstFieldRef={firstFieldRef}
+          />
+        ) : null}
+
         {/* KPI row */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Total contacts"
-            value={TOTAL_CONTACTS.toLocaleString()}
-            delta="+4.2%"
+            value={total.toLocaleString()}
+            delta={live ? undefined : '+4.2%'}
             onPrimary
             chart={
-              <Sparkline
-                data={SPARK_TOTAL}
-                color="var(--primary-foreground)"
-                height={36}
-              />
+              live ? undefined : (
+                <Sparkline
+                  data={SPARK_TOTAL}
+                  color="var(--primary-foreground)"
+                  height={36}
+                />
+              )
             }
           />
         </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="New this week"
-            value="86"
-            delta="+18"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_NEW} color="var(--chart-2)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Qualified"
-            value="402"
-            delta="+6%"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_QUALIFIED} color="var(--chart-1)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Avg lead score"
-            value="68"
-            delta="+2"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_SCORE} color="var(--chart-3)" height={36} />}
-          />
-        </BentoCard>
+        {!live && (
+          <>
+            <BentoCard className="col-span-1 md:col-span-3">
+              <BentoStat
+                label="New this week"
+                value="86"
+                delta="+18"
+                deltaTone="up"
+                chart={<Sparkline data={SPARK_NEW} color="var(--chart-2)" height={36} />}
+              />
+            </BentoCard>
+            <BentoCard className="col-span-1 md:col-span-3">
+              <BentoStat
+                label="Qualified"
+                value="402"
+                delta="+6%"
+                deltaTone="up"
+                chart={<Sparkline data={SPARK_QUALIFIED} color="var(--chart-1)" height={36} />}
+              />
+            </BentoCard>
+            <BentoCard className="col-span-1 md:col-span-3">
+              <BentoStat
+                label="Avg lead score"
+                value="68"
+                delta="+2"
+                deltaTone="up"
+                chart={<Sparkline data={SPARK_SCORE} color="var(--chart-3)" height={36} />}
+              />
+            </BentoCard>
 
-        {/* Trend + score distribution */}
-        <BentoCard
-          title="Contacts added over time"
-          subtitle="Last 8 weeks"
-          icon={TrendingUp}
-          className="col-span-2 md:col-span-8"
-        >
-          <AreaTrend data={ADDED_TREND} series={ADDED_SERIES} height={240} showLegend />
-        </BentoCard>
-        <BentoCard
-          title="Lead score distribution"
-          subtitle="Hot · Warm · Cold"
-          icon={PieChart}
-          className="col-span-2 md:col-span-4"
-        >
-          <DonutStat
-            data={SCORE_MIX}
-            height={240}
-            centerValue={TOTAL_CONTACTS.toLocaleString()}
-            centerLabel="contacts"
-          />
-        </BentoCard>
+            {/* Trend + score distribution */}
+            <BentoCard
+              title="Contacts added over time"
+              subtitle="Last 8 weeks"
+              icon={TrendingUp}
+              className="col-span-2 md:col-span-8"
+            >
+              <AreaTrend data={ADDED_TREND} series={ADDED_SERIES} height={240} showLegend />
+            </BentoCard>
+            <BentoCard
+              title="Lead score distribution"
+              subtitle="Hot · Warm · Cold"
+              icon={PieChart}
+              className="col-span-2 md:col-span-4"
+            >
+              <DonutStat
+                data={SCORE_MIX}
+                height={240}
+                centerValue={total.toLocaleString()}
+                centerLabel="contacts"
+              />
+            </BentoCard>
+          </>
+        )}
 
         {/* Contacts table */}
         <BentoCard
@@ -343,24 +473,21 @@ export default function ContactsScreen() {
           flush
           className="col-span-2 md:col-span-12"
         >
-          <div className="flex flex-wrap items-center gap-2 px-4">
-            <Button variant="outline" size="sm">
-              <Filter className="size-4" />
-              Filter
-            </Button>
-            <Button variant="outline" size="sm">
-              All Contacts
-              <ChevronDown className="size-4" />
-            </Button>
-            <Button variant="outline" size="sm">
-              <Tag className="size-4" />
-              Tags
-            </Button>
-            <Button variant="outline" size="sm">
-              <CalendarClock className="size-4" />
-              Follow-up
-            </Button>
-          </div>
+          <ContactsToolbar
+            filters={filters}
+            onChange={setFilters}
+            tags={options.tags}
+            filterOpen={filterOpen}
+            onToggleFilter={() => setFilterOpen((open) => !open)}
+          />
+          {filterOpen ? (
+            <ContactFilterPanel
+              filters={filters}
+              onChange={setFilters}
+              pics={options.pics}
+              countries={options.countries}
+            />
+          ) : null}
           <div className="mt-3 overflow-x-auto">
             <Table>
               <TableHeader>
@@ -373,20 +500,52 @@ export default function ContactsScreen() {
                     />
                   </TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead>First name</TableHead>
-                  <TableHead>Last name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Country</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>PIC</TableHead>
-                  <TableHead>Last interaction</TableHead>
+                  {hidden.has('firstName') ? null : <TableHead>First name</TableHead>}
+                  {hidden.has('lastName') ? null : <TableHead>Last name</TableHead>}
+                  {hidden.has('phone') ? null : <TableHead>Phone</TableHead>}
+                  {hidden.has('country') ? null : <TableHead>Country</TableHead>}
+                  {hidden.has('status') ? null : <TableHead>Status</TableHead>}
+                  {hidden.has('pic') ? null : <TableHead>PIC</TableHead>}
+                  {hidden.has('lastInteraction') ? null : (
+                    <TableHead>Last interaction</TableHead>
+                  )}
+                  {actions ? (
+                    <TableHead className="w-10">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {CONTACTS.map((c) => (
+                {openedId ? (
+                  <TableRow className="bg-primary/5 hover:bg-primary/5">
+                    <TableCell colSpan={columns} className="text-sm">
+                      <span role="status">
+                        {opened
+                          ? 'Showing the contact you opened.'
+                          : 'That contact could not be found. It may have been deleted, or it is not among the most recent contacts loaded here.'}
+                      </span>{' '}
+                      <Link href={pathname} className="font-medium text-primary hover:underline">
+                        Show all contacts
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+                {shown.map((c) =>
+                  actions && deletingId === c.id ? (
+                    <DeleteContactRow
+                      key={c.id}
+                      contact={c}
+                      action={actions.remove}
+                      colSpan={columns}
+                      onClose={() => setDeletingId(null)}
+                    />
+                  ) : (
                   <TableRow
                     key={c.id}
-                    data-state={selected.includes(c.id) ? 'selected' : undefined}
+                    data-state={
+                      selected.includes(c.id) || editing?.id === c.id ? 'selected' : undefined
+                    }
                   >
                     <TableCell>
                       <Checkbox
@@ -400,73 +559,135 @@ export default function ContactsScreen() {
                         <LeadScore value={c.score} />
                         <div className="min-w-0">
                           <p className="truncate font-medium">{c.email}</p>
-                          <button
-                            type="button"
-                            className="text-xs font-medium uppercase tracking-wide text-primary hover:underline"
-                          >
-                            + Add follow-up
-                          </button>
+                          <ContactTags tags={c.tags ?? []} />
+                          {live ? (
+                            <ContactFollowUps
+                              contactId={c.id}
+                              items={followUps?.[c.id] ?? []}
+                              add={actions?.addFollowUp}
+                              complete={actions?.completeFollowUp}
+                              adding={followUpFor === c.id}
+                              onAdd={() => setFollowUpFor(c.id)}
+                              onClose={() => setFollowUpFor(null)}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs font-medium uppercase tracking-wide text-primary hover:underline"
+                            >
+                              + Add follow-up
+                            </button>
+                          )}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">{c.first}</TableCell>
-                    <TableCell className="whitespace-nowrap">{c.last}</TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {c.phone}
-                    </TableCell>
-                    <TableCell>{c.country}</TableCell>
-                    <TableCell>
-                      <StatusPill status={c.status} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {c.pic ?? '—'}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {c.lastInteraction ?? '—'}
+                    {hidden.has('firstName') ? null : (
+                      <TableCell className="whitespace-nowrap">{c.first}</TableCell>
+                    )}
+                    {hidden.has('lastName') ? null : (
+                      <TableCell className="whitespace-nowrap">{c.last}</TableCell>
+                    )}
+                    {hidden.has('phone') ? null : (
+                      <TableCell className="whitespace-nowrap tabular-nums">{c.phone}</TableCell>
+                    )}
+                    {hidden.has('country') ? null : <TableCell>{c.country}</TableCell>}
+                    {hidden.has('status') ? null : (
+                      <TableCell>
+                        <StatusPill status={c.status} />
+                      </TableCell>
+                    )}
+                    {hidden.has('pic') ? null : (
+                      <TableCell className="whitespace-nowrap">{c.pic ?? '—'}</TableCell>
+                    )}
+                    {hidden.has('lastInteraction') ? null : (
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {c.lastInteraction ?? '—'}
+                      </TableCell>
+                    )}
+                    {actions ? (
+                      <TableCell>
+                        <ContactRowMenu
+                          label={c.email || c.first}
+                          onEdit={() => startEdit(c)}
+                          onClosed={menuClosed}
+                          onDelete={() => {
+                            setDeletingId(c.id);
+                            setEditing((e) => (e?.id === c.id ? null : e));
+                          }}
+                        />
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                  ),
+                )}
+                {shown.length === 0 && !openedId ? (
+                  <TableRow>
+                    <TableCell colSpan={columns} className="py-10 text-center text-muted-foreground">
+                      {rows.length === 0
+                        ? 'No contacts yet.'
+                        : 'No contacts match. Try another view or clear the filters.'}
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : null}
               </TableBody>
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
             <span>
-              Showing {CONTACTS.length} of {TOTAL_CONTACTS.toLocaleString()} contacts
+              Showing {shown.length} of {(narrowed ? filtered.length : total).toLocaleString()}{' '}
+              contacts
+              {narrowed ? ` (${total.toLocaleString()} in total)` : ''}
+              {live && total > rows.length
+                ? `. Views and filters cover the ${rows.length} most recent.`
+                : ''}
             </span>
-            {selected.length > 0 ? (
-              <span>{selected.length} selected</span>
-            ) : null}
+            <span className="flex items-center gap-3">
+              {selectedShown.length > 0 ? <span>{selectedShown.length} selected</span> : null}
+              {!openedId && filtered.length > shown.length ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageSize((size) => size + PAGE_SIZE)}
+                >
+                  Show more
+                </Button>
+              ) : null}
+            </span>
           </div>
         </BentoCard>
 
         {/* Pipeline breakdown + qualification rate */}
-        <BentoCard
-          title="Pipeline by status"
-          subtitle="Across all contacts"
-          icon={BarChart3}
-          className="col-span-2 md:col-span-8"
-        >
-          <BarGroup
-            data={STATUS_MIX}
-            series={STATUS_SERIES}
-            horizontal
-            height={200}
-          />
-        </BentoCard>
-        <BentoCard
-          title="Qualification rate"
-          subtitle="Qualified ÷ total"
-          icon={Target}
-          className="col-span-2 md:col-span-4"
-        >
-          <RadialGauge
-            value={31}
-            label="qualified"
-            valueLabel="31%"
-            color="var(--chart-1)"
-            height={200}
-          />
-        </BentoCard>
+        {!live && (
+          <>
+            <BentoCard
+              title="Pipeline by status"
+              subtitle="Across all contacts"
+              icon={BarChart3}
+              className="col-span-2 md:col-span-8"
+            >
+              <BarGroup
+                data={STATUS_MIX}
+                series={STATUS_SERIES}
+                horizontal
+                height={200}
+              />
+            </BentoCard>
+            <BentoCard
+              title="Qualification rate"
+              subtitle="Qualified ÷ total"
+              icon={Target}
+              className="col-span-2 md:col-span-4"
+            >
+              <RadialGauge
+                value={31}
+                label="qualified"
+                valueLabel="31%"
+                color="var(--chart-1)"
+                height={200}
+              />
+            </BentoCard>
+          </>
+        )}
       </BentoGrid>
     </ScreenContainer>
   );

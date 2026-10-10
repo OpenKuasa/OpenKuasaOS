@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import { Plus, Search, TrendingUp, Filter } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -114,6 +118,11 @@ function StatusPill({ status }: { status: QuoteStatus }) {
 }
 
 export default function QuotationsScreen() {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const [customer, setCustomer] = useState('all');
+  const rows = filterRows(QUOTATIONS, query, (q) => `${q.no} ${q.customer}`, { status, customer });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -212,21 +221,28 @@ export default function QuotationsScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Doc no. / customer" className="pl-9" />
+              <Input
+                type="search"
+                aria-label="Doc no. / customer"
+                placeholder="Doc no. / customer"
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <Select defaultValue="all">
+            <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="accepted">Accepted</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="Accepted">Accepted</SelectItem>
+                <SelectItem value="Sent">Sent</SelectItem>
+                <SelectItem value="Expired">Expired</SelectItem>
+                <SelectItem value="Draft">Draft</SelectItem>
               </SelectContent>
             </Select>
-            <Select defaultValue="all">
+            <Select value={customer} onValueChange={setCustomer}>
               <SelectTrigger className="w-48">
                 <SelectValue placeholder="Customer" />
               </SelectTrigger>
@@ -253,7 +269,8 @@ export default function QuotationsScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {QUOTATIONS.map((q) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={6} />}
+                {rows.map((q) => (
                   <TableRow key={q.no}>
                     <TableCell className="whitespace-nowrap font-medium">{q.no}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{q.date}</TableCell>
@@ -272,7 +289,7 @@ export default function QuotationsScreen() {
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {QUOTATIONS.length} quotations</span>
+            <span>Showing {rows.length} quotations</span>
           </div>
         </BentoCard>
       </BentoGrid>

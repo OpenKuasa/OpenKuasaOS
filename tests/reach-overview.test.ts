@@ -7,7 +7,7 @@ import type { ReachData } from '@/lib/reach/types';
 const NOW = new Date('2026-10-09T00:00:00.000Z');
 const empty: ReachData = {
   listCampaigns: async () => [], listLeads: async () => [], listAppointments: async () => [],
-  listForms: async () => [], listBroadcasts: async () => [], listAutomations: async () => [],
+  listForms: async () => [], listBroadcasts: async () => [], listAutomations: async () => [], listCreatives: async () => [], getAdSettings: async () => null,
 };
 
 describe('buildOverviewModel', () => {
@@ -29,7 +29,7 @@ describe('buildOverviewModel', () => {
     expect(m.kpis.spendRm).toBe('RM 5,007.58');       // == deriveAdsOverview total
     expect(m.funnel.find((f) => f.key === 'won')?.value).toBe(48);
     expect(m.topCampaigns[0].name).toBe('Lead Magnet — eBook'); // cheapest CPL first
-    expect(m.appointments).toHaveLength(3);
+    expect(m.appointments).toHaveLength(2);
   });
 
   it('marks an org with no rows empty and never divides by zero', async () => {

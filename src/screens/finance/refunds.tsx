@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import { Plus, Search, TrendingUp, PieChart, Undo2 } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -99,6 +103,10 @@ function StatusPill({ status }: { status: RefundStatus }) {
 }
 
 export default function RefundsScreen() {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const rows = filterRows(REFUNDS, query, (r) => `${r.customer} ${r.invoice}`, { status });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -197,16 +205,23 @@ export default function RefundsScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Customer / invoice" className="pl-9" />
+              <Input
+                type="search"
+                aria-label="Customer / invoice"
+                placeholder="Customer / invoice"
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <Select defaultValue="all">
+            <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="refunded">Refunded</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="Refunded">Refunded</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -223,7 +238,8 @@ export default function RefundsScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {REFUNDS.map((r) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={6} />}
+                {rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{r.date}</TableCell>
                     <TableCell className="whitespace-nowrap font-medium">{r.customer}</TableCell>
@@ -242,7 +258,7 @@ export default function RefundsScreen() {
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {REFUNDS.length} refunds</span>
+            <span>Showing {rows.length} refunds</span>
           </div>
         </BentoCard>
       </BentoGrid>

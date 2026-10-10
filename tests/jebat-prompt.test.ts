@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest';
+import { JEBAT_SYSTEM } from '@/lib/ai/agents/prompts';
+
+describe('JEBAT_SYSTEM', () => {
+  it('no longer claims to be strictly read-only', () => {
+    expect(JEBAT_SYSTEM).not.toMatch(/you are read-only/i);
+  });
+  it('states writes need the owner\'s approval', () => {
+    expect(JEBAT_SYSTEM.toLowerCase()).toContain('approv');
+  });
+  it('carries the indirect-injection clause', () => {
+    expect(JEBAT_SYSTEM.toLowerCase()).toContain('data, not instructions');
+  });
+  it('calls the change tool at once instead of asking to confirm in words', () => {
+    const t = JEBAT_SYSTEM.toLowerCase();
+    expect(t).toContain('call the change tool straight away');
+    expect(t).toContain('never ask "are you sure?"');
+  });
+  it('tells the model to get an id from a listing instead of asking the owner', () => {
+    const t = JEBAT_SYSTEM.toLowerCase();
+    expect(t).toContain('get its id');
+    expect(t).toContain('never ask the owner for an id');
+  });
+  it('tells the model to report an executed change as done, not still waiting', () => {
+    const t = JEBAT_SYSTEM.toLowerCase();
+    expect(t).toContain('already approved it');
+    expect(t).toContain('past tense');
+  });
+  it('says it can create, edit, delete or move leads along the funnel', () => {
+    expect(JEBAT_SYSTEM.toLowerCase()).toMatch(/move .*leads?|leads?.*funnel|promote a lead/);
+  });
+  it('says it can promote a lead to a CRM contact and only once', () => {
+    const t = JEBAT_SYSTEM.toLowerCase();
+    expect(t).toContain('promote');
+    expect(t).toContain('already promoted');
+  });
+});

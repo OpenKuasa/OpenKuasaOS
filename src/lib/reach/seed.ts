@@ -18,6 +18,8 @@ import type {
   Broadcast,
   Campaign,
   Channel,
+  AdSettings,
+  Creative,
   Form,
   Lead,
   LeadStage,
@@ -80,8 +82,10 @@ const SOURCES = [
 ];
 
 /** The 5 campaigns, mirroring the Jebat Overview campaign table exactly. */
-export function seedCampaigns(now: Date): Campaign[] {
-  const rows: Array<Omit<Campaign, 'id' | 'spend_cents' | 'created_at'> & { ageDays: number }> = [
+export function seedCampaigns(now: Date): Array<Campaign & { cpl_cents: number }> {
+  const rows: Array<
+    Omit<Campaign, 'id' | 'spend_cents' | 'created_at' | 'cpl_cents'> & { cpl_cents: number; ageDays: number }
+  > = [
     { name: 'Ramadan–Raya Promo', channel: 'facebook', status: 'active', leads_count: 96, cpl_cents: 1250, ageDays: 40 },
     { name: 'Lead Magnet — eBook', channel: 'whatsapp', status: 'active', leads_count: 61, cpl_cents: 688, ageDays: 33 },
     { name: 'Retargeting — Cart', channel: 'instagram', status: 'active', leads_count: 54, cpl_cents: 1185, ageDays: 26 },
@@ -146,6 +150,7 @@ export function seedLeads(now: Date): Lead[] {
         channel,
         stage,
         source: SOURCES[idx % SOURCES.length],
+        promoted_contact_id: null,
         created_at: daysAgo(now, dayOffset),
       });
       idx += 1;
@@ -156,25 +161,34 @@ export function seedLeads(now: Date): Lead[] {
 
 /** Three upcoming appointments, relative to `now`. */
 export function seedAppointments(now: Date): Appointment[] {
-  return [
-    { id: 'appt_1', contact_name: 'Aisyah Rahim', kind: 'Discovery call', via: 'WhatsApp', scheduled_at: hoursFromNow(now, 5) },
-    { id: 'appt_2', contact_name: 'Faiz Hakim', kind: 'Product demo', via: 'Zoom', scheduled_at: hoursFromNow(now, 26) },
-    { id: 'appt_3', contact_name: 'Nurul Huda', kind: 'Follow-up', via: 'Call', scheduled_at: hoursFromNow(now, 72) },
-  ].map((a) => ({ ...a, created_at: daysAgo(now, 2) }));
+  const rows: Array<Omit<Appointment, 'created_at'>> = [
+    { id: 'appt_1', contact_name: 'Aisyah Rahim', kind: 'Discovery call', via: 'WhatsApp', scheduled_at: hoursFromNow(now, 5), status: 'scheduled' },
+    { id: 'appt_2', contact_name: 'Faiz Hakim', kind: 'Product demo', via: 'Zoom', scheduled_at: hoursFromNow(now, 26), status: 'scheduled' },
+    { id: 'appt_3', contact_name: 'Nurul Huda', kind: 'Follow-up', via: 'Call', scheduled_at: hoursFromNow(now, 72), status: 'completed' },
+  ];
+  return rows.map((a) => ({ ...a, created_at: daysAgo(now, 2) }));
 }
 
-/** Four lead-capture forms; submissions loosely track the channel lead mix. */
-export function seedForms(now: Date): Form[] {
-  const rows: Array<Omit<Form, 'id' | 'created_at'> & { ageDays: number }> = [
-    { name: 'Tempahan Pakej Raya', channel: 'facebook', submissions_count: 84, status: 'active', ageDays: 38 },
-    { name: 'Muat Turun eBook Percuma', channel: 'whatsapp', submissions_count: 117, status: 'active', ageDays: 31 },
-    { name: 'Tempah Sesi Konsultasi', channel: 'instagram', submissions_count: 39, status: 'active', ageDays: 22 },
-    { name: 'Daftar Waitlist Produk Baharu', channel: 'tiktok', submissions_count: 52, status: 'paused', ageDays: 15 },
+/**
+ * The six lead forms the Lead Forms screen shows, in the order it shows them.
+ * Views sum to 2,378 and submissions to 428. The dates are fixed (not relative
+ * to `now`) so the sample screen reads the same every day.
+ */
+export function seedForms(): Form[] {
+  const rows: Array<Pick<Form, 'name' | 'category' | 'slug' | 'status' | 'views_count' | 'submissions_count'> & { created: string }> = [
+    { name: 'Raya Promo Signup', category: 'Promotions', slug: 'raya-promo', status: 'active', views_count: 612, submissions_count: 128, created: '2026-03-12' },
+    { name: 'Free Consultation', category: 'Sales', slug: 'free-consult', status: 'active', views_count: 540, submissions_count: 96, created: '2026-02-28' },
+    { name: 'Newsletter', category: 'Marketing', slug: 'newsletter', status: 'active', views_count: 488, submissions_count: 84, created: '2026-01-05' },
+    { name: 'Product Demo Request', category: 'Sales', slug: 'demo-request', status: 'active', views_count: 354, submissions_count: 62, created: '2026-01-19' },
+    { name: 'eBook Download', category: 'Content', slug: 'ebook-sme-growth', status: 'draft', views_count: 246, submissions_count: 38, created: '2026-03-02' },
+    { name: 'Event RSVP', category: 'Events', slug: 'usahawan-meetup', status: 'draft', views_count: 138, submissions_count: 20, created: '2026-03-08' },
   ];
-  return rows.map(({ ageDays, ...r }, i) => ({
+  return rows.map(({ created, ...r }, i) => ({
     id: `form_${i + 1}`,
     ...r,
-    created_at: daysAgo(now, ageDays),
+    channel: null,
+    created_at: `${created}T04:00:00.000Z`,
+    updated_at: `${created}T04:00:00.000Z`,
   }));
 }
 
@@ -210,6 +224,31 @@ export function seedAutomations(now: Date): Automation[] {
   }));
 }
 
+export function seedAdSettings(now: Date): AdSettings {
+  return {
+    daily_cap_cents: 15000,
+    monthly_cap_cents: 300000,
+    currency: 'MYR',
+    automation: { auto_pause_low_ctr: true, auto_boost_winners: false, daily_budget_guard: true },
+    notifications: { spend_alerts: true, weekly_summary: true },
+    updated_at: daysAgo(now, 1),
+  };
+}
+
+export function seedCreatives(now: Date): Creative[] {
+  const rows: Array<Omit<Creative, 'id' | 'created_at'> & { ageDays: number }> = [
+    { campaign_id: 'camp_1', name: 'Raya hero image', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/raya-hero.jpg', ctr: 3.2, ageDays: 39 },
+    { campaign_id: 'camp_1', name: 'Raya carousel copy', type: 'copy', channel: 'facebook', status: 'active', body: 'Raya datang! Jimat sampai 30%.', ctr: 2.8, ageDays: 38 },
+    { campaign_id: 'camp_2', name: 'eBook promo video', type: 'video', channel: 'whatsapp', status: 'active', body: 'https://assets.openkuasa.com/ebook.mp4', ctr: 4.1, ageDays: 32 },
+    { campaign_id: 'camp_3', name: 'Cart reminder copy', type: 'copy', channel: 'instagram', status: 'active', body: 'Troli anda menunggu — habiskan pembelian hari ni.', ctr: 1.9, ageDays: 25 },
+    { campaign_id: 'camp_4', name: 'Launch teaser', type: 'video', channel: 'tiktok', status: 'draft', body: null, ctr: null, ageDays: 18 },
+    { campaign_id: null, name: 'Evergreen brand image', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/brand.jpg', ctr: 1.2, ageDays: 11 },
+    { campaign_id: null, name: 'Testimoni pelanggan', type: 'copy', channel: 'whatsapp', status: 'archived', body: 'Servis terbaik, respons pantas!', ctr: null, ageDays: 7 },
+    { campaign_id: 'camp_5', name: 'Awareness banner', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/awareness.jpg', ctr: 0.8, ageDays: 5 },
+  ];
+  return rows.map(({ ageDays, ...r }, i) => ({ id: `creative_${i + 1}`, ...r, created_at: daysAgo(now, ageDays) }));
+}
+
 /**
  * Build a seed-backed {@link ReachData} provider anchored to `now`. Called per
  * request (not memoized) so appointment "upcoming" windows stay correct on a
@@ -219,9 +258,11 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
   const campaigns = seedCampaigns(now);
   const leads = seedLeads(now);
   const appointments = seedAppointments(now);
-  const forms = seedForms(now);
+  const forms = seedForms();
   const broadcasts = seedBroadcasts(now);
   const automations = seedAutomations(now);
+  const creatives = seedCreatives(now);
+  const adSettings = seedAdSettings(now);
   return {
     listCampaigns: async () => campaigns,
     listLeads: async () => leads,
@@ -229,5 +270,7 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
     listForms: async () => forms,
     listBroadcasts: async () => broadcasts,
     listAutomations: async () => automations,
+    listCreatives: async () => creatives,
+    getAdSettings: async () => adSettings,
   };
 }

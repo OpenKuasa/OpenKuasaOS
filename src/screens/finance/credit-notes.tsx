@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import { Plus, Search, TrendingUp, PieChart, FileMinus } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -99,6 +103,10 @@ function StatusPill({ status }: { status: CreditStatus }) {
 }
 
 export default function CreditNotesScreen() {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const rows = filterRows(CREDIT_NOTES, query, (c) => `${c.no} ${c.customer} ${c.invoice}`, { status });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -197,16 +205,23 @@ export default function CreditNotesScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Doc no. / customer" className="pl-9" />
+              <Input
+                type="search"
+                aria-label="Doc no. / customer"
+                placeholder="Doc no. / customer"
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <Select defaultValue="all">
+            <Select value={status} onValueChange={setStatus}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="issued">Issued</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="Issued">Issued</SelectItem>
+                <SelectItem value="Draft">Draft</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -223,7 +238,8 @@ export default function CreditNotesScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {CREDIT_NOTES.map((c) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={6} />}
+                {rows.map((c) => (
                   <TableRow key={c.no}>
                     <TableCell className="whitespace-nowrap font-medium">{c.no}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{c.date}</TableCell>
@@ -242,7 +258,7 @@ export default function CreditNotesScreen() {
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {CREDIT_NOTES.length} credit notes</span>
+            <span>Showing {rows.length} credit notes</span>
           </div>
         </BentoCard>
       </BentoGrid>

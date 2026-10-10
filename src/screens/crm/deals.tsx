@@ -1,230 +1,217 @@
-import { Filter, Plus, Search, TrendingUp } from 'lucide-react';
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, Filter, Plus, TrendingUp } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
-import {
-  AreaTrend,
-  FunnelFlow,
-  Sparkline,
-  type Series,
-  type Slice,
-} from '@/components/charts';
+import { AreaTrend, BarGroup, FunnelFlow, Sparkline, type Series } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  ALL_OWNERS,
+  DEFAULT_DEAL_FILTERS,
+  viewShows,
+  dealOwners,
+  dealsInPipeline,
+  filterDeals,
+  statusCounts,
+  type DealFilters,
+} from '@/lib/crm/deal-filters';
+import {
+  dailyDealReport,
+  dealKpis,
+  formatRM,
+  formatWinRate,
+  stageColumns,
+  stageCounts,
+  weeklyDealTrend,
+} from '@/lib/crm/deal-stats';
+import type { CrmDeal, CrmDealContactChoice } from '@/lib/crm/deals';
+import type { CrmDealActions } from '@/lib/crm/form-state';
+import type { CrmPipeline } from '@/lib/crm/pipelines';
+import { DealBoard, useDealMoves } from './deal-board';
+import { DealFormCard } from './deal-parts';
+import { ManagePipelinesCard } from './deal-pipelines';
+import { DailyReportCard } from './deal-report';
+import {
+  SAMPLE_DEALS,
+  SAMPLE_FUNNEL,
+  SAMPLE_PIPELINE,
+  SAMPLE_PIPELINE_VALUE,
+  SAMPLE_TOTAL_DEALS,
+  SAMPLE_TREND,
+} from './deal-sample';
+import { DealsToolbar } from './deal-toolbar';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd — sales pipeline) ---------- */
-
-type Deal = {
-  id: string;
-  company: string;
-  summary: string;
-  value: number;
-  owner: string;
-  lastTouch: string;
-  tag?: string;
-};
-
-type Stage = {
-  name: string;
-  dot: string;
-  deals: Deal[];
-};
-
-const STAGES: Stage[] = [
-  {
-    name: 'Lead',
-    dot: 'bg-primary',
-    deals: [
-      {
-        id: 'd1',
-        company: 'Seri Mutiara Enterprise',
-        summary: 'POS rollout — 4 outlets',
-        value: 18000,
-        owner: 'Aisyah Rahim',
-        lastTouch: '3h ago',
-        tag: 'Inbound',
-      },
-      {
-        id: 'd2',
-        company: 'Teratak Kopi',
-        summary: 'Loyalty + WhatsApp CRM',
-        value: 6400,
-        owner: 'Faiz Hakim',
-        lastTouch: '1d ago',
-      },
-    ],
-  },
-  {
-    name: 'Qualified',
-    dot: 'bg-blue-500',
-    deals: [
-      {
-        id: 'd3',
-        company: 'Langkawi Fresh Sdn Bhd',
-        summary: 'Cold-chain order tracking',
-        value: 24500,
-        owner: 'Nurul Huda',
-        lastTouch: '5h ago',
-        tag: 'Referral',
-      },
-      {
-        id: 'd4',
-        company: 'Bumi Hijau Trading',
-        summary: 'Inventory sync + billing',
-        value: 9800,
-        owner: 'Ahmad Zaki',
-        lastTouch: '2d ago',
-      },
-    ],
-  },
-  {
-    name: 'Proposal',
-    dot: 'bg-slate-500',
-    deals: [
-      {
-        id: 'd5',
-        company: 'Nusantara Logistics',
-        summary: 'Fleet & dispatch dashboard',
-        value: 42000,
-        owner: 'Aisyah Rahim',
-        lastTouch: '1d ago',
-        tag: 'High value',
-      },
-      {
-        id: 'd6',
-        company: 'Cahaya Tekstil',
-        summary: 'E-invoice (LHDN) setup',
-        value: 12200,
-        owner: 'Faiz Hakim',
-        lastTouch: '4h ago',
-      },
-    ],
-  },
-  {
-    name: 'Negotiation',
-    dot: 'bg-amber-500',
-    deals: [
-      {
-        id: 'd7',
-        company: 'Delima Properties',
-        summary: 'Annual CRM retainer',
-        value: 36000,
-        owner: 'Nurul Huda',
-        lastTouch: '2d ago',
-        tag: 'Renewal',
-      },
-      {
-        id: 'd8',
-        company: 'Zamrud Hardware',
-        summary: 'Multi-store POS + stock',
-        value: 15600,
-        owner: 'Ahmad Zaki',
-        lastTouch: '6h ago',
-      },
-    ],
-  },
-  {
-    name: 'Won',
-    dot: 'bg-emerald-500',
-    deals: [
-      {
-        id: 'd9',
-        company: 'Warung Selera Group',
-        summary: 'Franchise CRM — 9 branches',
-        value: 28000,
-        owner: 'Aisyah Rahim',
-        lastTouch: '3d ago',
-        tag: 'Closed',
-      },
-      {
-        id: 'd10',
-        company: 'Kedai Runcit Maju',
-        summary: 'Billing & receipts module',
-        value: 7900,
-        owner: 'Faiz Hakim',
-        lastTouch: '1w ago',
-      },
-    ],
-  },
-];
-
-const DEALS_TREND = [
-  { label: 'Wk1', created: 9, won: 3 },
-  { label: 'Wk2', created: 12, won: 4 },
-  { label: 'Wk3', created: 10, won: 4 },
-  { label: 'Wk4', created: 14, won: 6 },
-  { label: 'Wk5', created: 11, won: 5 },
-  { label: 'Wk6', created: 15, won: 7 },
-  { label: 'Wk7', created: 13, won: 6 },
-  { label: 'Wk8', created: 17, won: 8 },
-];
-const DEALS_SERIES: Series[] = [
+const TREND_SERIES: Series[] = [
   { key: 'created', label: 'Created', color: 'var(--chart-1)' },
   { key: 'won', label: 'Won', color: 'var(--chart-2)' },
 ];
+const STAGE_SERIES: Series[] = [{ key: 'count', label: 'Deals', color: 'var(--chart-2)' }];
 
-const PIPELINE_FUNNEL: Slice[] = [
-  { key: 'lead', label: 'Lead', value: 48, color: 'var(--chart-1)' },
-  { key: 'qualified', label: 'Qualified', value: 32, color: 'var(--chart-2)' },
-  { key: 'proposal', label: 'Proposal', value: 21, color: 'var(--chart-5)' },
-  { key: 'negotiation', label: 'Negotiation', value: 13, color: 'var(--chart-3)' },
-  { key: 'won', label: 'Won', value: 9, color: 'var(--chart-4)' },
-];
+const NO_DEALS: CrmDeal[] = [];
+const SAMPLE_PIPELINES = [SAMPLE_PIPELINE];
+/** The sample board has always shown its won deals beside the open ones. */
+const SAMPLE_FILTERS: DealFilters = { ...DEFAULT_DEAL_FILTERS, status: 'all' };
+/** Sample deals carry no dates, so any moment will do for their report. */
+const SAMPLE_NOW = '2026-01-01T00:00:00.000Z';
 
-const formatRM = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
-
-const initials = (name: string) =>
-  name
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2);
-
-const totalDeals = STAGES.reduce((sum, s) => sum + s.deals.length, 0);
-
-function DealCard({ deal }: { deal: Deal }) {
-  return (
-    <div className="space-y-2 rounded-xl border bg-card p-3 shadow-sm transition-colors hover:border-primary/40">
-      <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight">
-          {deal.company}
-        </p>
-        {deal.tag ? (
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-            {deal.tag}
-          </span>
-        ) : null}
-      </div>
-      <p className="truncate text-xs text-muted-foreground">{deal.summary}</p>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold tabular-nums">
-          {formatRM(deal.value)}
-        </span>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-            {initials(deal.owner)}
-          </span>
-          <span className="truncate text-xs text-muted-foreground">
-            {deal.owner}
-          </span>
-        </div>
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        Last touch · {deal.lastTouch}
-      </p>
-    </div>
-  );
+function plural(count: number, one: string, many: string) {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
-export default function DealsScreen() {
+type DealsScreenProps = {
+  /** Live pipelines. Omitted when no database is configured, which shows the sample. */
+  pipelines?: CrmPipeline[];
+  /** Live deals, across every pipeline. */
+  deals?: CrmDeal[];
+  /** How many deals the workspace has, which can be more than were loaded. */
+  totalDeals?: number;
+  /** The contacts a deal can be for. */
+  contacts?: CrmDealContactChoice[];
+  /** Present only when the signed-in person may change deals. */
+  actions?: CrmDealActions;
+  /** When the page was put together, as an ISO string: "today" for the report and the trend. */
+  now?: string;
+};
+
+export default function DealsScreen({
+  pipelines,
+  deals,
+  totalDeals,
+  contacts,
+  actions,
+  now,
+}: DealsScreenProps = {}) {
+  // With live deals every figure comes from them. The sample screen keeps
+  // its sample figures and charts.
+  const live = pipelines !== undefined;
+  const allPipelines = pipelines ?? SAMPLE_PIPELINES;
+  const loadedDeals = live ? (deals ?? NO_DEALS) : SAMPLE_DEALS;
+  // A dropped card counts as moved at once, on the board and in the figures.
+  const moves = useDealMoves(loadedDeals, actions?.move);
+  const allDeals = moves.deals;
+  const at = useMemo(() => new Date(now ?? SAMPLE_NOW), [now]);
+
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+  // The one picked, else the default, which is listed first.
+  const pipeline = allPipelines.find((p) => p.id === pipelineId) ?? allPipelines[0] ?? null;
+  const stages = useMemo(() => pipeline?.stages ?? [], [pipeline]);
+
+  // Search, owner and the status view all work on the deals already loaded.
+  const [filters, setFilters] = useState<DealFilters>(live ? DEFAULT_DEAL_FILTERS : SAMPLE_FILTERS);
+
+  // One thing is open at a time: the form card, or a question on one deal.
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<CrmDeal | null>(null);
+  const [asking, setAsking] = useState<{ kind: 'delete' | 'lost'; id: string } | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [managing, setManaging] = useState(false);
+
+  const pipelineDeals = useMemo(
+    () => dealsInPipeline(allDeals, pipeline?.id ?? null),
+    [allDeals, pipeline],
+  );
+  const shown = useMemo(() => filterDeals(pipelineDeals, filters), [pipelineDeals, filters]);
+  const columns = useMemo(() => stageColumns(stages, shown), [stages, shown]);
+  const owners = useMemo(() => dealOwners(pipelineDeals), [pipelineDeals]);
+  const kpis = useMemo(() => dealKpis(pipelineDeals), [pipelineDeals]);
+  const trend = useMemo(() => weeklyDealTrend(pipelineDeals, at), [pipelineDeals, at]);
+  const byStage = useMemo(() => stageCounts(stages, pipelineDeals), [stages, pipelineDeals]);
+  const report = useMemo(() => dailyDealReport(pipelineDeals, at), [pipelineDeals, at]);
+
+  // What the status view is keeping off the board, so a deal that has just
+  // been won or lost is not simply gone.
+  const counts = statusCounts(pipelineDeals);
+  const hiddenByView = (['open', 'won', 'lost'] as const)
+    .filter((status) => !viewShows(filters.status, status) && counts[status] > 0)
+    .map((status) => `${counts[status]} ${status}`)
+    .join(', ');
+
+  const firstFieldRef = useRef<HTMLElement>(null);
+  const askingRef = useRef<HTMLElement>(null);
+  const reportCloseRef = useRef<HTMLButtonElement>(null);
+  const manageButtonRef = useRef<HTMLButtonElement>(null);
+  const manageCloseRef = useRef<HTMLButtonElement>(null);
+
+  const focusForm = () => {
+    firstFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    firstFieldRef.current?.focus({ preventScroll: true });
+  };
+
+  // A menu holds on to focus until it has closed, so what it opened is
+  // focused then. Says whether it moved focus.
+  const focusOnMenuClose = useRef<'form' | 'asking' | null>(null);
+  const menuClosed = () => {
+    const target = focusOnMenuClose.current;
+    focusOnMenuClose.current = null;
+    if (target === 'form') focusForm();
+    else if (target === 'asking') askingRef.current?.focus();
+    return target !== null;
+  };
+
+  // New Deal and Daily Report are plain buttons: what they open is focused
+  // once it is on the page.
+  const [formOpened, setFormOpened] = useState(0);
+  useEffect(() => {
+    if (formOpened > 0) focusForm();
+  }, [formOpened]);
+  useEffect(() => {
+    if (reportOpen) reportCloseRef.current?.focus();
+  }, [reportOpen]);
+  useEffect(() => {
+    if (managing) manageCloseRef.current?.focus();
+  }, [managing]);
+
+  const startAdd = () => {
+    setAdding(true);
+    setEditing(null);
+    setAsking(null);
+    setFormOpened((n) => n + 1);
+  };
+  const closeForm = () => {
+    setAdding(false);
+    setEditing(null);
+  };
+  const startEdit = (deal: CrmDeal) => {
+    setEditing(deal);
+    setAdding(false);
+    setAsking(null);
+    focusOnMenuClose.current = 'form';
+  };
+  const ask = (kind: 'delete' | 'lost', deal: CrmDeal) => {
+    setAsking({ kind, id: deal.id });
+    setEditing((e) => (e?.id === deal.id ? null : e));
+    focusOnMenuClose.current = 'asking';
+  };
+  const changePipeline = (id: string) => {
+    setPipelineId(id);
+    // The other pipeline has its own owners, stages and deals.
+    setFilters((f) => ({ ...f, owner: ALL_OWNERS }));
+    closeForm();
+    setAsking(null);
+  };
+
+  const toggleManaging = () => {
+    // Making another pipeline the default must not change the board under
+    // the person, so the pipeline on show is held from here on.
+    if (!managing && pipeline) setPipelineId(pipeline.id);
+    // Closing hands focus back to the button that opened the card.
+    if (managing) manageButtonRef.current?.focus();
+    setManaging(!managing);
+  };
+  const pipelineDeleted = (id: string) => {
+    if (id !== pipeline?.id) return;
+    // The board falls back to the default, which has its own owners.
+    setPipelineId(null);
+    setFilters((f) => ({ ...f, owner: ALL_OWNERS }));
+    closeForm();
+    setAsking(null);
+  };
+
+  const canAdd = Boolean(actions) && stages.length > 0;
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -232,81 +219,127 @@ export default function DealsScreen() {
         subtitle="Your sales pipeline — move deals toward close, Saudara."
         actions={
           <>
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={reportOpen}
+              onClick={() => setReportOpen((open) => !open)}
+            >
               Daily Report
             </Button>
-            <Button size="sm">
-              <Plus className="size-4" />
-              New Deal
-            </Button>
+            {canAdd ? (
+              <Button size="sm" onClick={startAdd}>
+                <Plus className="size-4" />
+                New Deal
+              </Button>
+            ) : live ? null : (
+              // Nothing to add to on the sample view.
+              <Button size="sm">
+                <Plus className="size-4" />
+                New Deal
+              </Button>
+            )}
           </>
         }
       />
 
       <BentoGrid className="mb-6">
+        {reportOpen ? (
+          <DailyReportCard
+            report={report}
+            pipelineName={pipeline?.name ?? 'No pipeline'}
+            showDate={live}
+            onClose={() => setReportOpen(false)}
+            closeRef={reportCloseRef}
+          />
+        ) : null}
+        {actions && (adding || editing) ? (
+          <DealFormCard
+            // A fresh form for each deal, and for adding.
+            key={editing?.id ?? 'new'}
+            action={actions.save}
+            editing={editing}
+            stages={stages}
+            contacts={contacts ?? []}
+            // An edit is finished once saved. After adding, the cleared form
+            // stays for the next deal until it is closed.
+            onSaved={() => {
+              if (editing) closeForm();
+            }}
+            onClose={closeForm}
+            firstFieldRef={firstFieldRef}
+          />
+        ) : null}
+
         {/* KPI row */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Pipeline value"
-            value="RM 164.5k"
-            delta="+9%"
+            value={formatRM(live ? kpis.pipelineValue : SAMPLE_PIPELINE_VALUE)}
+            delta={live ? undefined : '+9%'}
             onPrimary
             chart={
-              <Sparkline
-                data={[118, 126, 131, 140, 149, 155, 160, 164.5]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
+              live ? undefined : (
+                <Sparkline
+                  data={[118, 126, 131, 140, 149, 155, 160, 164.5]}
+                  color="var(--primary-foreground)"
+                  height={36}
+                />
+              )
             }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
             label="Open deals"
-            value="8"
-            delta="+2"
+            value={String(live ? kpis.openDeals : SAMPLE_TOTAL_DEALS)}
+            delta={live ? undefined : '+2'}
             deltaTone="up"
             chart={
-              <Sparkline
-                data={[5, 6, 6, 7, 7, 8, 8, 8]}
-                color="var(--chart-2)"
-                height={36}
-              />
+              live ? undefined : (
+                <Sparkline data={[5, 6, 6, 7, 7, 8, 8, 8]} color="var(--chart-2)" height={36} />
+              )
             }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
             label="Avg deal size"
-            value="RM 20.6k"
-            delta="+6%"
+            value={formatRM(
+              live ? kpis.averageDealSize : SAMPLE_PIPELINE_VALUE / SAMPLE_TOTAL_DEALS,
+            )}
+            delta={live ? undefined : '+6%'}
             deltaTone="up"
             chart={
-              <Sparkline
-                data={[16.2, 17.1, 17.8, 18.5, 19.2, 19.8, 20.1, 20.6]}
-                color="var(--chart-5)"
-                height={36}
-              />
+              live ? undefined : (
+                <Sparkline
+                  data={[16.2, 17.1, 17.8, 18.5, 19.2, 19.8, 20.1, 20.6]}
+                  color="var(--chart-5)"
+                  height={36}
+                />
+              )
             }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
             label="Win rate"
-            value="38%"
-            delta="+3pt"
+            value={live ? formatWinRate(kpis.winRate) : '38%'}
+            delta={live ? undefined : '+3pt'}
             deltaTone="up"
             chart={
-              <Sparkline
-                data={[31, 33, 32, 34, 35, 36, 37, 38]}
-                color="var(--chart-3)"
-                height={36}
-              />
+              live ? undefined : (
+                <Sparkline
+                  data={[31, 33, 32, 34, 35, 36, 37, 38]}
+                  color="var(--chart-3)"
+                  height={36}
+                />
+              )
             }
           />
         </BentoCard>
 
-        {/* Trend + pipeline funnel */}
+        {/* Trend + pipeline by stage */}
         <BentoCard
           title="Deals created vs won"
           subtitle="Last 8 weeks"
@@ -314,20 +347,33 @@ export default function DealsScreen() {
           className="col-span-2 md:col-span-8"
         >
           <AreaTrend
-            data={DEALS_TREND}
-            series={DEALS_SERIES}
+            data={live ? trend : SAMPLE_TREND}
+            series={TREND_SERIES}
             height={240}
             showLegend
           />
         </BentoCard>
-        <BentoCard
-          title="Pipeline by stage"
-          subtitle="Deals in flight"
-          icon={Filter}
-          className="col-span-2 md:col-span-4"
-        >
-          <FunnelFlow data={PIPELINE_FUNNEL} height={240} />
-        </BentoCard>
+        {live ? (
+          // The funnel sizes every bar against the first stage, which misleads
+          // when a later stage holds more deals; plain bars do not.
+          <BentoCard
+            title="Pipeline by stage"
+            subtitle="Open and won deals"
+            icon={BarChart3}
+            className="col-span-2 md:col-span-4"
+          >
+            <BarGroup data={byStage} series={STAGE_SERIES} horizontal height={240} />
+          </BentoCard>
+        ) : (
+          <BentoCard
+            title="Pipeline by stage"
+            subtitle="Deals in flight"
+            icon={Filter}
+            className="col-span-2 md:col-span-4"
+          >
+            <FunnelFlow data={SAMPLE_FUNNEL} height={240} />
+          </BentoCard>
+        )}
       </BentoGrid>
 
       {/* Pipeline board */}
@@ -335,65 +381,73 @@ export default function DealsScreen() {
         <LiveDot active />
         <h2 className="text-sm font-semibold">Pipeline board</h2>
         <span className="text-xs text-muted-foreground">
-          5 stages · {totalDeals} deals
+          {plural(stages.length, 'stage', 'stages')} · {plural(shown.length, 'deal', 'deals')}
         </span>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search deals across all stages…"
-            className="pl-9"
+      {pipeline ? (
+        <>
+          <DealsToolbar
+            filters={filters}
+            onChange={setFilters}
+            pipelines={allPipelines}
+            pipelineId={pipeline.id}
+            onPipelineChange={changePipeline}
+            owners={owners}
+            managing={managing}
+            onManage={actions ? toggleManaging : undefined}
+            manageButtonRef={manageButtonRef}
           />
-        </div>
-        <Select defaultValue="default">
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="default">Default pipeline</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select defaultValue="all">
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All owners</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {STAGES.map((stage) => {
-          const total = stage.deals.reduce((sum, d) => sum + d.value, 0);
-          return (
-            <div
-              key={stage.name}
-              className="flex w-72 shrink-0 flex-col rounded-xl border bg-muted/40 p-2"
-            >
-              <div className="mb-2 px-2 py-1.5">
-                <div className="flex items-center gap-2">
-                  <span className={`size-2 rounded-full ${stage.dot}`} />
-                  <span className="text-sm font-semibold">{stage.name}</span>
-                  <span className="ml-auto rounded-full bg-background px-2 text-xs text-muted-foreground">
-                    {stage.deals.length}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-                  {formatRM(total)}
-                </p>
-              </div>
-              <div className="space-y-2">
-                {stage.deals.map((deal) => (
-                  <DealCard key={deal.id} deal={deal} />
-                ))}
-              </div>
+          {actions && managing ? (
+            <div className="mb-4">
+              <ManagePipelinesCard
+                pipelines={allPipelines}
+                deals={allDeals}
+                dealsCapped={(totalDeals ?? 0) > allDeals.length}
+                actions={actions}
+                onCreated={changePipeline}
+                onDeleted={pipelineDeleted}
+                onClose={toggleManaging}
+                closeRef={manageCloseRef}
+              />
             </div>
-          );
-        })}
-      </div>
+          ) : null}
+
+          {hiddenByView || (live && (totalDeals ?? 0) > allDeals.length) ? (
+            <p className="mb-3 text-xs text-muted-foreground">
+              {hiddenByView ? `In other views: ${hiddenByView}. ` : ''}
+              {live && (totalDeals ?? 0) > allDeals.length
+                ? `The board and its figures cover the ${allDeals.length} most recent of ${totalDeals} deals.`
+                : ''}
+            </p>
+          ) : null}
+
+          <DealBoard
+            columns={columns}
+            stages={stages}
+            actions={actions}
+            moves={moves}
+            asking={asking}
+            onEdit={startEdit}
+            onAsk={ask}
+            onAskClosed={() => setAsking(null)}
+            onMenuClosed={menuClosed}
+            askingRef={askingRef}
+          />
+          {stages.length === 0 ? (
+            <p className="rounded-xl border bg-muted/40 p-4 text-sm text-muted-foreground">
+              This pipeline has no stages yet, so it cannot hold deals.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="rounded-xl border bg-muted/40 p-4 text-sm text-muted-foreground">
+          {actions
+            ? 'The pipeline for this workspace could not be set up. Reload the page to try again.'
+            : 'This workspace has no pipeline yet. It is set up the first time someone who can edit deals opens this page.'}
+        </p>
+      )}
     </ScreenContainer>
   );
 }

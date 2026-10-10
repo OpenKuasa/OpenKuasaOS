@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import { Plus, Search, Receipt, TrendingUp, PieChart } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -91,6 +95,10 @@ const BY_CATEGORY: Slice[] = [
 /* ------------------------------------------------------------------ */
 
 export default function ExpensesScreen() {
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('all');
+  const rows = filterRows(EXPENSES, query, (e) => `${e.vendor} ${e.category}`, { category });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -184,16 +192,23 @@ export default function ExpensesScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search expenses..." className="w-full pl-9" />
+              <Input
+                type="search"
+                aria-label="Search expenses..."
+                placeholder="Search expenses..."
+                className="w-full pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <Select defaultValue="all">
+            <Select value={category} onValueChange={setCategory}>
               <SelectTrigger className="w-full sm:w-44">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
                 {CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c.toLowerCase()}>
+                  <SelectItem key={c} value={c}>
                     {c}
                   </SelectItem>
                 ))}
@@ -213,7 +228,8 @@ export default function ExpensesScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {EXPENSES.map((e) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={6} />}
+                {rows.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{e.date}</TableCell>
                     <TableCell className="whitespace-nowrap font-medium">{e.category}</TableCell>
@@ -243,7 +259,7 @@ export default function ExpensesScreen() {
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {EXPENSES.length} of {TOTAL_EXPENSES} expenses</span>
+            <span>Showing {rows.length} of {TOTAL_EXPENSES} expenses</span>
           </div>
         </BentoCard>
       </BentoGrid>

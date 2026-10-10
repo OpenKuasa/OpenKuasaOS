@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { getProduct } from '@/config/nav';
+import { isSampleScreen } from '@/config/live-screens';
 import { ProductRail } from './product-rail';
 import { SecondaryNav } from './secondary-nav';
 import { AppTopbar } from './app-topbar';
 import { AssistantFab } from './assistant-fab';
+import { WipBanner } from './wip-banner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -62,6 +64,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               hasSecondary ? () => setMobileNavOpen(true) : undefined
             }
           />
+          {isSampleScreen(pathname) ? <WipBanner /> : null}
           <main className="relative flex-1 overflow-auto bg-muted/30">
             {children}
           </main>

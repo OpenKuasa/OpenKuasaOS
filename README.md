@@ -44,7 +44,10 @@ of Melaka. **83 module screens** are built so far.
 | **Bendahara** | Finance — invoicing, expenses, banking, e-Invoice, SST, ledgers | accounting software | `/finance` | 26 |
 | **Taming Sari** | "Sari", the assistant available from every screen | — | everywhere | — |
 
-The full menu for each module lives in `src/config/nav.ts`.
+The full menu for each module lives in `src/config/nav.ts`. The screens are in
+`src/screens/` and are listed in `src/screens/registry.ts`; each one is served by
+its own route file under `src/app/(app)/`, written by `pnpm gen:routes` (see
+[Adding a screen](CONTRIBUTING.md#adding-a-screen)).
 
 ### Module highlights
 

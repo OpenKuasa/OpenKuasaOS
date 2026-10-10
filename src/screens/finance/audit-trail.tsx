@@ -1,5 +1,9 @@
+'use client';
+
+import { useState } from 'react';
 import { Activity, PieChart, ScrollText, Search } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import { AreaTrend, DonutStat, Sparkline, type Series, type Slice } from '@/components/charts';
@@ -89,6 +93,12 @@ const CATEGORY_COLOR: Record<AuditCategory, string> = {
 /* ------------------------------------------------------------------ */
 
 export default function AuditTrailScreen() {
+  const [query, setQuery] = useState('');
+  const [user, setUser] = useState('all');
+  const [category, setCategory] = useState('all');
+  const [action, setAction] = useState('all');
+  const rows = filterRows(ENTRIES, query, (e) => `${e.entity} ${e.details} ${e.user}`, { user, category, action });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -192,42 +202,49 @@ export default function AuditTrailScreen() {
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search activity…" className="pl-8" />
+              <Input
+                type="search"
+                aria-label="Search activity…"
+                placeholder="Search activity…"
+                className="pl-8"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <Select defaultValue="all">
+            <Select value={user} onValueChange={setUser}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All users</SelectItem>
-                <SelectItem value="saudara">Saudara</SelectItem>
-                <SelectItem value="aisyah">Aisyah</SelectItem>
-                <SelectItem value="faiz">Faiz</SelectItem>
-                <SelectItem value="nurul">Nurul</SelectItem>
+                <SelectItem value="Saudara">Saudara</SelectItem>
+                <SelectItem value="Aisyah">Aisyah</SelectItem>
+                <SelectItem value="Faiz">Faiz</SelectItem>
+                <SelectItem value="Nurul">Nurul</SelectItem>
               </SelectContent>
             </Select>
-            <Select defaultValue="all">
+            <Select value={category} onValueChange={setCategory}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All categories</SelectItem>
-                <SelectItem value="sales">Sales</SelectItem>
-                <SelectItem value="purchases">Purchases</SelectItem>
-                <SelectItem value="expenses">Expenses</SelectItem>
-                <SelectItem value="products">Products</SelectItem>
-                <SelectItem value="compliance">Compliance</SelectItem>
+                <SelectItem value="Sales">Sales</SelectItem>
+                <SelectItem value="Purchases">Purchases</SelectItem>
+                <SelectItem value="Expenses">Expenses</SelectItem>
+                <SelectItem value="Products">Products</SelectItem>
+                <SelectItem value="Compliance">Compliance</SelectItem>
               </SelectContent>
             </Select>
-            <Select defaultValue="all">
+            <Select value={action} onValueChange={setAction}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All actions</SelectItem>
-                <SelectItem value="created">Created</SelectItem>
-                <SelectItem value="updated">Updated</SelectItem>
-                <SelectItem value="deleted">Deleted</SelectItem>
+                <SelectItem value="Created">Created</SelectItem>
+                <SelectItem value="Updated">Updated</SelectItem>
+                <SelectItem value="Deleted">Deleted</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -245,7 +262,8 @@ export default function AuditTrailScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ENTRIES.map((e) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={6} />}
+                {rows.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell className="whitespace-nowrap tabular-nums text-muted-foreground">
                       {e.timestamp}

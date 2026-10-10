@@ -9,6 +9,8 @@
 
 import { prepareChat } from '@/lib/ai/chat-request';
 import { runJebat } from '@/lib/ai/agents/orchestrator';
+import { getCurrentOrg } from '@/lib/auth/current-org';
+import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { getReachData } from '@/lib/reach/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -20,12 +22,15 @@ export async function POST(request: Request) {
   const chat = await prepareChat(request);
   if (!chat.ok) return chat.response;
 
-  const result = runJebat(
-    chat.messages,
-    await getReachData(chat.supabase),
-    request.signal,
-    chat.apiKey,
-  );
+  const org = hasSupabaseEnv() ? await getCurrentOrg(chat.supabase) : null;
+  const data = await getReachData(chat.supabase);
+  // Only a non-viewer member gets write tools (and each still needs approval).
+  const write =
+    org && org.role !== 'viewer'
+      ? { ctx: { client: chat.supabase, orgId: org.orgId }, canWrite: true }
+      : undefined;
+
+  const result = runJebat(chat.messages, { data, write }, request.signal, chat.apiKey);
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {

@@ -10,13 +10,62 @@
  */
 
 import { tool } from 'ai';
+import { limitSchema, rowLimit } from '@/lib/ai/limits';
+import { rm } from '@/lib/reach/format';
 import { z } from 'zod';
+import {
+  type ReachWriteContext,
+  createAppointment as capCreateAppointment,
+  createAppointmentInput,
+  createCampaign as capCreateCampaign,
+  createCampaignInput,
+  createCreative as capCreateCreative,
+  createCreativeInput,
+  createForm as capCreateForm,
+  createFormInput,
+  createLead as capCreateLead,
+  createLeadInput,
+  deleteAppointment as capDeleteAppointment,
+  deleteAppointmentInput,
+  deleteCampaign as capDeleteCampaign,
+  deleteCampaignInput,
+  deleteCreative as capDeleteCreative,
+  deleteCreativeInput,
+  deleteForm as capDeleteForm,
+  deleteFormInput,
+  deleteLead as capDeleteLead,
+  deleteLeadInput,
+  promoteLeadToContact as capPromoteLeadToContact,
+  promoteLeadToContactInput,
+  setAppointmentStatus as capSetAppointmentStatus,
+  setAppointmentStatusInput,
+  setCampaignStatus as capSetCampaignStatus,
+  setCampaignStatusInput,
+  setFormStatus as capSetFormStatus,
+  setFormStatusInput,
+  setLeadStage as capSetLeadStage,
+  setLeadStageInput,
+  updateAdSettings as capUpdateAdSettings,
+  updateAppointment as capUpdateAppointment,
+  updateAppointmentInput,
+  updateAdSettingsInput,
+  updateCampaign as capUpdateCampaign,
+  updateCampaignInput,
+  updateCreative as capUpdateCreative,
+  updateCreativeInput,
+  updateForm as capUpdateForm,
+  updateFormInput,
+  updateLead as capUpdateLead,
+  updateLeadInput,
+} from '@/lib/reach/capabilities';
 import {
   type Appointment,
   type Automation,
   type Broadcast,
   type Campaign,
   type Channel,
+  type Creative,
+  type CreativeType,
   type Form,
   type Lead,
   LEAD_STAGES,
@@ -24,15 +73,9 @@ import {
   type ReachData,
 } from '@/lib/reach/types';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export { rm } from '@/lib/reach/format';
 
-/** Format cents as `RM 1,234.50`. */
-export function rm(cents: number): string {
-  return `RM ${(cents / 100).toLocaleString('en-MY', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function stageRank(stage: LeadStage): number {
   return LEAD_STAGES.indexOf(stage);
@@ -134,6 +177,7 @@ export function summarizeCampaigns(
   return campaigns
     .filter((c) => (status ? c.status === status : true))
     .map((c) => ({
+      id: c.id,
       name: c.name,
       channel: c.channel,
       status: c.status,
@@ -141,9 +185,9 @@ export function summarizeCampaigns(
       spend_cents: c.spend_cents,
       spend: rm(c.spend_cents),
       cpl_cents: c.cpl_cents,
-      cpl: rm(c.cpl_cents),
+      cpl: c.cpl_cents == null ? '—' : rm(c.cpl_cents),
     }))
-    .sort((a, b) => a.cpl_cents - b.cpl_cents);
+    .sort((a, b) => (a.cpl_cents ?? Infinity) - (b.cpl_cents ?? Infinity));
 }
 
 export function filterUpcomingAppointments(
@@ -152,13 +196,15 @@ export function filterUpcomingAppointments(
   limit = 5,
 ) {
   return appointments
-    .filter((a) => new Date(a.scheduled_at).getTime() >= now.getTime())
+    .filter((a) => a.status === 'scheduled' && new Date(a.scheduled_at).getTime() >= now.getTime())
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
     .slice(0, limit)
     .map((a) => ({
+      id: a.id,
       contact_name: a.contact_name,
       kind: a.kind,
       via: a.via,
+      status: a.status,
       scheduled_at: a.scheduled_at,
     }));
 }
@@ -201,10 +247,12 @@ export function deriveContacts(
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, limit)
     .map((l) => ({
+      id: l.id,
       name: l.name,
       channel: l.channel,
       stage: l.stage,
       source: l.source,
+      promoted_contact_id: l.promoted_contact_id,
       created_at: l.created_at,
     }));
 }
@@ -214,8 +262,12 @@ export function summarizeForms(forms: Form[], limit = 10) {
     .sort((a, b) => b.submissions_count - a.submissions_count)
     .slice(0, limit)
     .map((f) => ({
+      id: f.id,
       name: f.name,
+      category: f.category,
+      slug: f.slug,
       channel: f.channel,
+      views: f.views_count,
       submissions: f.submissions_count,
       status: f.status,
     }));
@@ -249,16 +301,29 @@ export function summarizeAutomations(automations: Automation[], limit = 10) {
     }));
 }
 
-const limitSchema = (describe: string) =>
-  z.number().int().positive().max(50).optional().describe(describe);
+export function summarizeCreatives(
+  creatives: Creative[],
+  opts: { type?: CreativeType; limit?: number } = {},
+) {
+  const { type, limit = 20 } = opts;
+  return creatives
+    .filter((c) => (type ? c.type === type : true))
+    .slice(0, limit)
+    .map((c) => ({ id: c.id, name: c.name, type: c.type, channel: c.channel, status: c.status, ctr: c.ctr }));
+}
+
 
 /**
  * Build all Jebat read-only data tools over a {@link ReachData} provider. `now`
  * (a Date or a clock function) is injectable for tests; the route uses the real clock.
  */
-export function createReachTools(data: ReachData, nowArg: Date | (() => Date) = () => new Date()) {
+export function createReachTools(
+  data: ReachData,
+  nowArg: Date | (() => Date) = () => new Date(),
+  write?: { ctx: ReachWriteContext; canWrite: boolean },
+) {
   const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
-  return {
+  const read = {
     getCampaigns: tool({
       description:
         'List the org’s ad campaigns with leads, spend and cost-per-lead (RM). ' +
@@ -297,10 +362,10 @@ export function createReachTools(data: ReachData, nowArg: Date | (() => Date) = 
     getUpcomingAppointments: tool({
       description: 'The org’s upcoming appointments (discovery calls, demos, follow-ups), soonest first.',
       inputSchema: z.object({
-        limit: z.number().int().positive().max(20).optional().describe('Max appointments to return (default 5).'),
+        limit: limitSchema('Max appointments to return (default 5, at most 20).'),
       }),
       execute: async ({ limit }) =>
-        filterUpcomingAppointments(await data.listAppointments(), now(), limit ?? 5),
+        filterUpcomingAppointments(await data.listAppointments(), now(), rowLimit(limit, 5, 20)),
     }),
 
     getAdsOverview: tool({
@@ -316,28 +381,174 @@ export function createReachTools(data: ReachData, nowArg: Date | (() => Date) = 
       inputSchema: z.object({
         stage: z.enum(LEAD_STAGES as [LeadStage, ...LeadStage[]]).optional().describe('Only contacts at this stage.'),
         channel: z.enum(['whatsapp', 'facebook', 'instagram', 'tiktok']).optional().describe('Only contacts from this channel.'),
-        limit: limitSchema('Max contacts to return (default 10).'),
+        limit: limitSchema('Max contacts to return (default 10, at most 50).'),
       }),
       execute: async ({ stage, channel, limit }) =>
-        deriveContacts(await data.listLeads(), { stage, channel, limit }),
+        deriveContacts(await data.listLeads(), { stage, channel, limit: rowLimit(limit, 10) }),
     }),
 
     listForms: tool({
-      description: 'Lead-capture forms with channel, submissions count and status, most submissions first.',
-      inputSchema: z.object({ limit: limitSchema('Max forms to return (default 10).') }),
-      execute: async ({ limit }) => summarizeForms(await data.listForms(), limit),
+      description:
+        'Lead-capture forms with id, category, link (slug), status, views and submissions count, most submissions first.',
+      inputSchema: z.object({ limit: limitSchema('Max forms to return (default 10, at most 50).') }),
+      execute: async ({ limit }) => summarizeForms(await data.listForms(), rowLimit(limit, 10)),
     }),
 
     listBroadcasts: tool({
       description: 'Email / WhatsApp broadcasts with sent, opened, clicked counts and sent date, newest first.',
-      inputSchema: z.object({ limit: limitSchema('Max broadcasts to return (default 10).') }),
-      execute: async ({ limit }) => summarizeBroadcasts(await data.listBroadcasts(), limit),
+      inputSchema: z.object({ limit: limitSchema('Max broadcasts to return (default 10, at most 50).') }),
+      execute: async ({ limit }) => summarizeBroadcasts(await data.listBroadcasts(), rowLimit(limit, 10)),
     }),
 
     listAutomations: tool({
       description: 'Automation workflows with trigger, status and number of runs, most runs first.',
-      inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10).') }),
-      execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), limit),
+      inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10, at most 50).') }),
+      execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), rowLimit(limit, 10)),
+    }),
+
+    getCreatives: tool({
+      description: 'List the org’s ad creatives (image/video/copy) with channel, status and CTR. Optionally filter by type.',
+      inputSchema: z.object({
+        type: z.enum(['image', 'video', 'copy']).optional().describe('Only return creatives of this type.'),
+        limit: limitSchema('Max creatives to return (default 20, at most 50).'),
+      }),
+      execute: async ({ type, limit }) =>
+        summarizeCreatives(await data.listCreatives(), { type, limit: rowLimit(limit, 20) }),
+    }),
+
+    getAdSettings: tool({
+      description: 'The org’s ad settings: budget caps (RM), currency, and automation/notification toggles.',
+      inputSchema: z.object({}),
+      execute: async () => {
+        const s = await data.getAdSettings();
+        if (!s) return { configured: false };
+        return {
+          configured: true,
+          daily_cap: s.daily_cap_cents == null ? null : rm(s.daily_cap_cents),
+          monthly_cap: s.monthly_cap_cents == null ? null : rm(s.monthly_cap_cents),
+          currency: s.currency,
+          automation: s.automation,
+          notifications: s.notifications,
+        };
+      },
+    }),
+  };
+
+  // A caller who cannot write gets no write tools at all (not merely gated ones).
+  if (!write?.canWrite) return read;
+  const ctx = write.ctx;
+
+  return {
+    ...read,
+    createCampaign: tool({
+      description: 'Create a new ad campaign. Needs the owner’s approval before it is saved.',
+      inputSchema: createCampaignInput,
+      execute: async (input) => capCreateCampaign(ctx, input),
+    }),
+    updateCampaign: tool({
+      description:
+        'Edit an existing campaign by id (name, channel, status, spend or leads). Needs approval.',
+      inputSchema: updateCampaignInput,
+      execute: async (input) => capUpdateCampaign(ctx, input),
+    }),
+    setCampaignStatus: tool({
+      description: 'Pause or resume a campaign by id. Needs approval.',
+      inputSchema: setCampaignStatusInput,
+      execute: async (input) => capSetCampaignStatus(ctx, input),
+    }),
+    deleteCampaign: tool({
+      description: 'Delete a campaign by id. This cannot be undone and needs approval.',
+      inputSchema: deleteCampaignInput,
+      execute: async (input) => capDeleteCampaign(ctx, input),
+    }),
+    createCreative: tool({
+      description: 'Create a new ad creative (image/video/copy). Needs approval.',
+      inputSchema: createCreativeInput,
+      execute: async (input) => capCreateCreative(ctx, input),
+    }),
+    updateCreative: tool({
+      description: 'Edit a creative by id. Needs approval.',
+      inputSchema: updateCreativeInput,
+      execute: async (input) => capUpdateCreative(ctx, input),
+    }),
+    deleteCreative: tool({
+      description: 'Delete a creative by id. Cannot be undone; needs approval.',
+      inputSchema: deleteCreativeInput,
+      execute: async (input) => capDeleteCreative(ctx, input),
+    }),
+    updateAdSettings: tool({
+      description: 'Update the org’s ad settings (budget caps, currency, automation/notification toggles). Needs approval.',
+      inputSchema: updateAdSettingsInput,
+      execute: async (input) => capUpdateAdSettings(ctx, input),
+    }),
+    createForm: tool({
+      description:
+        'Create a lead form (name, optional category, link and status). Leave the link out to derive it from the name. Needs approval.',
+      inputSchema: createFormInput,
+      execute: async (input) => capCreateForm(ctx, input),
+    }),
+    updateForm: tool({
+      description: 'Edit a lead form by id (name, category, link or status). Needs approval.',
+      inputSchema: updateFormInput,
+      execute: async (input) => capUpdateForm(ctx, input),
+    }),
+    setFormStatus: tool({
+      description: 'Activate or pause a lead form by id, or move it back to draft. Needs approval.',
+      inputSchema: setFormStatusInput,
+      execute: async (input) => capSetFormStatus(ctx, input),
+    }),
+    deleteForm: tool({
+      description: 'Delete a lead form by id. This cannot be undone and needs approval.',
+      inputSchema: deleteFormInput,
+      execute: async (input) => capDeleteForm(ctx, input),
+    }),
+    createLead: tool({
+      description: 'Create a new lead. Needs the owner’s approval before it is saved.',
+      inputSchema: createLeadInput,
+      execute: async (input) => capCreateLead(ctx, input),
+    }),
+    updateLead: tool({
+      description: 'Edit a lead by id (name, channel, stage, source). Needs approval.',
+      inputSchema: updateLeadInput,
+      execute: async (input) => capUpdateLead(ctx, input),
+    }),
+    setLeadStage: tool({
+      description:
+        'Move a lead to a funnel stage by id (lead→contacted→qualified→booked→won). Needs approval.',
+      inputSchema: setLeadStageInput,
+      execute: async (input) => capSetLeadStage(ctx, input),
+    }),
+    deleteLead: tool({
+      description: 'Delete a lead by id. Cannot be undone; needs approval.',
+      inputSchema: deleteLeadInput,
+      execute: async (input) => capDeleteLead(ctx, input),
+    }),
+    promoteLeadToContact: tool({
+      description: 'Promote a lead to a CRM contact by id. Creates a Kasturi contact. Needs approval.',
+      inputSchema: promoteLeadToContactInput,
+      execute: async (input) => capPromoteLeadToContact(ctx, input),
+    }),
+    createAppointment: tool({
+      description:
+        'Book an appointment. scheduled_at is UTC ISO 8601. Needs the owner’s approval before it is saved.',
+      inputSchema: createAppointmentInput,
+      execute: async (input) => capCreateAppointment(ctx, input),
+    }),
+    updateAppointment: tool({
+      description:
+        'Edit an appointment by id (contact, kind, time, channel). scheduled_at is UTC ISO 8601. Needs approval.',
+      inputSchema: updateAppointmentInput,
+      execute: async (input) => capUpdateAppointment(ctx, input),
+    }),
+    setAppointmentStatus: tool({
+      description: 'Mark an appointment by id scheduled, completed, cancelled or no_show. Needs approval.',
+      inputSchema: setAppointmentStatusInput,
+      execute: async (input) => capSetAppointmentStatus(ctx, input),
+    }),
+    deleteAppointment: tool({
+      description: 'Delete an appointment by id. Cannot be undone; needs approval.',
+      inputSchema: deleteAppointmentInput,
+      execute: async (input) => capDeleteAppointment(ctx, input),
     }),
   };
 }

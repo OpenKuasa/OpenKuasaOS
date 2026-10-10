@@ -112,18 +112,42 @@ describe('filterUpcomingAppointments', () => {
     expect(times).toEqual([...times].sort((a, b) => a - b));
   });
 
+  it('carries each appointment id and status so the model can target one', () => {
+    const [first] = filterUpcomingAppointments(seedAppointments(NOW), NOW, 1);
+    expect(typeof first.id).toBe('string');
+    expect(first.id.length).toBeGreaterThan(0);
+    expect(first.status).toBe('scheduled');
+  });
+
   it('excludes appointments already in the past', () => {
     const past: Appointment = {
       id: 'past',
       contact_name: 'Ghani Omar',
       kind: 'Old call',
       via: 'Call',
+      status: 'scheduled',
       scheduled_at: new Date(NOW.getTime() - 3600_000).toISOString(),
       created_at: new Date(NOW.getTime() - 7200_000).toISOString(),
     };
     const upcoming = filterUpcomingAppointments([past, ...seedAppointments(NOW)], NOW);
     expect(upcoming.some((a) => a.contact_name === 'Ghani Omar')).toBe(false);
-    expect(upcoming).toHaveLength(3);
+    expect(upcoming).toHaveLength(2);
+  });
+});
+
+describe('filterUpcomingAppointments status', () => {
+  it('omits future appointments that are not scheduled', () => {
+    const cancelled: Appointment = {
+      id: 'c1',
+      contact_name: 'Cancelled Person',
+      kind: 'Call',
+      via: 'Call',
+      status: 'cancelled',
+      scheduled_at: new Date(NOW.getTime() + 3600_000).toISOString(),
+      created_at: NOW.toISOString(),
+    };
+    const upcoming = filterUpcomingAppointments([cancelled], NOW);
+    expect(upcoming).toHaveLength(0);
   });
 });
 
@@ -169,10 +193,12 @@ describe('deriveContacts', () => {
 
 describe('forms / broadcasts / automations summaries', () => {
   it('lists forms most-submitted first', () => {
-    const rows = summarizeForms(seedForms(NOW));
-    expect(rows).toHaveLength(4);
-    expect(rows[0].submissions).toBe(117);
-    expect(summarizeForms(seedForms(NOW), 2)).toHaveLength(2);
+    const rows = summarizeForms(seedForms());
+    expect(rows).toHaveLength(6);
+    expect(rows[0].submissions).toBe(128);
+    // The id and the link ride along so Jebat can chain a read into a write.
+    expect(rows[0]).toMatchObject({ id: 'form_1', slug: 'raya-promo', category: 'Promotions', views: 612, status: 'active' });
+    expect(summarizeForms(seedForms(), 2)).toHaveLength(2);
   });
 
   it('lists broadcasts newest first with open rate', () => {
@@ -193,8 +219,10 @@ describe('createReachTools', () => {
   it('exposes the full read-only tool set', () => {
     const tools = createReachTools(createSeedReachData(NOW), NOW);
     expect(Object.keys(tools).sort()).toEqual([
+      'getAdSettings',
       'getAdsOverview',
       'getCampaigns',
+      'getCreatives',
       'getLeadSummary',
       'getSpendByChannel',
       'getUpcomingAppointments',

@@ -1,3 +1,14 @@
+/**
+ * The list of built screens. Nothing in the app imports this file: importing
+ * it would put every screen's scripts on every page.
+ *
+ * `scripts/gen-screen-routes.mjs` reads it and writes one route file per
+ * screen under `src/app/(app)/<product>/<item>/page.tsx`.
+ *
+ * To add a screen: import it and add its key below (the key must be an item in
+ * `src/config/nav.ts`), then run `pnpm gen:routes` and commit the new
+ * `page.tsx` with your change. `pnpm dev` and `pnpm build` run it for you.
+ */
 import type { ComponentType } from 'react';
 
 // Jebat (reach)
@@ -7,6 +18,7 @@ import AdStudioScreen from '@/screens/reach/ad-studio';
 import CreativeBankScreen from '@/screens/reach/creative-bank';
 import ReportsScreen from '@/screens/reach/reports';
 import ContactsScreen from '@/screens/reach/contacts';
+import LeadsScreen from '@/screens/reach/leads';
 import LeadFormsScreen from '@/screens/reach/lead-forms';
 import AppointmentsScreen from '@/screens/reach/appointments';
 import AdSettingsScreen from '@/screens/reach/ad-settings';
@@ -103,7 +115,7 @@ export const SCREENS: Record<string, ComponentType> = {
   'reach/ad-studio': AdStudioScreen,
   'reach/creative-bank': CreativeBankScreen,
   'reach/reports': ReportsScreen,
-  'reach/contacts': ContactsScreen,
+  'reach/leads': LeadsScreen,
   'reach/lead-forms': LeadFormsScreen,
   'reach/appointments': AppointmentsScreen,
   'reach/ad-settings': AdSettingsScreen,

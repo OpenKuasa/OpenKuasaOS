@@ -42,12 +42,14 @@ testWithSupabase('a fresh org sees no reach rows', async () => {
   }
 });
 
-testWithSupabase('writes are rejected this slice (no write grant)', async () => {
-  const { error } = await owner.c
+testWithSupabase('an owner can now insert a campaign (writes enabled in slice 2)', async () => {
+  const { data, error } = await owner.c
     .from('campaigns')
-    .insert({ org_id: owner.orgId, name: 'x', channel: 'whatsapp' });
-  expect(error, 'insert should be denied').not.toBeNull();
-  expect(error?.code).toBe('42501'); // permission denied, not a constraint failure
+    .insert({ org_id: owner.orgId, name: 'slice2 smoke', channel: 'whatsapp' })
+    .select('id');
+  expect(error, error?.message).toBeNull();
+  expect(data ?? []).toHaveLength(1);
+  await owner.c.from('campaigns').delete().eq('id', data![0].id);
 });
 
 testWithSupabase('the demo org is seeded and a demo viewer can read it', async () => {

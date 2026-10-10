@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import {
   BarChart3,
   Filter,
@@ -7,6 +10,7 @@ import {
   Boxes,
 } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
+import { filterRows, NoMatchesRow } from '@/components/screen/table-filter';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
@@ -96,6 +100,10 @@ const BY_CATEGORY: Slice[] = [
 /* ------------------------------------------------------------------ */
 
 export default function ProductsScreen() {
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('all');
+  const rows = filterRows(ITEMS, query, (i) => `${i.name} ${i.sku} ${i.category}`, { type });
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -193,20 +201,27 @@ export default function ProductsScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search items…" className="pl-8" />
+              <Input
+                type="search"
+                aria-label="Search items…"
+                placeholder="Search items…"
+                className="pl-8"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
             <Button variant="outline" size="sm">
               <Filter className="size-4" />
               Filter
             </Button>
-            <Select defaultValue="all">
+            <Select value={type} onValueChange={setType}>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
-                <SelectItem value="products">Products</SelectItem>
-                <SelectItem value="services">Services</SelectItem>
+                <SelectItem value="Product">Products</SelectItem>
+                <SelectItem value="Service">Services</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -225,7 +240,8 @@ export default function ProductsScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ITEMS.map((i) => (
+                {rows.length === 0 && <NoMatchesRow colSpan={8} />}
+                {rows.map((i) => (
                   <TableRow key={i.id}>
                     <TableCell className="whitespace-nowrap font-medium">{i.name}</TableCell>
                     <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">{i.sku}</TableCell>
