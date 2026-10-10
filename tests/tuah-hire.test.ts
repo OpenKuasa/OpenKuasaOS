@@ -106,9 +106,19 @@ describe('Tuah prompts and hiring', () => {
     const teamPrompt = tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], true, null);
     expect(teamPrompt).not.toMatch(/payroll, staff or hiring/);
   });
-  it('says hiring cannot be changed yet', () => {
-    expect(TUAH_SYSTEM.toLowerCase()).toContain('hiring cannot be changed yet');
-    expect(tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], true, null).toLowerCase()).toContain('hiring cannot be changed yet');
+  it('says jobs can be changed and the rest of hiring cannot yet', () => {
+    for (const prompt of [TUAH_SYSTEM, tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], true, null)]) {
+      const p = prompt.toLowerCase();
+      expect(p).not.toContain('hiring cannot be changed yet');
+      expect(p).toContain('candidates, applications and interviews cannot be changed yet');
+    }
+    expect(TUAH_SYSTEM.toLowerCase()).toContain('create, edit, open, pause, close, reopen or delete jobs');
+  });
+  it('gives the hiring specialist the job rules in prepare mode', () => {
+    const lekir = subAgentSystem('hire', true).toLowerCase();
+    expect(lekir).toContain('a new job is always a draft');
+    expect(lekir).toContain('a job with applications cannot be deleted');
+    expect(lekir).not.toContain('you can only look things up');
   });
   it('still says finance, payroll and staff cannot be looked up', () => {
     expect(TUAH_SYSTEM).toContain('cannot see the rest of the workspace yet');

@@ -341,6 +341,29 @@ export const CASES: Case[] = [
     },
   },
   {
+    id: 'create-job',
+    about: 'Creates a job through Lekir as a draft, after approval',
+    run: async (ws) => {
+      const title = `Barista ${EVAL_TAG} ${tag()}`;
+      const chat = new Conversation(ws);
+      const asked = await chat.ask(`Create a job opening called "${title}" in the Operations department.`);
+      const checks = [
+        check('asked Lekir', asked.asked.includes('Lekir'), `asked: ${asked.asked.join(', ') || 'nobody'}`),
+        check('put one change up for approval', asked.pending.length === 1, `${asked.pending.length} waiting; said: ${asked.text}`),
+      ];
+      if (asked.pending.length !== 1) return checks;
+      const done = await chat.decide(true);
+      const { data } = await ws.client.from('hire_jobs').select('id,status,department').eq('org_id', ws.orgId).eq('title', title);
+      const rows = data ?? [];
+      return [
+        ...checks,
+        check('the job exists once', rows.length === 1, `rows: ${rows.length}`),
+        check('it is a draft', rows[0]?.status === 'draft', String(rows[0]?.status)),
+        check('says it is a draft', /draft/i.test(done.text), done.text),
+      ];
+    },
+  },
+  {
     id: 'hiring-lookup-empty',
     about: 'Asks Lekir about hiring, and says there is nothing yet instead of inventing jobs',
     run: async (ws) => {

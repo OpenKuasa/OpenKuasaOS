@@ -19,10 +19,37 @@ describe('LEKIR_SYSTEM', () => {
     expect(t).toContain('never invent');
     expect(t).toContain('belum ada');
   });
-  it('is honest that it cannot change anything yet, in step with holding no change tools', () => {
-    expect(t).toContain('you cannot change anything yet');
-    // When a change tool arrives, this prompt has to say what it can change.
-    expect(HIRE_WRITE_TOOL_NAMES).toHaveLength(0);
+  it('says what it can change, in step with the change tools it holds', () => {
+    expect(t).toContain('create, edit, open, pause, close, reopen or delete jobs');
+    // A change tool for something else means this line has to grow with it.
+    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$/.test(name))).toBe(true);
+    expect(HIRE_WRITE_TOOL_NAMES.length).toBeGreaterThan(0);
+  });
+  it('still cannot change candidates, applications or interviews', () => {
+    expect(t).toContain('you cannot change candidates, applications or interviews yet');
+  });
+  it('calls the change tool at once instead of asking to confirm in words', () => {
+    expect(t).toContain('call the change tool straight away');
+    expect(t).toContain('never ask "are you sure?"');
+  });
+  it('gets an id from a listing instead of asking the owner', () => {
+    expect(t).toContain('get its id');
+    expect(t).toContain('never ask the owner for an id');
+  });
+  it('reports an executed change as done, not still waiting', () => {
+    expect(t).toContain('already approved it');
+    expect(t).toContain('past tense');
+  });
+  it('knows the three job rules', () => {
+    expect(t).toContain('a new job is always a draft');
+    expect(t).toContain('needs a description before it can be opened');
+    expect(t).toContain('a job with applications cannot be deleted');
+  });
+  it('knows a live job must keep its description', () => {
+    expect(t).toContain('an open or paused job must keep a description');
+  });
+  it('treats a rejected change as the owner\'s choice', () => {
+    expect(t).toContain('it is never a permissions problem');
   });
   it('may draft hiring documents without a tool', () => {
     expect(t).toContain('job descriptions');
