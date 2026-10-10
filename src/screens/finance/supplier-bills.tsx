@@ -43,6 +43,7 @@ const COLUMNS = ['No.', 'Date', 'Supplier', 'Due', 'Total', 'Balance', 'Status']
 const BILLS: Bill[] = [
   {
     id: 'BILL-0232',
+    billNo: 'BILL-0232',
     date: '08 Oct 2026',
     supplier: 'Nusantara Logistics',
     due: '13 Oct 2026',
@@ -52,6 +53,7 @@ const BILLS: Bill[] = [
   },
   {
     id: 'BILL-0231',
+    billNo: 'BILL-0231',
     date: '05 Oct 2026',
     supplier: 'Lim Hardware Sdn Bhd',
     due: '04 Nov 2026',
@@ -61,6 +63,7 @@ const BILLS: Bill[] = [
   },
   {
     id: 'BILL-0230',
+    billNo: 'BILL-0230',
     date: '30 Sep 2026',
     supplier: 'Printhub Enterprise',
     due: '30 Oct 2026',
@@ -70,6 +73,7 @@ const BILLS: Bill[] = [
   },
   {
     id: 'BILL-0229',
+    billNo: 'BILL-0229',
     date: '22 Sep 2026',
     supplier: 'Suria Utilities Sdn Bhd',
     due: '06 Oct 2026',
@@ -79,6 +83,7 @@ const BILLS: Bill[] = [
   },
   {
     id: 'BILL-0228',
+    billNo: 'BILL-0228',
     date: '18 Sep 2026',
     supplier: 'Syarikat Maju Jaya',
     due: '18 Oct 2026',
@@ -88,6 +93,7 @@ const BILLS: Bill[] = [
   },
   {
     id: 'BILL-0227',
+    billNo: 'BILL-0227',
     date: '10 Sep 2026',
     supplier: 'Unifi Business (TM)',
     due: '10 Oct 2026',
@@ -97,6 +103,7 @@ const BILLS: Bill[] = [
   },
   {
     id: 'BILL-0226',
+    billNo: 'BILL-0226',
     date: '07 Oct 2026',
     supplier: 'Kedai Kertas Ah Seng',
     due: '06 Nov 2026',
@@ -281,7 +288,7 @@ export default async function SupplierBillsScreen() {
                 )}
                 {view.bills.map((b) => (
                   <TableRow key={b.id}>
-                    <TableCell className="font-medium">{b.id}</TableCell>
+                    <TableCell className="font-medium">{b.billNo}</TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {b.date}
                     </TableCell>

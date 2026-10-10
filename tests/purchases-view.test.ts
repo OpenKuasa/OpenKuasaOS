@@ -115,3 +115,17 @@ test('every payment row gets its own id, even with a missing or repeated number'
   const ids = paymentsView(rows, '2026-10-09').payments.map((p) => p.id);
   expect(new Set(ids).size).toBe(3);
 });
+
+test('every bill row gets its own id, and a draft shows a dash for its number', () => {
+  const view = billsView(
+    [
+      bill({ bill_no: null, key: 'k1', display_status: 'draft' }),
+      bill({ bill_no: null, key: 'k2', display_status: 'draft' }),
+      bill({ bill_no: 'BILL-0007', key: 'k3' }),
+    ],
+    [],
+    today,
+  );
+  expect(new Set(view.bills.map((b) => b.id)).size).toBe(3);
+  expect(view.bills.map((b) => b.billNo)).toEqual(['—', '—', 'BILL-0007']);
+});

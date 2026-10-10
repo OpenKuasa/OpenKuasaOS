@@ -17,7 +17,10 @@ export type Stat = {
 export type BillStatus = 'Paid' | 'Pending' | 'Overdue' | 'Draft';
 
 export type Bill = {
+  /** Unique per row, for React keys; a draft has no number. */
   id: string;
+  /** The bill number shown to the person; '—' for a draft. */
+  billNo: string;
   date: string;
   supplier: string;
   due: string;
@@ -58,7 +61,9 @@ export type PaymentsView = {
 /* ---- rows as read from Supabase ---------------------------------- */
 
 export type BillRow = {
-  bill_no: string;
+  /** Unique per bill; a draft has no number. */
+  key?: string;
+  bill_no: string | null;
   supplier_name: string;
   bill_date: string;
   due_date: string;
@@ -160,7 +165,8 @@ export function billsView(bills: BillRow[], payments: PaymentRow[], today: strin
       { key: 'draft', label: 'Draft', value: statusCount('draft'), color: 'var(--chart-3)' },
     ],
     bills: bills.slice(0, TABLE_ROWS).map((b) => ({
-      id: b.bill_no,
+      id: b.key ?? b.bill_no ?? '—',
+      billNo: b.bill_no ?? '—',
       date: day(b.bill_date),
       supplier: b.supplier_name,
       due: day(b.due_date),
@@ -251,13 +257,14 @@ type Live = NonNullable<Awaited<ReturnType<typeof liveOrg>>>;
 async function fetchBills({ supabase, orgId }: Live) {
   const { data, error } = await supabase
     .from('supplier_bill_totals')
-    .select('bill_no, supplier_name, bill_date, due_date, total, balance, display_status')
+    .select('id, bill_no, supplier_name, bill_date, due_date, total, balance, display_status')
     .eq('org_id', orgId)
     .neq('display_status', 'void')
     .order('bill_date', { ascending: false })
-    .order('bill_no', { ascending: false });
+    .order('bill_no', { ascending: false })
+    .order('id', { ascending: true });
   if (error) throw error;
-  return data as BillRow[];
+  return ((data ?? []) as (BillRow & { id: string })[]).map(({ id, ...row }) => ({ ...row, key: id }));
 }
 
 /** A row of the finance_payments_out view, as PostgREST returns it. */
