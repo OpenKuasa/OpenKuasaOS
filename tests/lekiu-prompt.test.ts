@@ -37,10 +37,59 @@ describe('LEKIU_SYSTEM', () => {
     expect(t).toContain('includeprivate');
     expect(t).toContain('only when the user asks for them');
   });
-  it('is honest that it cannot change anything yet, in step with holding no change tools', () => {
-    expect(t).toContain('you cannot change anything yet');
-    // When a change tool arrives, this prompt has to say what it can change.
-    expect(PEOPLE_WRITE_TOOL_NAMES).toHaveLength(0);
+  it('says what it can change, in step with the change tools it holds', () => {
+    expect(t).toContain('add, edit, deactivate or reactivate, and delete employees');
+    expect(t).toContain('add, rename and delete departments');
+    expect(t).toContain('link or unlink');
+    // A change tool for something else means this line has to grow with it.
+    expect([...PEOPLE_WRITE_TOOL_NAMES].every((name) => /Employee(Status|ToMember)?$|Department$/.test(name))).toBe(true);
+    expect(PEOPLE_WRITE_TOOL_NAMES).toHaveLength(8);
+  });
+  it('states that every change needs approval, and never claims one before it', () => {
+    expect(t).toContain('needs the person\'s approval first');
+    expect(t).toContain('never claim a change is done before it is approved');
+  });
+  it('calls the change tool at once instead of asking to confirm in words', () => {
+    expect(t).toContain('call the change tool straight away');
+    expect(t).toContain('never ask "are you sure?"');
+  });
+  it('gets an id from a lookup instead of asking for one', () => {
+    expect(LEKIU_SYSTEM).toContain('listEmployees');
+    expect(LEKIU_SYSTEM).toContain('listDepartments');
+    expect(t).toContain('never ask the person for an id');
+  });
+  it('reports an approved change as done, and a rejected one as their choice', () => {
+    expect(t).toContain('already approved it');
+    expect(t).toContain('past tense');
+    expect(t).toContain('it is never a permissions problem');
+  });
+  it('says what goes with a deleted employee before deleting, and offers nothing it cannot do', () => {
+    expect(t).toContain('their leave, claims, payslips and every other hr record are deleted too');
+    expect(t).toContain('deactivating keeps their records');
+  });
+  it('never invents an employee\'s details', () => {
+    expect(t).toContain('a new employee needs a name');
+    expect(t).toContain('only what the person told you in this chat');
+  });
+  it('does not add a department nobody asked for', () => {
+    expect(t).toContain('never add a department on your own');
+  });
+  it('says who changes staff records when it holds no change tool', () => {
+    expect(t).toContain('an owner or admin of the workspace');
+  });
+  it('is still honest about what cannot be done yet, without sending people to a screen', () => {
+    expect(t).toContain('approve or reject leave');
+    expect(t).toContain('not available in openkuasa yet');
+    expect(t).toContain('do not send them to a screen to do it');
+    expect(t).not.toContain('you cannot change anything yet');
+  });
+  it('uses asked_by for "saya", and asks only when it is missing', () => {
+    expect(t).toContain('asked_by');
+    expect(t).toContain("never present everyone's rows as theirs");
+  });
+  it('tells an unlinked member who can link their account', () => {
+    expect(t).toContain('an owner or admin can link it');
+    expect(t).not.toContain('linking accounts to employee records is not available');
   });
   it('may draft notices and letters without a tool', () => {
     expect(t).toContain('announcements');
@@ -54,6 +103,9 @@ describe('LEKIU_SYSTEM', () => {
     for (const word of ['race', 'religion', 'gender', 'age', 'pregnancy', 'disability']) expect(t, word).toContain(word);
   });
   it('keeps to HR and leaves hiring to Lekir', () => {
+    expect(t).toContain('adding an employee record for someone who is joining or has joined is yours');
+    expect(t).not.toContain('hiring new people belongs to lekir');
+    expect(t).toContain('if a lookup comes back with "ok": false');
     expect(LEKIU_SYSTEM).toContain('Lekir');
     expect(t).toContain('hr only');
   });
@@ -93,14 +145,5 @@ describe('LEKIU_SYSTEM', () => {
   });
   it('tells never-entered private details apart from details the user may not see', () => {
     expect(t).toContain('private_recorded');
-  });
-  it('does not send people to screens that cannot do the job yet', () => {
-    expect(t).toContain('not available in openkuasa yet');
-    expect(t).toContain('do not send them to a screen to do it');
-    expect(t).not.toContain('name the screen where it is done');
-  });
-  it('asks who "saya" is when it can see everyone', () => {
-    expect(t).toContain('you do not know which employee they are');
-    expect(t).toContain("never present everyone's rows as theirs");
   });
 });

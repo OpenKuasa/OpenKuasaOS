@@ -26,17 +26,19 @@ export async function getPeopleViewer(client: SupabaseClient, org: CurrentOrg | 
   const [workspace, linked] = await Promise.all([
     client.from('orgs').select('slug').eq('id', org.orgId).maybeSingle(),
     user
-      ? client.from('hr_employees').select('id').eq('org_id', org.orgId).eq('user_id', user.id).maybeSingle()
+      ? client.from('hr_employees').select('id,name').eq('org_id', org.orgId).eq('user_id', user.id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ]);
   if (workspace.error) throw workspace.error;
   if (linked.error) throw linked.error;
 
   const isDemo = workspace.data?.slug === DEMO_ORG_SLUG;
-  const linkedId = (linked.data as { id: string } | null)?.id ?? null;
+  const linkedRow = linked.data as { id: string; name?: string | null } | null;
   return {
-    employeeId: linkedId ?? (isDemo ? DEMO_EMPLOYEE_ID : null),
+    employeeId: linkedRow?.id ?? (isDemo ? DEMO_EMPLOYEE_ID : null),
     isHr: can(org.role, 'approve'),
     isDemo,
+    // Left out, not null, when unknown: callers compare viewers whole.
+    ...(linkedRow?.name ? { employeeName: linkedRow.name } : {}),
   };
 }

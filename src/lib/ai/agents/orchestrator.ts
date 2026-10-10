@@ -117,7 +117,7 @@ export function runLekir(
 
 /**
  * "Lekiu, your HR co-pilot": the same single agent as Jebat, holding the HR
- * lookups. It has no change tools yet, so nothing asks for approval.
+ * lookups. Lookups run on their own; each change to an employee or a department waits for the person's approval.
  */
 export function runLekiu(
   messages: ModelMessage[],
@@ -134,7 +134,8 @@ export function runLekiu(
     tools,
     toolApproval,
     onLanguageModelCallEnd: logModelCall('lekiu', pickModelId('orchestrator')),
-    stopWhen: stepCountIs(8),
+    // A change often needs two lookups first (the employee, then the department).
+    stopWhen: stepCountIs(10),
     // A drafted notice or letter runs longer than a data answer.
     maxOutputTokens: 1400,
     abortSignal,

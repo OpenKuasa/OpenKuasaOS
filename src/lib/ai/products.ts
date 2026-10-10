@@ -11,7 +11,7 @@
 import type { ToolSet } from 'ai';
 import { CRM_WRITE_TOOL_NAMES, createCrmTools, type CrmAccess } from '@/lib/ai/crm-tools';
 import { createHireTools } from '@/lib/ai/hire-tools';
-import { createPeopleTools } from '@/lib/ai/people-tools';
+import { createPeopleTools, type PeopleWrite } from '@/lib/ai/people-tools';
 import { createReachTools } from '@/lib/ai/tools';
 import type { HireWriteContext } from '@/lib/hire/capabilities';
 import type { ReachWriteContext } from '@/lib/reach/capabilities';
@@ -60,11 +60,20 @@ export type HireAccess = {
 /** Hiring tools that change data. */
 export const HIRE_WRITE_TOOL_NAMES = ['createJob', 'updateJob', 'setJobStatus', 'deleteJob'] as const;
 
-/** The HR data an agent reads, and who is asking. */
-export type PeopleAccess = { data: PeopleData; viewer: PeopleViewer };
+/** The HR data an agent reads, who is asking, and whether they may change it. */
+export type PeopleAccess = { data: PeopleData; viewer: PeopleViewer; write?: PeopleWrite };
 
-/** HR tools that change data. None yet: Lekiu can only look things up. */
-export const PEOPLE_WRITE_TOOL_NAMES: readonly string[] = [];
+/** HR tools that change data: employees and departments. */
+export const PEOPLE_WRITE_TOOL_NAMES = [
+  'createEmployee',
+  'updateEmployee',
+  'setEmployeeStatus',
+  'deleteEmployee',
+  'linkEmployeeToMember',
+  'createDepartment',
+  'updateDepartment',
+  'deleteDepartment',
+] as const;
 
 export type ProductKey = 'reach' | 'crm' | 'hire' | 'people';
 
@@ -110,7 +119,7 @@ export function peopleProduct(people: PeopleAccess): ProductToolkit {
   return {
     key: 'people',
     name: 'Lekiu',
-    ...split(createPeopleTools(people.data, people.viewer), PEOPLE_WRITE_TOOL_NAMES),
+    ...split(createPeopleTools(people.data, people.viewer, () => new Date(), people.write), PEOPLE_WRITE_TOOL_NAMES),
   };
 }
 

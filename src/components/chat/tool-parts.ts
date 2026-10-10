@@ -73,6 +73,7 @@ const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
   getPeopleOverview: { label: 'Team overview', Icon: PieChart },
   listEmployees: { label: 'Employees', Icon: Users },
   getEmployee: { label: 'Employee', Icon: Contact },
+  listDepartments: { label: 'Departments', Icon: Users },
   getHeadcountByDepartment: { label: 'Headcount', Icon: ChartColumn },
   listWhoIsOnLeave: { label: 'On leave', Icon: CalendarDays },
   listLeaveRequests: { label: 'Leave requests', Icon: ClipboardList },

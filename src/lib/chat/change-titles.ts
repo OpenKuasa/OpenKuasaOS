@@ -41,7 +41,9 @@ export type ItemKind =
   | 'stage'
   | 'follow-up'
   | 'schedule'
-  | 'job';
+  | 'job'
+  | 'employee'
+  | 'department';
 const KIND_OF_TOOL: Record<string, ItemKind> = {
   getCampaigns: 'campaign',
   createCampaign: 'campaign',
@@ -80,6 +82,17 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   updateJob: 'job',
   setJobStatus: 'job',
   deleteJob: 'job',
+  listEmployees: 'employee',
+  getEmployee: 'employee',
+  createEmployee: 'employee',
+  updateEmployee: 'employee',
+  setEmployeeStatus: 'employee',
+  deleteEmployee: 'employee',
+  linkEmployeeToMember: 'employee',
+  listDepartments: 'department',
+  createDepartment: 'department',
+  updateDepartment: 'department',
+  deleteDepartment: 'department',
 };
 
 /** Names by `kind:id`, so a later turn can still say what an id refers to. */
@@ -229,6 +242,22 @@ export function approvalTitle(
           ? `Pause ${the('job', 'job')}?`
           : `Close ${the('job', 'job')}?`;
     case 'deleteJob': return `Delete ${the('job', 'job')}?`;
+    case 'createEmployee': return `Add employee “${i.name ?? ''}”?`;
+    case 'updateEmployee': return `Save changes to ${the('employee', 'employee')}?`;
+    case 'setEmployeeStatus':
+      return i.status === 'inactive'
+        ? `Deactivate ${the('employee', 'employee')}?`
+        : `Reactivate ${the('employee', 'employee')}?`;
+    case 'deleteEmployee': return `Delete ${the('employee', 'employee')}?`;
+    case 'linkEmployeeToMember':
+      // Unlink only on an explicit null; a blank or missing email is not a request to unlink.
+      if (i.memberEmail === null) return `Unlink ${the('employee', 'employee')} from their account?`;
+      return typeof i.memberEmail === 'string' && i.memberEmail.trim()
+        ? `Link ${the('employee', 'employee')} to the account ${i.memberEmail.trim()}?`
+        : 'Approve this change?';
+    case 'createDepartment': return `Add department “${i.name ?? ''}”?`;
+    case 'updateDepartment': return `Rename ${the('department', 'department')} to “${i.name ?? ''}”?`;
+    case 'deleteDepartment': return `Delete ${the('department', 'department')}?`;
     default: return 'Approve this change?';
   }
 }
@@ -276,6 +305,68 @@ function dateText(value: unknown): string | null {
 
 const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null);
 
+/** Ringgit with sen always shown: "RM 4,500.00". */
+function ringgitFixed(amount: number): string {
+  const [whole, sen] = amount.toFixed(2).split('.');
+  return `RM ${whole.replace(/\B(?=(\d{3})+$)/g, ',')}.${sen}`;
+}
+
+type EmployeeField = { key: string; word: string; show?: (value: unknown) => string | null };
+
+const shownText = (value: unknown) => text(value);
+const shownSalary = (value: unknown) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? ringgitFixed(value) : null;
+
+const EMPLOYEE_FIELDS: EmployeeField[] = [
+  { key: 'name', word: 'name' },
+  { key: 'employee_no', word: 'employee number' },
+  { key: 'work_email', word: 'work email', show: shownText },
+  { key: 'department_id', word: 'department' },
+  { key: 'designation', word: 'designation' },
+  { key: 'employment_type', word: 'employment type' },
+  { key: 'is_manager', word: 'manager flag' },
+  { key: 'join_date', word: 'join date' },
+  { key: 'status', word: 'status', show: shownText },
+];
+
+// Pay and identity details live under `private`. Only the salary's value is shown; the rest are named.
+const PRIVATE_EMPLOYEE_FIELDS: EmployeeField[] = [
+  { key: 'base_salary', word: 'monthly salary', show: shownSalary },
+  { key: 'nric', word: 'NRIC' },
+  { key: 'date_of_birth', word: 'date of birth' },
+  { key: 'phone', word: 'phone' },
+  { key: 'address', word: 'address' },
+  { key: 'bank_name', word: 'bank name' },
+  { key: 'bank_account', word: 'bank account' },
+  { key: 'epf_no', word: 'EPF number' },
+  { key: 'socso_no', word: 'SOCSO number' },
+  { key: 'tax_no', word: 'tax number' },
+  { key: 'emergency_contact_name', word: 'emergency contact name' },
+  { key: 'emergency_contact_phone', word: 'emergency contact phone' },
+];
+
+/** The fields an employee change sends, in plain words; a null or blank value reads "cleared". */
+function employeeFieldWords(i: Record<string, unknown>, includeName: boolean): string[] {
+  const priv = (i.private && typeof i.private === 'object' ? i.private : {}) as Record<string, unknown>;
+  const words: string[] = [];
+  const add = (fields: EmployeeField[], source: Record<string, unknown>) => {
+    for (const { key, word, show } of fields) {
+      if (key === 'name' && !includeName) continue;
+      const value = source[key];
+      if (value === undefined) continue;
+      if (value === null || (typeof value === 'string' && value.trim() === '')) {
+        words.push(`${word} (cleared)`);
+        continue;
+      }
+      const shown = show?.(value);
+      words.push(shown ? `${word} (${shown})` : word);
+    }
+  };
+  add(EMPLOYEE_FIELDS, i);
+  add(PRIVATE_EMPLOYEE_FIELDS, priv);
+  return words;
+}
+
 /**
  * The second line of an approval card. For a job it shows the values the
  * user is approving that the question itself does not: the salary and the
@@ -283,6 +374,18 @@ const text = (value: unknown): string | null => (typeof value === 'string' && va
  */
 export function approvalDetail(toolName: string, input?: unknown): string | null {
   const i = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  if (toolName === 'deleteEmployee') {
+    return 'Their leave, claims, payslips and every other HR record are deleted too. This cannot be undone.';
+  }
+  if (toolName === 'updateEmployee') {
+    const words = employeeFieldWords(i, true);
+    return words.length > 0 ? `Changes: ${words.join(', ')}` : null;
+  }
+  if (toolName === 'createEmployee') {
+    // A new employee has nothing to clear: a null or blank field simply sets nothing.
+    const words = employeeFieldWords(i, false).filter((w) => !w.endsWith('(cleared)'));
+    return words.length > 0 ? `Sets: ${words.join(', ')}` : null;
+  }
   if (toolName === 'createJob') {
     const salary = salaryText(sen(i.salary_min_cents), sen(i.salary_max_cents));
     const closes = dateText(i.closes_on);
@@ -317,7 +420,8 @@ export function approvalDetail(toolName: string, input?: unknown): string | null
     toolName === 'deleteDeal' ||
     toolName === 'deleteLead' ||
     toolName === 'deleteAppointment' ||
-    toolName === 'deleteJob'
+    toolName === 'deleteJob' ||
+    toolName === 'deleteDepartment'
   ) {
     return 'This cannot be undone.';
   }

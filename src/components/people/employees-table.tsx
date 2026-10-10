@@ -1,0 +1,363 @@
+'use client';
+
+import { useMemo, useState, useTransition } from 'react';
+import { Dialog } from 'radix-ui';
+import { Pencil, Plus, Search, Trash2, UserCheck, UserX } from 'lucide-react';
+import {
+  createEmployeeAction,
+  deleteEmployeeAction,
+  linkEmployeeToMemberAction,
+  loadEmployeePrivateAction,
+  setEmployeeStatusAction,
+  updateEmployeeAction,
+} from '@/app/(app)/people/actions';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { formatDay } from '@/lib/people/dates';
+import { EMPLOYMENT_LABEL, type EmployeeFilter, filterEmployees, linkableMembers } from '@/lib/people/employees';
+import type { WorkspaceMember } from '@/lib/people/members';
+import type { Department, Employee } from '@/lib/people/types';
+import { cn } from '@/lib/utils';
+import { type EditingEmployee, EmployeeForm } from './employee-form';
+
+type ActionResult = { ok: boolean; error?: string };
+
+const NOT_LINKED = 'none';
+
+const initials = (name: string) =>
+  name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0] ?? '')
+    .join('')
+    .toUpperCase();
+
+/**
+ * The staff directory. Everyone in the workspace sees the list and its
+ * filters; an owner or admin (`canEdit`) also gets add, edit, deactivate,
+ * delete and the account link. Nothing private is ever in `employees`.
+ */
+export function EmployeesTable({
+  employees,
+  departments,
+  members,
+  canEdit,
+}: {
+  employees: Employee[];
+  departments: Department[];
+  /** The workspace's members, for the account link. Empty for someone who cannot edit. */
+  members: WorkspaceMember[];
+  canEdit: boolean;
+}) {
+  const [pending, start] = useTransition();
+  const [filter, setFilter] = useState<EmployeeFilter>({ query: '', departmentId: 'all', status: 'all' });
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<EditingEmployee | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  const shown = useMemo(() => filterEmployees(employees, filter), [employees, filter]);
+  const formOpen = canEdit && (creating || editing !== null);
+  const columns = canEdit ? 9 : 7;
+
+  function act(result: Promise<ActionResult>) {
+    start(async () => {
+      const res = await result;
+      setError(res.ok ? null : (res.error ?? 'Something went wrong.'));
+      if (res.ok) {
+        setCreating(false);
+        setEditing(null);
+      }
+    });
+  }
+
+  /** Fetches the private details first, so they never travel with the directory. */
+  function openEdit(employee: Employee) {
+    setError(null);
+    start(async () => {
+      const res = await loadEmployeePrivateAction({ id: employee.id });
+      setEditing({ employee, private: res.ok ? res.data : null, privateLoaded: res.ok });
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center">
+        <div className="relative w-full sm:max-w-md">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            aria-label="Search employees"
+            placeholder="Search name, email, employee no…"
+            className="pl-9"
+            value={filter.query}
+            onChange={(event) => setFilter((current) => ({ ...current, query: event.target.value }))}
+          />
+        </div>
+        <Select
+          value={filter.departmentId}
+          onValueChange={(value) => setFilter((current) => ({ ...current, departmentId: value }))}
+        >
+          <SelectTrigger aria-label="Department" className="w-full sm:w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All departments</SelectItem>
+            {departments.map((department) => (
+              <SelectItem key={department.id} value={department.id}>
+                {department.name}
+              </SelectItem>
+            ))}
+            <SelectItem value="none">No department</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={filter.status}
+          onValueChange={(value) => setFilter((current) => ({ ...current, status: value as EmployeeFilter['status'] }))}
+        >
+          <SelectTrigger aria-label="Status" className="w-full sm:w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+        {canEdit ? (
+          <Button
+            type="button"
+            size="sm"
+            className="shrink-0 sm:ml-auto"
+            disabled={pending}
+            onClick={() => {
+              setError(null);
+              setCreating(true);
+            }}
+          >
+            <Plus className="size-4" />
+            Add employee
+          </Button>
+        ) : null}
+      </div>
+
+      {error && !formOpen ? (
+        <p
+          role="alert"
+          className="mx-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      ) : null}
+
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40">
+              <TableHead>Employee</TableHead>
+              <TableHead>Employee no.</TableHead>
+              <TableHead>Department</TableHead>
+              <TableHead>Designation</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead className="whitespace-nowrap">Join date</TableHead>
+              <TableHead>Status</TableHead>
+              {canEdit ? <TableHead>Account</TableHead> : null}
+              {canEdit ? <TableHead className="text-right">Actions</TableHead> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.map((employee) => (
+              <TableRow key={employee.id}>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                      {initials(employee.name)}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {employee.name}
+                        {employee.is_manager ? (
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">Manager</span>
+                        ) : null}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">{employee.work_email ?? '—'}</p>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{employee.employee_no}</TableCell>
+                <TableCell className="whitespace-nowrap">{employee.department_name ?? '—'}</TableCell>
+                <TableCell className="whitespace-nowrap">{employee.designation ?? '—'}</TableCell>
+                <TableCell className="whitespace-nowrap">{EMPLOYMENT_LABEL[employee.employment_type]}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">
+                  {employee.join_date ? `${formatDay(employee.join_date)} ${employee.join_date.slice(0, 4)}` : '—'}
+                </TableCell>
+                <TableCell>
+                  <span
+                    className={cn(
+                      'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                      employee.status === 'active'
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {employee.status === 'active' ? 'Active' : 'Inactive'}
+                  </span>
+                </TableCell>
+                {canEdit ? (
+                  <TableCell>
+                    <Select
+                      value={employee.user_id ?? NOT_LINKED}
+                      disabled={pending}
+                      onValueChange={(value) => {
+                        const next = value === NOT_LINKED ? null : value;
+                        if (next === employee.user_id) return;
+                        act(linkEmployeeToMemberAction({ id: employee.id, user_id: next }));
+                      }}
+                    >
+                      <SelectTrigger aria-label={`Account for ${employee.name}`} size="sm" className="w-44">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NOT_LINKED}>Not linked</SelectItem>
+                        {linkableMembers(members, employees, employee).map((member) => (
+                          <SelectItem key={member.userId} value={member.userId}>
+                            {member.email}
+                          </SelectItem>
+                        ))}
+                        {/* A linked account that is not in the member list (no email on file) still has to show. */}
+                        {employee.user_id && !members.some((member) => member.userId === employee.user_id) ? (
+                          <SelectItem value={employee.user_id}>Linked account</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                ) : null}
+                {canEdit ? (
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => openEdit(employee)}>
+                        <Pencil className="size-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() =>
+                          act(
+                            setEmployeeStatusAction({
+                              id: employee.id,
+                              status: employee.status === 'active' ? 'inactive' : 'active',
+                            }),
+                          )
+                        }
+                      >
+                        {employee.status === 'active' ? <UserX className="size-4" /> : <UserCheck className="size-4" />}
+                        {employee.status === 'active' ? 'Deactivate' : 'Reactivate'}
+                      </Button>
+                      {confirmingId === employee.id ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => {
+                              setConfirmingId(null);
+                              act(deleteEmployeeAction({ id: employee.id }));
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                            Delete for good
+                          </Button>
+                          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setConfirmingId(null)}>
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={pending}
+                          onClick={() => setConfirmingId(employee.id)}
+                        >
+                          <Trash2 className="size-4" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                    {confirmingId === employee.id ? (
+                      <p role="alert" className="mt-1 text-right text-xs text-destructive">
+                        Their leave, claims, payslips and every other HR record are deleted too. This cannot be undone.
+                      </p>
+                    ) : null}
+                  </TableCell>
+                ) : null}
+              </TableRow>
+            ))}
+            {shown.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={columns} className="py-8 text-center text-sm text-muted-foreground">
+                  {employees.length === 0
+                    ? canEdit
+                      ? 'No employees yet. Add your first one above.'
+                      : 'No employees have been added yet.'
+                    : 'No employees match these filters.'}
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
+        <span>
+          {shown.length} of {employees.length} employees
+        </span>
+        <span>{employees.filter((employee) => employee.status === 'active').length} active</span>
+      </div>
+
+      <Dialog.Root
+        open={formOpen}
+        onOpenChange={(open) => {
+          if (!open && !pending) {
+            setCreating(false);
+            setEditing(null);
+            setError(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-background p-5 shadow-lg outline-none">
+            <Dialog.Title className="text-base font-semibold">{editing ? 'Edit employee' : 'Add employee'}</Dialog.Title>
+            <Dialog.Description className="mb-4 text-sm text-muted-foreground">
+              {editing ? `Update ${editing.employee.name}’s record.` : 'Add someone to the staff directory.'}
+            </Dialog.Description>
+            {formOpen ? (
+              <EmployeeForm
+                key={editing?.employee.id ?? 'new'}
+                initial={editing}
+                departments={departments}
+                disabled={pending}
+                error={error}
+                onCancel={() => {
+                  setCreating(false);
+                  setEditing(null);
+                  setError(null);
+                }}
+                onSubmit={(input) =>
+                  act(editing ? updateEmployeeAction({ id: editing.employee.id, ...input }) : createEmployeeAction(input))
+                }
+              />
+            ) : null}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </div>
+  );
+}

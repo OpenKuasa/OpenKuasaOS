@@ -4,7 +4,7 @@ const ctl = vi.hoisted(() => ({
   user: null as { id: string; is_anonymous: boolean } | null,
   org: null as { orgId: string; role: string } | null,
   slug: 'acme' as string,
-  linkedEmployee: null as { id: string } | null,
+  linkedEmployee: null as { id: string; name?: string } | null,
   freeRemaining: 2 as number,
   sealedKey: null as string | null,
   providerKey: true,
@@ -109,6 +109,7 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
 const SECRET = 'test-secret-for-sealing-workspace-keys-0123456789';
 const { encryptApiKey } = await import('@/lib/ai/key-crypto');
 const { PEOPLE_TOOL_NAMES } = await import('@/lib/ai/people-tools');
+const { PEOPLE_WRITE_TOOL_NAMES } = await import('@/lib/ai/products');
 const { POST } = await import('@/app/api/people/chat/route');
 
 function post(body: unknown): Request {
@@ -207,7 +208,7 @@ describe('POST /api/people/chat happy path', () => {
 
     const [call] = ctl.calls;
     expect(call.system).toMatch(/^You are Lekiu/);
-    expect(call.tools.sort()).toEqual([...PEOPLE_TOOL_NAMES].sort());
+    expect(call.tools.sort()).toEqual([...PEOPLE_TOOL_NAMES, ...PEOPLE_WRITE_TOOL_NAMES].sort());
     expect(call.tools).not.toContain('getCampaigns');
     expect(call.tools).not.toContain('listDeals');
     expect(call.tools).not.toContain('listJobs');
@@ -253,9 +254,27 @@ describe('POST /api/people/chat happy path', () => {
     expect(ctl.captured!.viewer).toEqual({ employeeId: null, isHr: false, isDemo: false });
   });
 
-  it('holds no change tools for anyone', async () => {
+  it.each(['owner', 'admin'])('gives an %s the change tools, bound to their own workspace', async (role) => {
+    ctl.org = { orgId: 'org1', role };
+    await (await POST(post({ ...validBody, orgId: 'someone-elses-org' }))).text();
+    for (const name of PEOPLE_WRITE_TOOL_NAMES) expect(ctl.calls[0].tools).toContain(name);
+    expect(ctl.captured!.write?.canWrite).toBe(true);
+    expect(ctl.captured!.write?.ctx.orgId).toBe('org1');
+  });
+
+  it.each(['member', 'viewer'])('gives a %s the lookups only', async (role) => {
+    ctl.org = { orgId: 'org1', role };
     await (await POST(post(validBody))).text();
+    expect(ctl.captured!.write).toBeUndefined();
+    expect(ctl.calls[0].tools.sort()).toEqual([...PEOPLE_TOOL_NAMES].sort());
     for (const name of ctl.calls[0].tools) expect(name).toMatch(/^(get|list)/);
+  });
+
+  it('tells the tools the name of the employee who is asking', async () => {
+    ctl.org = { orgId: 'org1', role: 'member' };
+    ctl.linkedEmployee = { id: 'emp-7', name: 'Farah Idris' };
+    await (await POST(post(validBody))).text();
+    expect(ctl.captured!.viewer).toEqual({ employeeId: 'emp-7', isHr: false, isDemo: false, employeeName: 'Farah Idris' });
   });
 
   it('runs on the workspace key without touching the free allowance', async () => {

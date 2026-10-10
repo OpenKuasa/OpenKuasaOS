@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import {
   Bot,
   Cake,
@@ -25,13 +26,12 @@ import { LiveDot } from '@/components/ui/live-dot';
 import { formatDay } from '@/lib/people/dates';
 import { approvalsHeading, buildPeopleOverviewModel } from '@/lib/people/overview';
 import { AskLekiuHero } from '@/screens/people/ask-lekiu-hero';
-import { HR_ONLY, LOAD_FAILED, Muted, NOT_AVAILABLE, loadPeople } from '@/screens/people/parts';
+import { DEPARTMENT_COLORS, HR_ONLY, LOAD_FAILED, Muted, NOT_AVAILABLE, loadPeople } from '@/screens/people/parts';
 
 /* ---- static config ------------------------------------------------ */
 
 const HEADCOUNT_SERIES: Series[] = [{ key: 'headcount', label: 'Headcount', color: 'var(--chart-1)' }];
 const LEAVE_SERIES: Series[] = [{ key: 'days', label: 'Days', color: 'var(--chart-2)' }];
-const DEPARTMENT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--muted-foreground)'];
 
 /** Sample crew, shown in the demo workspace only. */
 const AGENTS = [
@@ -93,7 +93,7 @@ export default async function OverviewScreen() {
           >
             <p className="text-sm text-muted-foreground">
               You can see the team, but your own leave, claims and payslips will appear only once your
-              account is linked to your employee record. Linking accounts is coming soon.
+              account is linked to your employee record. Ask an owner or admin of this workspace to link it on the Employees screen.
             </p>
           </BentoCard>
         ) : null}
@@ -101,7 +101,17 @@ export default async function OverviewScreen() {
         {noEmployees ? (
           <BentoCard title="No employees yet" icon={Users} className="col-span-2 md:col-span-12">
             <p className="text-sm text-muted-foreground">
-              No employees have been added yet. Adding employees is coming soon.
+              {viewer.isHr ? (
+                <>
+                  No employees have been added yet.{' '}
+                  <Link href="/people/employees" className="font-medium text-primary underline-offset-4 hover:underline">
+                    Add your first employee
+                  </Link>
+                  .
+                </>
+              ) : (
+                'No employees have been added yet. An owner or admin of this workspace can add them.'
+              )}
             </p>
           </BentoCard>
         ) : null}

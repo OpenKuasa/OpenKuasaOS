@@ -47,8 +47,16 @@ import {
   Coins,
   type LucideIcon,
 } from 'lucide-react';
+import type { OrgRole } from '@/lib/auth/current-org';
+import { type Capability, canSee } from '@/lib/auth/permissions';
 
-export type NavItem = { label: string; slug: string; icon: LucideIcon };
+export type NavItem = {
+  label: string;
+  slug: string;
+  icon: LucideIcon;
+  /** Shown only to someone with this capability. Left out: shown to everyone. */
+  needs?: Capability;
+};
 export type NavSection = { label: string; items: NavItem[] };
 
 export type Product = {
@@ -200,10 +208,10 @@ export const PRODUCTS: Product[] = [
       {
         label: 'Approvals',
         items: [
-          { label: 'Leave', slug: 'approve-leave', icon: CircleCheck },
-          { label: 'Financial Claims', slug: 'approve-claims', icon: CircleCheck },
-          { label: 'Overtime', slug: 'approve-overtime', icon: CircleCheck },
-          { label: 'Time-Off', slug: 'approve-time-off', icon: CircleCheck },
+          { label: 'Leave', slug: 'approve-leave', icon: CircleCheck, needs: 'approve' },
+          { label: 'Financial Claims', slug: 'approve-claims', icon: CircleCheck, needs: 'approve' },
+          { label: 'Overtime', slug: 'approve-overtime', icon: CircleCheck, needs: 'approve' },
+          { label: 'Time-Off', slug: 'approve-time-off', icon: CircleCheck, needs: 'approve' },
           { label: 'Public Holidays', slug: 'public-holidays', icon: Heart },
           { label: 'Letters', slug: 'letters', icon: FileText },
         ],
@@ -219,8 +227,8 @@ export const PRODUCTS: Product[] = [
       {
         label: 'Payroll',
         items: [
-          { label: 'Payroll', slug: 'payroll', icon: Banknote },
-          { label: 'Payment Vouchers', slug: 'payment-vouchers', icon: Receipt },
+          { label: 'Payroll', slug: 'payroll', icon: Banknote, needs: 'approve' },
+          { label: 'Payment Vouchers', slug: 'payment-vouchers', icon: Receipt, needs: 'approve' },
         ],
       },
       {
@@ -233,7 +241,7 @@ export const PRODUCTS: Product[] = [
       },
       {
         label: 'Configuration',
-        items: [{ label: 'Settings', slug: 'settings', icon: Settings }],
+        items: [{ label: 'Settings', slug: 'settings', icon: Settings, needs: 'approve' }],
       },
     ],
   },
@@ -389,4 +397,14 @@ export function findItem(
     if (hit) return hit;
   }
   return undefined;
+}
+
+/**
+ * A product's navigation for one viewer: items they may not use are left out,
+ * and so is a section with nothing left in it. Demo visitors see everything.
+ */
+export function visibleSections(product: Product, viewer: { role: OrgRole; isDemo: boolean }): NavSection[] {
+  return product.sections
+    .map((section) => ({ ...section, items: section.items.filter((item) => canSee(viewer, item.needs)) }))
+    .filter((section) => section.items.length > 0);
 }

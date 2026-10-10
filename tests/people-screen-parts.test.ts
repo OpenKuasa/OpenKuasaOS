@@ -55,7 +55,7 @@ vi.mock('@/lib/people/supabase', () => ({
 
 import { loadPeople } from '@/screens/people/parts';
 
-const build = vi.fn(async (data: unknown) => ({ got: data }));
+const build = vi.fn<(data: unknown, now: Date, ctx: unknown) => Promise<{ got: unknown }>>(async (data) => ({ got: data }));
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -68,7 +68,7 @@ beforeEach(() => {
   ctl.createdFor = [];
   ctl.fallbackCalls = 0;
   build.mockClear();
-  build.mockImplementation(async (data: unknown) => ({ got: data }));
+  build.mockImplementation(async (data) => ({ got: data }));
 });
 
 describe('loadPeople', () => {
@@ -130,5 +130,19 @@ describe('loadPeople', () => {
     expect((await loadPeople('t', build)).chatDemo).toBe(true);
     ctl.user = { id: 'u3', is_anonymous: false };
     expect((await loadPeople('t', build)).chatDemo).toBe(false);
+  });
+
+  it('hands the builder the workspace and the viewer it resolved', async () => {
+    ctl.org = { orgId: 'org-9', role: 'owner' };
+    await loadPeople('test', build);
+    const ctx = build.mock.calls[0][2] as { orgId: string | null; viewer: unknown; client: unknown };
+    expect(ctx.orgId).toBe('org-9');
+    expect(ctx.viewer).toEqual(ctl.viewer);
+    expect(ctx.client).toBeDefined();
+
+    build.mockClear();
+    ctl.org = null;
+    await loadPeople('test', build);
+    expect((build.mock.calls[0][2] as { orgId: string | null }).orgId).toBeNull();
   });
 });
