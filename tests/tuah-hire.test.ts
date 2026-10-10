@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createSeedHireData } from '@/lib/hire/seed';
 import { createSeedReachData } from '@/lib/reach/seed';
 import { HIRE_TOOL_NAMES } from '@/lib/ai/hire-tools';
+import { HIRE_WRITE_TOOL_NAMES } from '@/lib/ai/products';
 
 const seen = vi.hoisted(() => ({ calls: [] as { layer: string; system: string; tools: string[] }[] }));
 
@@ -68,6 +69,18 @@ describe('Tuah with hiring', () => {
     expect(tuah.tools).toContain('askJebat');
     expect(tuah.tools).not.toContain('listJobs');
     expect(tuah.system).toContain('askLekir: Lekir, for hiring');
+  });
+});
+
+describe('Tuah with hiring changes', () => {
+  it('on its team holds askLekir and applyChange, and no hiring change tool itself', async () => {
+    seen.calls = [];
+    const writer = { ...hire(), write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+    await runTuah(ask, reach(), undefined, undefined, null, null, team(), writer).consumeStream();
+    const [tuah] = seen.calls;
+    expect(tuah.tools).toContain('askLekir');
+    expect(tuah.tools).toContain('applyChange');
+    for (const name of HIRE_WRITE_TOOL_NAMES) expect(tuah.tools).not.toContain(name);
   });
 });
 

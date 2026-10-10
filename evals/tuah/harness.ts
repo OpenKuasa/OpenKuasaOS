@@ -159,7 +159,10 @@ export class Conversation {
         proposals: this.proposals,
         names: this.names,
       },
-      { data: createSupabaseHireData(client, orgId) },
+      {
+        data: createSupabaseHireData(client, orgId),
+        write: canWrite ? { ctx: { client, orgId }, canWrite: true } : undefined,
+      },
     );
     // A model call that breaks partway leaves a half answer; that is not Tuah's answer.
     let broke: unknown;

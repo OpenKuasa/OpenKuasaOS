@@ -44,12 +44,13 @@ export async function POST(request: Request) {
 
   const org = hasSupabaseEnv() ? await getCurrentOrg(supabase) : null;
   const data = await getReachData(supabase);
-  const hire = { data: await getHireData(supabase) };
   // Only a non-viewer member gets change tools (and each still needs approval).
   const write =
     org && org.role !== 'viewer'
       ? { ctx: { client: supabase, orgId: org.orgId }, canWrite: true }
       : undefined;
+  // Lekir's change tools need the same write access as Jebat's.
+  const hire = { data: await getHireData(supabase), write };
   const crm = org
     ? {
         client: supabase,

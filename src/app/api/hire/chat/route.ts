@@ -4,13 +4,15 @@
  *
  * Same gate as Ask-Jebat (see `prepareChat`): signed in, not a demo guest, a
  * workspace key or a free weekly question. Lekir then runs with the hiring
- * lookups, which read a request-scoped provider from `getHireData` (RLS-scoped
+ * lookups and, for a member who may write, change tools for jobs (each
+ * needs approval). They read a request-scoped provider from `getHireData` (RLS-scoped
  * Supabase in prod, sample data in dev, nothing for someone in no workspace).
- * It holds no change tools yet.
  */
 
 import { prepareChat } from '@/lib/ai/chat-request';
 import { runLekir } from '@/lib/ai/agents/orchestrator';
+import { getCurrentOrg } from '@/lib/auth/current-org';
+import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { getHireData } from '@/lib/hire/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -21,8 +23,14 @@ export async function POST(request: Request) {
   const chat = await prepareChat(request);
   if (!chat.ok) return chat.response;
 
+  const org = hasSupabaseEnv() ? await getCurrentOrg(chat.supabase) : null;
   const data = await getHireData(chat.supabase);
-  const result = runLekir(chat.messages, { data }, request.signal, chat.apiKey);
+  // Only a non-viewer member gets change tools (and each still needs approval).
+  const write =
+    org && org.role !== 'viewer'
+      ? { ctx: { client: chat.supabase, orgId: org.orgId }, canWrite: true }
+      : undefined;
+  const result = runLekir(chat.messages, { data, write }, request.signal, chat.apiKey);
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {

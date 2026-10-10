@@ -12,6 +12,7 @@ import type { ToolSet } from 'ai';
 import { CRM_WRITE_TOOL_NAMES, createCrmTools, type CrmAccess } from '@/lib/ai/crm-tools';
 import { createHireTools } from '@/lib/ai/hire-tools';
 import { createReachTools } from '@/lib/ai/tools';
+import type { HireWriteContext } from '@/lib/hire/capabilities';
 import type { ReachWriteContext } from '@/lib/reach/capabilities';
 import type { HireData } from '@/lib/hire/types';
 import type { ReachData } from '@/lib/reach/types';
@@ -48,11 +49,14 @@ export const REACH_WRITE_TOOL_NAMES = [
   'scheduleWeeklyStudio',
 ] as const;
 
-/** The hiring data an agent reads. */
-export type HireAccess = { data: HireData };
+/** The hiring data an agent reads, and whether this caller may change it. */
+export type HireAccess = {
+  data: HireData;
+  write?: { ctx: HireWriteContext; canWrite: boolean };
+};
 
-/** Hiring tools that change data. None yet: Lekir can only look things up. */
-export const HIRE_WRITE_TOOL_NAMES: readonly string[] = [];
+/** Hiring tools that change data. */
+export const HIRE_WRITE_TOOL_NAMES = ['createJob', 'updateJob', 'setJobStatus', 'deleteJob'] as const;
 
 export type ProductKey = 'reach' | 'crm' | 'hire';
 
@@ -89,7 +93,7 @@ export function crmProduct(crm: CrmAccess): ProductToolkit {
 
 /** Lekir: jobs, candidates, applications and interviews. */
 export function hireProduct(hire: HireAccess): ProductToolkit {
-  return { key: 'hire', name: 'Lekir', ...split(createHireTools(hire.data), HIRE_WRITE_TOOL_NAMES) };
+  return { key: 'hire', name: 'Lekir', ...split(createHireTools(hire.data, () => new Date(), hire.write), HIRE_WRITE_TOOL_NAMES) };
 }
 
 /**

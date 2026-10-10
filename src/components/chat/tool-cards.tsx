@@ -81,7 +81,7 @@ export function ApprovalCard({
   named?: (id: unknown, kind?: ItemKind) => string | null;
   onDecide: (approved: boolean) => void;
 }) {
-  const detail = proposal ? proposal.detail : approvalDetail(approval.toolName);
+  const detail = proposal ? proposal.detail : approvalDetail(approval.toolName, approval.input);
   const title = proposal?.title ?? approvalTitle(approval.toolName, approval.input, named);
   return (
     <div

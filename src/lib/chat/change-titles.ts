@@ -40,7 +40,8 @@ export type ItemKind =
   | 'deal'
   | 'stage'
   | 'follow-up'
-  | 'schedule';
+  | 'schedule'
+  | 'job';
 const KIND_OF_TOOL: Record<string, ItemKind> = {
   getCampaigns: 'campaign',
   createCampaign: 'campaign',
@@ -74,6 +75,11 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   deleteDeal: 'deal',
   listFollowUps: 'follow-up',
   completeFollowUp: 'follow-up',
+  listJobs: 'job',
+  createJob: 'job',
+  updateJob: 'job',
+  setJobStatus: 'job',
+  deleteJob: 'job',
 };
 
 /** Names by `kind:id`, so a later turn can still say what an id refers to. */
@@ -214,11 +220,38 @@ export function approvalTitle(
       const runs = typeof i.max_runs === 'number' ? `, ${i.max_runs} ${i.max_runs === 1 ? 'run' : 'runs'} at most` : '';
       return `Schedule Weekly Studio${every}${runs}?`;
     }
+    case 'createJob': return `Create job “${i.title ?? ''}” as a draft?`;
+    case 'updateJob': return `Save changes to ${the('job', 'job')}?`;
+    case 'setJobStatus':
+      return i.status === 'open'
+        ? `Open ${the('job', 'job')}?`
+        : i.status === 'paused'
+          ? `Pause ${the('job', 'job')}?`
+          : `Close ${the('job', 'job')}?`;
+    case 'deleteJob': return `Delete ${the('job', 'job')}?`;
     default: return 'Approve this change?';
   }
 }
 
-export function approvalDetail(toolName: string): string | null {
+const JOB_FIELD_WORDS: [string[], string][] = [
+  [['title'], 'title'],
+  [['department'], 'department'],
+  [['location'], 'location'],
+  [['employment_type'], 'employment type'],
+  [['work_arrangement'], 'work arrangement'],
+  [['description'], 'description'],
+  [['salary_min_cents', 'salary_max_cents'], 'salary'],
+  [['show_salary'], 'salary visibility'],
+  [['closes_on'], 'closing date'],
+  [['headcount'], 'headcount'],
+];
+
+export function approvalDetail(toolName: string, input?: unknown): string | null {
+  if (toolName === 'updateJob') {
+    const keys = Object.keys((input ?? {}) as Record<string, unknown>).filter((k) => k !== 'id');
+    const words = JOB_FIELD_WORDS.filter(([fields]) => fields.some((f) => keys.includes(f))).map(([, w]) => w);
+    return words.length > 0 ? `Changes: ${words.join(', ')}` : null;
+  }
   if (toolName === 'deleteContact') return 'Their deals are deleted too. This cannot be undone.';
   if (
     toolName === 'deleteCampaign' ||
@@ -226,7 +259,8 @@ export function approvalDetail(toolName: string): string | null {
     toolName === 'deleteForm' ||
     toolName === 'deleteDeal' ||
     toolName === 'deleteLead' ||
-    toolName === 'deleteAppointment'
+    toolName === 'deleteAppointment' ||
+    toolName === 'deleteJob'
   ) {
     return 'This cannot be undone.';
   }
