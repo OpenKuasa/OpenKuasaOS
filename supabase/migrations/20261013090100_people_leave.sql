@@ -1,7 +1,7 @@
 -- Lekiu leave: requests, yearly balances and short time-off. Read-only this
 -- slice; the leave slice adds the write grants and policies.
 
-create table public.leave_requests (
+create table public.hr_leave_requests (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -17,12 +17,12 @@ create table public.leave_requests (
   decided_at timestamptz,
   created_at timestamptz not null default now(),
   check (end_date >= start_date),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index leave_requests_org_start_idx on public.leave_requests (org_id, start_date desc);
-create index leave_requests_employee_idx on public.leave_requests (employee_id, start_date desc);
+create index hr_leave_requests_org_start_idx on public.hr_leave_requests (org_id, start_date desc);
+create index hr_leave_requests_employee_idx on public.hr_leave_requests (employee_id, start_date desc);
 
-create table public.leave_balances (
+create table public.hr_leave_balances (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -33,11 +33,11 @@ create table public.leave_balances (
   used_days numeric(4,1) not null default 0 check (used_days >= 0),
   created_at timestamptz not null default now(),
   unique (employee_id, leave_type, year),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index leave_balances_org_idx on public.leave_balances (org_id, year);
+create index hr_leave_balances_org_idx on public.hr_leave_balances (org_id, year);
 
-create table public.time_off_requests (
+create table public.hr_time_off_requests (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -51,11 +51,11 @@ create table public.time_off_requests (
   decided_at timestamptz,
   created_at timestamptz not null default now(),
   check (end_time > start_time),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index time_off_requests_org_date_idx on public.time_off_requests (org_id, off_date desc);
-create index time_off_requests_employee_idx on public.time_off_requests (employee_id, off_date desc);
+create index hr_time_off_requests_org_date_idx on public.hr_time_off_requests (org_id, off_date desc);
+create index hr_time_off_requests_employee_idx on public.hr_time_off_requests (employee_id, off_date desc);
 
-select private.people_secure_table('leave_requests', 'personal');
-select private.people_secure_table('leave_balances', 'personal');
-select private.people_secure_table('time_off_requests', 'personal');
+select private.people_secure_table('hr_leave_requests', 'personal');
+select private.people_secure_table('hr_leave_balances', 'personal');
+select private.people_secure_table('hr_time_off_requests', 'personal');

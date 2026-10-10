@@ -2,7 +2,7 @@
 -- enrolments. The training catalogue is shared; who is enrolled is personal.
 -- Read-only this slice.
 
-create table public.goals (
+create table public.hr_goals (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -11,12 +11,12 @@ create table public.goals (
   due_date date,
   status text not null default 'on_track' check (status in ('on_track','at_risk','done')),
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index goals_employee_idx on public.goals (employee_id);
-create index goals_org_idx on public.goals (org_id);
+create index hr_goals_employee_idx on public.hr_goals (employee_id);
+create index hr_goals_org_idx on public.hr_goals (org_id);
 
-create table public.scorecards (
+create table public.hr_scorecards (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -25,11 +25,11 @@ create table public.scorecards (
   competencies jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   unique (employee_id, period),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index scorecards_org_idx on public.scorecards (org_id, period);
+create index hr_scorecards_org_idx on public.hr_scorecards (org_id, period);
 
-create table public.reviews (
+create table public.hr_reviews (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -40,11 +40,11 @@ create table public.reviews (
   reviewed_at date,
   created_at timestamptz not null default now(),
   unique (employee_id, period),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index reviews_org_idx on public.reviews (org_id, period);
+create index hr_reviews_org_idx on public.hr_reviews (org_id, period);
 
-create table public.trainings (
+create table public.hr_trainings (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   title text not null check (char_length(trim(title)) between 1 and 200),
@@ -56,9 +56,9 @@ create table public.trainings (
   created_at timestamptz not null default now(),
   unique (id, org_id)
 );
-create index trainings_org_idx on public.trainings (org_id, starts_on desc);
+create index hr_trainings_org_idx on public.hr_trainings (org_id, starts_on desc);
 
-create table public.training_enrolments (
+create table public.hr_training_enrolments (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -66,14 +66,14 @@ create table public.training_enrolments (
   completed boolean not null default false,
   created_at timestamptz not null default now(),
   unique (employee_id, training_id),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade,
-  foreign key (training_id, org_id) references public.trainings(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade,
+  foreign key (training_id, org_id) references public.hr_trainings(id, org_id) on delete cascade
 );
-create index training_enrolments_training_idx on public.training_enrolments (training_id);
-create index training_enrolments_org_idx on public.training_enrolments (org_id);
+create index hr_training_enrolments_training_idx on public.hr_training_enrolments (training_id);
+create index hr_training_enrolments_org_idx on public.hr_training_enrolments (org_id);
 
-select private.people_secure_table('goals', 'personal');
-select private.people_secure_table('scorecards', 'personal');
-select private.people_secure_table('reviews', 'personal');
-select private.people_secure_table('trainings', 'shared');
-select private.people_secure_table('training_enrolments', 'personal');
+select private.people_secure_table('hr_goals', 'personal');
+select private.people_secure_table('hr_scorecards', 'personal');
+select private.people_secure_table('hr_reviews', 'personal');
+select private.people_secure_table('hr_trainings', 'shared');
+select private.people_secure_table('hr_training_enrolments', 'personal');

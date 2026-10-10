@@ -116,7 +116,7 @@ Every table has `id uuid primary key default gen_random_uuid()`,
 `org_id uuid not null references public.orgs(id) on delete cascade`, and
 `created_at timestamptz not null default now()`. Every `decided_by` is
 `uuid null references auth.users(id) on delete set null`. Tables that belong to one person carry
-`employee_id uuid not null references public.employees(id) on delete cascade`. Statuses are
+`employee_id uuid not null references public.hr_employees(id) on delete cascade`. Statuses are
 `text` with a `check` constraint, as in the reach tables.
 
 ### 4.1 Access helpers
@@ -150,11 +150,11 @@ policy the reach tables carry. `revoke all … from anon, authenticated`, then
 
 | Table | Kind | Columns (beyond the common ones) |
 |---|---|---|
-| `departments` | Shared | `name` (unique per org) |
-| `employees` | Shared | `user_id uuid null references auth.users(id) on delete set null` (unique per org when set), `employee_no`, `name`, `work_email`, `department_id null`, `designation`, `employment_type` (`full_time`/`part_time`/`contract`/`intern`), `is_manager boolean`, `join_date date`, `status` (`active`/`inactive`), `date_of_birth_day smallint null`, `date_of_birth_month smallint null` |
-| `employee_private` | Personal (keyed by `employee_id`, one row per employee) | `nric`, `date_of_birth date`, `phone`, `address`, `base_salary_cents`, `bank_name`, `bank_account`, `epf_no`, `socso_no`, `tax_no`, `emergency_contact_name`, `emergency_contact_phone` |
+| `hr_departments` | Shared | `name` (unique per org) |
+| `hr_employees` | Shared | `user_id uuid null references auth.users(id) on delete set null` (unique per org when set), `employee_no`, `name`, `work_email`, `department_id null`, `designation`, `employment_type` (`full_time`/`part_time`/`contract`/`intern`), `is_manager boolean`, `join_date date`, `status` (`active`/`inactive`), `date_of_birth_day smallint null`, `date_of_birth_month smallint null` |
+| `hr_employee_private` | Personal (keyed by `employee_id`, one row per employee) | `nric`, `date_of_birth date`, `phone`, `address`, `base_salary_cents`, `bank_name`, `bank_account`, `epf_no`, `socso_no`, `tax_no`, `emergency_contact_name`, `emergency_contact_phone` |
 
-`employees` holds only what a colleague may see. The birthday day and month are on it (the
+`hr_employees` holds only what a colleague may see. The birthday day and month are on it (the
 Overview lists upcoming birthdays); the year is not. "On leave" is derived from approved
 leave covering today, not stored.
 
@@ -162,76 +162,76 @@ leave covering today, not stored.
 
 | Table | Kind | Columns |
 |---|---|---|
-| `leave_requests` | Personal | `leave_type` (`annual`/`medical`/`emergency`/`unpaid`/`maternity`/`paternity`), `start_date`, `end_date`, `days numeric(4,1)`, `reason`, `status` (`pending`/`approved`/`rejected`/`cancelled`), `decided_by null`, `decided_at null` |
-| `leave_balances` | Personal | `leave_type`, `year`, `entitled_days`, `used_days` (unique per employee, type, year) |
-| `time_off_requests` | Personal | `date`, `start_time`, `end_time`, `reason`, `status`, `decided_by null`, `decided_at null` |
+| `hr_leave_requests` | Personal | `leave_type` (`annual`/`medical`/`emergency`/`unpaid`/`maternity`/`paternity`), `start_date`, `end_date`, `days numeric(4,1)`, `reason`, `status` (`pending`/`approved`/`rejected`/`cancelled`), `decided_by null`, `decided_at null` |
+| `hr_leave_balances` | Personal | `leave_type`, `year`, `entitled_days`, `used_days` (unique per employee, type, year) |
+| `hr_time_off_requests` | Personal | `date`, `start_time`, `end_time`, `reason`, `status`, `decided_by null`, `decided_at null` |
 
 **Claims and overtime** — `…_people_claims_overtime.sql`
 
 | Table | Kind | Columns |
 |---|---|---|
-| `claims` | Personal | `category` (`medical`/`travel`/`meals`/`equipment`/`other`), `amount_cents`, `claim_date`, `description`, `has_receipt boolean`, `status`, `decided_by null`, `decided_at null` |
-| `overtime_records` | Personal | `work_date`, `hours numeric(4,1)`, `rate_multiplier numeric(3,1)`, `amount_cents`, `status`, `decided_by null`, `decided_at null` |
+| `hr_claims` | Personal | `category` (`medical`/`travel`/`meals`/`equipment`/`other`), `amount_cents`, `claim_date`, `description`, `has_receipt boolean`, `status`, `decided_by null`, `decided_at null` |
+| `hr_overtime_records` | Personal | `work_date`, `hours numeric(4,1)`, `rate_multiplier numeric(3,1)`, `amount_cents`, `status`, `decided_by null`, `decided_at null` |
 
-OT Claims, Overtime and Approve Overtime are three views of `overtime_records`.
+OT Claims, Overtime and Approve Overtime are three views of `hr_overtime_records`.
 
 **Attendance** — `…_people_attendance.sql`
 
 | Table | Kind | Columns |
 |---|---|---|
-| `attendance_days` | Personal | `work_date`, `clock_in timestamptz null`, `clock_out timestamptz null`, `status` (`present`/`late`/`absent`/`on_leave`) (unique per employee, date) |
-| `timesheet_entries` | Personal | `work_date`, `hours numeric(4,1)`, `billable_hours numeric(4,1)` (unique per employee, date) |
-| `shifts` | Personal | `work_date`, `shift` (`morning`/`night`/`off`) (unique per employee, date) |
-| `public_holidays` | Shared | `name`, `holiday_date`, `scope` (`national`/`state`), `state null` |
+| `hr_attendance_days` | Personal | `work_date`, `clock_in timestamptz null`, `clock_out timestamptz null`, `status` (`present`/`late`/`absent`/`on_leave`) (unique per employee, date) |
+| `hr_timesheet_entries` | Personal | `work_date`, `hours numeric(4,1)`, `billable_hours numeric(4,1)` (unique per employee, date) |
+| `hr_shifts` | Personal | `work_date`, `shift` (`morning`/`night`/`off`) (unique per employee, date) |
+| `hr_public_holidays` | Shared | `name`, `holiday_date`, `scope` (`national`/`state`), `state null` |
 
 **Payroll** — `…_people_payroll.sql`
 
 | Table | Kind | Columns |
 |---|---|---|
-| `payroll_runs` | HR only | `period_month date` (first of month, unique per org), `status` (`draft`/`paid`), `paid_at null` |
-| `payslips` | Personal | `payroll_run_id`, `period_month date` (copied from the run, because a member cannot read `payroll_runs`; unique per employee and period), `gross_cents`, `epf_cents`, `socso_cents`, `eis_cents`, `pcb_cents`, `net_cents` (generated: gross minus the four deductions), `status` (`pending`/`paid`) |
-| `payment_vouchers` | HR only | `voucher_no`, `payee`, `voucher_type`, `amount_cents`, `issued_date`, `status` (`draft`/`issued`/`paid`) |
+| `hr_payroll_runs` | HR only | `period_month date` (first of month, unique per org), `status` (`draft`/`paid`), `paid_at null` |
+| `hr_payslips` | Personal | `payroll_run_id`, `period_month date` (copied from the run, because a member cannot read `hr_payroll_runs`; unique per employee and period), `gross_cents`, `epf_cents`, `socso_cents`, `eis_cents`, `pcb_cents`, `net_cents` (generated: gross minus the four deductions), `status` (`pending`/`paid`) |
+| `hr_payment_vouchers` | HR only | `voucher_no`, `payee`, `voucher_type`, `amount_cents`, `issued_date`, `status` (`draft`/`issued`/`paid`) |
 
 **Performance** — `…_people_performance.sql`
 
 | Table | Kind | Columns |
 |---|---|---|
-| `goals` | Personal | `title`, `progress smallint` (0–100), `due_date`, `status` (`on_track`/`at_risk`/`done`) |
-| `scorecards` | Personal | `period`, `score numeric(3,1)`, `competencies jsonb` (name → score) |
-| `reviews` | Personal | `period`, `rating` (`exceeds`/`meets`/`below`), `score numeric(3,1)`, `reviewer_name`, `reviewed_at` |
-| `trainings` | Shared | `title`, `category`, `provider`, `starts_on`, `ends_on`, `status` (`upcoming`/`in_progress`/`completed`) |
-| `training_enrolments` | Personal | `training_id`, `completed boolean` (unique per employee, training) |
+| `hr_goals` | Personal | `title`, `progress smallint` (0–100), `due_date`, `status` (`on_track`/`at_risk`/`done`) |
+| `hr_scorecards` | Personal | `period`, `score numeric(3,1)`, `competencies jsonb` (name → score) |
+| `hr_reviews` | Personal | `period`, `rating` (`exceeds`/`meets`/`below`), `score numeric(3,1)`, `reviewer_name`, `reviewed_at` |
+| `hr_trainings` | Shared | `title`, `category`, `provider`, `starts_on`, `ends_on`, `status` (`upcoming`/`in_progress`/`completed`) |
+| `hr_training_enrolments` | Personal | `training_id`, `completed boolean` (unique per employee, training) |
 
 **Communications and documents** — `…_people_comms_documents.sql`
 
 | Table | Kind | Columns |
 |---|---|---|
-| `announcements` | Shared | `title`, `body`, `category` (`general`/`holiday`/`benefits`/`strategy`/`policy`), `published_at`, `author_name` |
-| `documents` | Personal | `title`, `doc_type` (`payslip`/`contract`/`letter`/`tax`/`benefits`), `status` (`signed`/`pending_signature`/`available`/`expiring`), `issued_on`, `expires_on null` |
-| `letters` | Personal | `letter_type`, `title`, `status` (`draft`/`issued`), `issued_on null` |
-| `people_settings` | HR only (one row per org) | `work_week jsonb`, `default_annual_leave_days`, `overtime_rates jsonb`, `notifications jsonb` |
+| `hr_announcements` | Shared | `title`, `body`, `category` (`general`/`holiday`/`benefits`/`strategy`/`policy`), `published_at`, `author_name` |
+| `hr_documents` | Personal | `title`, `doc_type` (`payslip`/`contract`/`letter`/`tax`/`benefits`), `status` (`signed`/`pending_signature`/`available`/`expiring`), `issued_on`, `expires_on null` |
+| `hr_letters` | Personal | `letter_type`, `title`, `status` (`draft`/`issued`), `issued_on null` |
+| `hr_settings` | HR only (one row per org) | `work_week jsonb`, `default_annual_leave_days`, `overtime_rates jsonb`, `notifications jsonb` |
 
 "Unread" on Announcements is dropped: it would need a per-user read table, which belongs
 with the announcements write slice.
 
 ### 4.4 Writes in this slice
 
-`grant insert, update, delete` on `departments`, `employees`, `employee_private` to
+`grant insert, update, delete` on `hr_departments`, `hr_employees`, `hr_employee_private` to
 `authenticated`, with one policy each `for all using (private.is_org_admin(org_id)) with
 check (private.is_org_admin(org_id))`. No other HR table gets a write grant.
 
-`employees.updated_at` and `employee_private.updated_at` are set by a
+`hr_employees.updated_at` and `hr_employee_private.updated_at` are set by a
 `private.people_touch_updated_at()` trigger, not by the client.
 
 ### 4.5 Linking an employee to a signed-in user
 
-`employees.user_id` is optional. It is set three ways:
+`hr_employees.user_id` is optional. It is set three ways:
 
 1. **On joining:** an `after insert on public.org_members` trigger sets `user_id` on the
    employee in that org whose `lower(work_email)` equals the new member's auth email, when
    that employee has no `user_id` yet. `accept_invite` is not modified. Invites already
    require the invitee to own the email, and anonymous users are skipped.
-2. **On adding an employee:** a `before insert on public.employees` trigger sets `user_id`
+2. **On adding an employee:** a `before insert on public.hr_employees` trigger sets `user_id`
    when a member of that org has that auth email and no employee record yet.
 3. **By hand:** HR links or unlinks a member on the Employees screen
    (`linkEmployeeToMember`), choosing from the workspace's members.
@@ -251,7 +251,7 @@ link it." on the personal screens.
 and rebuilds the demo workspace's HR rows anchored to `now()`:
 
 - 20 employees across 5 departments, one consistent set of names used everywhere.
-- Aisyah Rahim keeps a fixed `employees.id` across reseeds; she is the demo "me".
+- Aisyah Rahim keeps a fixed `hr_employees.id` across reseeds; she is the demo "me".
 - Always: 3 people on leave today, 6 pending approvals (3 leave, 2 claims, 1 overtime),
   the current month's payroll run in draft and seven earlier months paid, attendance and
   timesheets for the last eight weeks, public holidays for the current year.
@@ -271,7 +271,7 @@ failure cannot block the tables.
 | `seed.ts` | `createSeedPeopleData(viewer)`: the same fictional dataset as the demo seed, for no-Supabase runs |
 | `supabase.ts` | `createSupabasePeopleData(client, orgId, viewer)` and `getPeopleData(client)` |
 | `viewer.ts` | `getPeopleViewer(client, org)`: resolves `{ employeeId, isHr, isDemo }` |
-| `employees.ts`, `leave.ts`, `claims.ts`, `attendance.ts`, `payroll.ts`, `performance.ts`, `overview.ts` | Pure derivations (sums, groupings, "on leave today", pending counts). Screens and AI tools both call these |
+| `hr_employees.ts`, `leave.ts`, `hr_claims.ts`, `attendance.ts`, `payroll.ts`, `performance.ts`, `overview.ts` | Pure derivations (sums, groupings, "on leave today", pending counts). Screens and AI tools both call these |
 | `capabilities.ts` | The single write path (§5.3) |
 | `format.ts` | Dates and RM formatting for the screens, reusing `src/lib/reach/format.ts` where it already fits |
 
@@ -314,7 +314,7 @@ to small client components under `src/components/people/`, as the reach screens 
   columns only). For HR it gains add, edit, deactivate and delete, a department manager,
   the link-to-member control, and the private fields in the edit form. A directory row
   never includes the private fields.
-- **Records** shows the caller's own `employees` + `employee_private` row.
+- **Records** shows the caller's own `hr_employees` + `hr_employee_private` row.
 - All 27 `people/<slug>` keys are added to `LIVE_SCREENS`. `people/calendar` is not.
 
 ### 5.3 Writes — `capabilities.ts` and `src/app/(app)/people/actions.ts`
@@ -332,7 +332,7 @@ card both say so.
 
 Server actions parse with the same schemas, check `can(role, 'approve')`, call the
 capability and revalidate `PEOPLE_PATHS`: every `/people/*` path that shows employee data
-(all of them except `public-holidays`, `announcements` and `settings`).
+(all of them except `public-holidays`, `hr_announcements` and `settings`).
 
 ### 5.4 The assistant
 
@@ -411,7 +411,7 @@ capability and the affected paths are revalidated.
 - A tool that throws surfaces as a tool error to the model, which the prompt forbids
   reporting as a fact about the workspace.
 - A stream error returns "Lekiu ran into a problem. Please try again in a moment."
-- A missing `people_settings` or `employee_private` row is treated as "not set", not as an
+- A missing `hr_settings` or `hr_employee_private` row is treated as "not set", not as an
   error.
 
 ---
@@ -429,7 +429,7 @@ All model-facing tests use the mocked model; nothing here bills the OpenRouter k
 | `tests/people-chat-route.test.ts` | Gate, no-workspace 409, owner gets change tools, member and viewer do not |
 | `tests/people-approval.test.ts` | A change tool pauses for approval and runs once approved |
 | `tests/people-live-screens.test.ts` | All 27 keys are in `LIVE_SCREENS`; `people/calendar` is not |
-| **RLS check against the database** (see below) | Two signed-in sessions in one workspace, an admin and a member linked to one employee. The member selects 0 rows of another employee's `employee_private`, `payslips`, `claims`, `leave_requests`, `reviews`, `documents`, and 0 rows of `payroll_runs`; selects their own; cannot insert into `employees`. The admin sees all. A user in another workspace sees nothing |
+| **RLS check against the database** (see below) | Two signed-in sessions in one workspace, an admin and a member linked to one employee. The member selects 0 rows of another employee's `hr_employee_private`, `hr_payslips`, `hr_claims`, `hr_leave_requests`, `hr_reviews`, `hr_documents`, and 0 rows of `hr_payroll_runs`; selects their own; cannot insert into `hr_employees`. The admin sees all. A user in another workspace sees nothing |
 | Smoke test (smoke account) | Overview loads, Employees add → edit → delete, one chat question answered with a tool call |
 
 **Where the RLS check runs.** There is one database, the live Supabase project

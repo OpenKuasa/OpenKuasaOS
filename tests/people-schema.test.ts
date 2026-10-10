@@ -15,30 +15,30 @@ const COMMS = '20261013090600_people_comms_documents.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
-  { file: CORE, table: 'departments', kind: 'shared' },
-  { file: CORE, table: 'employees', kind: 'shared' },
-  { file: CORE, table: 'employee_private', kind: 'personal' },
-  { file: LEAVE, table: 'leave_requests', kind: 'personal' },
-  { file: LEAVE, table: 'leave_balances', kind: 'personal' },
-  { file: LEAVE, table: 'time_off_requests', kind: 'personal' },
-  { file: CLAIMS, table: 'claims', kind: 'personal' },
-  { file: CLAIMS, table: 'overtime_records', kind: 'personal' },
-  { file: ATTENDANCE, table: 'attendance_days', kind: 'personal' },
-  { file: ATTENDANCE, table: 'timesheet_entries', kind: 'personal' },
-  { file: ATTENDANCE, table: 'shifts', kind: 'personal' },
-  { file: ATTENDANCE, table: 'public_holidays', kind: 'shared' },
-  { file: PAYROLL, table: 'payroll_runs', kind: 'hr' },
-  { file: PAYROLL, table: 'payslips', kind: 'personal' },
-  { file: PAYROLL, table: 'payment_vouchers', kind: 'hr' },
-  { file: PERFORMANCE, table: 'goals', kind: 'personal' },
-  { file: PERFORMANCE, table: 'scorecards', kind: 'personal' },
-  { file: PERFORMANCE, table: 'reviews', kind: 'personal' },
-  { file: PERFORMANCE, table: 'trainings', kind: 'shared' },
-  { file: PERFORMANCE, table: 'training_enrolments', kind: 'personal' },
-  { file: COMMS, table: 'announcements', kind: 'shared' },
-  { file: COMMS, table: 'documents', kind: 'personal' },
-  { file: COMMS, table: 'letters', kind: 'personal' },
-  { file: COMMS, table: 'people_settings', kind: 'hr' },
+  { file: CORE, table: 'hr_departments', kind: 'shared' },
+  { file: CORE, table: 'hr_employees', kind: 'shared' },
+  { file: CORE, table: 'hr_employee_private', kind: 'personal' },
+  { file: LEAVE, table: 'hr_leave_requests', kind: 'personal' },
+  { file: LEAVE, table: 'hr_leave_balances', kind: 'personal' },
+  { file: LEAVE, table: 'hr_time_off_requests', kind: 'personal' },
+  { file: CLAIMS, table: 'hr_claims', kind: 'personal' },
+  { file: CLAIMS, table: 'hr_overtime_records', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_attendance_days', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_timesheet_entries', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_shifts', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_public_holidays', kind: 'shared' },
+  { file: PAYROLL, table: 'hr_payroll_runs', kind: 'hr' },
+  { file: PAYROLL, table: 'hr_payslips', kind: 'personal' },
+  { file: PAYROLL, table: 'hr_payment_vouchers', kind: 'hr' },
+  { file: PERFORMANCE, table: 'hr_goals', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_scorecards', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_reviews', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_trainings', kind: 'shared' },
+  { file: PERFORMANCE, table: 'hr_training_enrolments', kind: 'personal' },
+  { file: COMMS, table: 'hr_announcements', kind: 'shared' },
+  { file: COMMS, table: 'hr_documents', kind: 'personal' },
+  { file: COMMS, table: 'hr_letters', kind: 'personal' },
+  { file: COMMS, table: 'hr_settings', kind: 'hr' },
 ];
 
 const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
@@ -64,7 +64,7 @@ describe('Lekiu schema', () => {
       const body = text.slice(start, text.indexOf('\n);', start));
       if (!body.includes('employee_id uuid')) continue;
       expect(body, table).toContain(
-        'foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade',
+        'foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade',
       );
     }
   });
@@ -89,13 +89,13 @@ describe('Lekiu schema', () => {
     for (const file of files) {
       const grants = sql(file).match(/grant (insert|update|delete)[^;]*;/g) ?? [];
       if (file === CORE) {
-        for (const g of grants) expect(g).toMatch(/on public\.(departments|employees|employee_private) to authenticated;/);
+        for (const g of grants) expect(g).toMatch(/on public\.hr_(departments|employees|employee_private) to authenticated;/);
       } else {
         expect(grants, file).toEqual([]);
       }
     }
     const core = sql(CORE);
-    for (const table of ['departments', 'employees', 'employee_private']) {
+    for (const table of ['hr_departments', 'hr_employees', 'hr_employee_private']) {
       expect(core).toContain(
         `create policy ${table}_write on public.${table} for all to authenticated\n`
           + '  using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));',
@@ -105,7 +105,7 @@ describe('Lekiu schema', () => {
 
   test('pay and identity fields are not on the directory table', () => {
     const text = sql(CORE);
-    const start = text.indexOf('create table public.employees (');
+    const start = text.indexOf('create table public.hr_employees (');
     const directory = text.slice(start, text.indexOf('\n);', start));
     for (const column of ['nric', 'base_salary_cents', 'bank_account', 'address', 'date_of_birth date']) {
       expect(directory).not.toContain(column);
@@ -116,7 +116,7 @@ describe('Lekiu schema', () => {
     const text = sql(CORE);
     expect(text).toContain('join public.org_members m on m.org_id = e.org_id and m.user_id = e.user_id');
     expect(text).toContain("raise exception 'that user is not a member of this workspace'");
-    expect(text).toContain('create unique index employees_org_user_idx on public.employees (org_id, user_id) where user_id is not null');
+    expect(text).toContain('create unique index hr_employees_org_user_idx on public.hr_employees (org_id, user_id) where user_id is not null');
     expect(text).toContain('after delete on public.org_members');
     expect(text).not.toContain('on delete restrict');
   });
@@ -128,14 +128,14 @@ describe('Lekiu schema', () => {
   test('a department name is unique whatever its capitals or spaces', () => {
     const text = sql(CORE);
     expect(text).toContain(
-      'create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));',
+      'create unique index hr_departments_org_name_idx on public.hr_departments (org_id, lower(trim(name)));',
     );
     expect(text).not.toContain('unique (org_id, name)');
   });
 
   test('a payslip carries its own month and a derived net pay', () => {
     const text = sql(PAYROLL);
-    const start = text.indexOf('create table public.payslips (');
+    const start = text.indexOf('create table public.hr_payslips (');
     const body = text.slice(start, text.indexOf('\n);', start));
     // A member cannot read payroll_runs, so the month must be on the payslip.
     expect(body).toContain('period_month date not null');

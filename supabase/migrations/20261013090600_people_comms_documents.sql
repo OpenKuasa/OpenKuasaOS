@@ -2,7 +2,7 @@
 -- Documents and letters are records only: no file is stored yet.
 -- Read-only this slice.
 
-create table public.announcements (
+create table public.hr_announcements (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   title text not null check (char_length(trim(title)) between 1 and 200),
@@ -13,9 +13,9 @@ create table public.announcements (
   author_name text,
   created_at timestamptz not null default now()
 );
-create index announcements_org_published_idx on public.announcements (org_id, published_at desc);
+create index hr_announcements_org_published_idx on public.hr_announcements (org_id, published_at desc);
 
-create table public.documents (
+create table public.hr_documents (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -26,12 +26,12 @@ create table public.documents (
   issued_on date,
   expires_on date,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index documents_employee_idx on public.documents (employee_id, issued_on desc);
-create index documents_org_idx on public.documents (org_id);
+create index hr_documents_employee_idx on public.hr_documents (employee_id, issued_on desc);
+create index hr_documents_org_idx on public.hr_documents (org_id);
 
-create table public.letters (
+create table public.hr_letters (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -40,12 +40,12 @@ create table public.letters (
   status text not null default 'draft' check (status in ('draft','issued')),
   issued_on date,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index letters_employee_idx on public.letters (employee_id);
-create index letters_org_idx on public.letters (org_id, created_at desc);
+create index hr_letters_employee_idx on public.hr_letters (employee_id);
+create index hr_letters_org_idx on public.hr_letters (org_id, created_at desc);
 
-create table public.people_settings (
+create table public.hr_settings (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   work_week jsonb not null default '["mon","tue","wed","thu","fri"]'::jsonb,
@@ -57,7 +57,7 @@ create table public.people_settings (
   unique (org_id)
 );
 
-select private.people_secure_table('announcements', 'shared');
-select private.people_secure_table('documents', 'personal');
-select private.people_secure_table('letters', 'personal');
-select private.people_secure_table('people_settings', 'hr');
+select private.people_secure_table('hr_announcements', 'shared');
+select private.people_secure_table('hr_documents', 'personal');
+select private.people_secure_table('hr_letters', 'personal');
+select private.people_secure_table('hr_settings', 'hr');

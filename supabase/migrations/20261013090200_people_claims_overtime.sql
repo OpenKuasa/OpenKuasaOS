@@ -1,7 +1,7 @@
 -- Lekiu financial claims and overtime. The OT Claims, Overtime and Approve
 -- Overtime screens are three views of overtime_records. Read-only this slice.
 
-create table public.claims (
+create table public.hr_claims (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -15,12 +15,12 @@ create table public.claims (
   decided_by uuid references auth.users(id) on delete set null,
   decided_at timestamptz,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index claims_org_date_idx on public.claims (org_id, claim_date desc);
-create index claims_employee_idx on public.claims (employee_id, claim_date desc);
+create index hr_claims_org_date_idx on public.hr_claims (org_id, claim_date desc);
+create index hr_claims_employee_idx on public.hr_claims (employee_id, claim_date desc);
 
-create table public.overtime_records (
+create table public.hr_overtime_records (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -33,10 +33,10 @@ create table public.overtime_records (
   decided_by uuid references auth.users(id) on delete set null,
   decided_at timestamptz,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index overtime_records_org_date_idx on public.overtime_records (org_id, work_date desc);
-create index overtime_records_employee_idx on public.overtime_records (employee_id, work_date desc);
+create index hr_overtime_records_org_date_idx on public.hr_overtime_records (org_id, work_date desc);
+create index hr_overtime_records_employee_idx on public.hr_overtime_records (employee_id, work_date desc);
 
-select private.people_secure_table('claims', 'personal');
-select private.people_secure_table('overtime_records', 'personal');
+select private.people_secure_table('hr_claims', 'personal');
+select private.people_secure_table('hr_overtime_records', 'personal');

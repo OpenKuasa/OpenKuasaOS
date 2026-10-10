@@ -4,13 +4,13 @@
 
 **Goal:** Create Lekiu's 24 HR tables in Postgres with two-tier RLS, employee/department write access for admins, employee-to-user linking, and a self-refreshing demo dataset, all verified before any app code reads them.
 
-**Architecture:** Nine migrations, one per area. The first defines the access helpers and a `private.people_secure_table(table, kind)` procedure that every later file calls, so each table's read rule comes from one place: `shared` (any member), `personal` (HR, or the employee themselves), `hr` (HR only), with the demo workspace readable in full by its members. Only `departments`, `employees` and `employee_private` get write grants. Verification is three layers: string tests on the SQL (every run), `*.rls.test.ts` against the live project (anonymous sign-ins), and one self-rolling-back SQL script for the member tier.
+**Architecture:** Nine migrations, one per area. The first defines the access helpers and a `private.people_secure_table(table, kind)` procedure that every later file calls, so each table's read rule comes from one place: `shared` (any member), `personal` (HR, or the employee themselves), `hr` (HR only), with the demo workspace readable in full by its members. Only `hr_departments`, `hr_employees` and `hr_employee_private` get write grants. Verification is three layers: string tests on the SQL (every run), `*.rls.test.ts` against the live project (anonymous sign-ins), and one self-rolling-back SQL script for the member tier.
 
 **Tech Stack:** Postgres 15+ on Supabase (RLS, `pg_cron`), Vitest, `@supabase/supabase-js`. Migrations applied through the `openkuasa-supabase` MCP.
 
 **Spec:** `docs/superpowers/specs/2026-10-10-lekiu-foundation-chat-design.md` (§4 is the data model; read it alongside this plan). This is plan A of three; B (seam, employee CRUD, Ask-Lekiu) and C (remaining screens) are written after this lands.
 
-**Dry run (2026-10-10):** the SQL in Tasks 1–8 and the check in Task 9 were run on a throwaway local Postgres 14 with stubbed `auth`/tenancy objects. All eight migrations applied, the check reported `PASSED`, and it reported `FAILED` when a leaky policy was added to `payslips` on purpose. `pg_cron`, the real `auth.users` columns and the live project's existing triggers were not part of that run; Task 10 is where those are met for the first time.
+**Dry run (2026-10-10):** the SQL in Tasks 1–8 and the check in Task 9 were run on a throwaway local Postgres 14 with stubbed `auth`/tenancy objects. All eight migrations applied, the check reported `PASSED`, and it reported `FAILED` when a leaky policy was added to `hr_payslips` on purpose. `pg_cron`, the real `auth.users` columns and the live project's existing triggers were not part of that run; Task 10 is where those are met for the first time.
 
 ## Global Constraints
 
@@ -20,8 +20,8 @@
 - **GitHub identity:** `OpenKuasa`. Run `gh api user --jq .login` and confirm before any push or `gh` call.
 - **Migration prefix:** `20261013090000` … `20261013090800`. Before the PR, check no file on `origin/main` shares a prefix.
 - **Every table:** `id uuid primary key default gen_random_uuid()`, `org_id uuid not null references public.orgs(id) on delete cascade`, `created_at timestamptz not null default now()`, and one call to `private.people_secure_table`. No table is secured by hand.
-- **Write grants exist only in `20261013090000_people_core.sql`**, and only on `departments`, `employees`, `employee_private`.
-- **Foreign keys to `departments`/`employees` are composite** (`(employee_id, org_id) references public.employees(id, org_id)`) so a row can never point across workspaces. The `departments` reference uses the default `no action`, never `restrict`: `restrict` would stop a workspace from being deleted.
+- **Write grants exist only in `20261013090000_people_core.sql`**, and only on `hr_departments`, `hr_employees`, `hr_employee_private`.
+- **Foreign keys to `hr_departments`/`hr_employees` are composite** (`(employee_id, org_id) references public.hr_employees(id, org_id)`) so a row can never point across workspaces. The `hr_departments` reference uses the default `no action`, never `restrict`: `restrict` would stop a workspace from being deleted.
 - **Money** is `bigint` cents in a `*_cents` column.
 - **Demo data is fictional:** Rimba Ventures, `@openkuasa.com` addresses. No Kuasa names.
 - **Tests:** `pnpm vitest run --dir tests <file>`. `pnpm` only.
@@ -37,7 +37,7 @@
 
 ---
 
-### Task 1: Core — helpers, departments, employees, employee_private
+### Task 1: Core — helpers, hr_departments, hr_employees, hr_employee_private
 
 **Files:**
 - Create: `supabase/migrations/20261013090000_people_core.sql`
@@ -45,7 +45,7 @@
 
 **Interfaces:**
 - Consumes: `private.is_org_member(uuid)`, `private.is_org_admin(uuid)`, `private.mfa_ok()`, `public.orgs`, `public.org_members`, `auth.users`.
-- Produces: `private.is_own_employee(uuid)`, `private.is_demo_org(uuid)`, `private.people_secure_table(text, text)` with kinds `'shared' | 'personal' | 'hr'`, `private.people_touch_updated_at()`; tables `public.departments`, `public.employees`, `public.employee_private`; unique keys `departments(id, org_id)` and `employees(id, org_id)` for later composite foreign keys. Later tasks append to the `TABLES` array in `tests/people-schema.test.ts`.
+- Produces: `private.is_own_employee(uuid)`, `private.is_demo_org(uuid)`, `private.people_secure_table(text, text)` with kinds `'shared' | 'personal' | 'hr'`, `private.people_touch_updated_at()`; tables `public.hr_departments`, `public.hr_employees`, `public.hr_employee_private`; unique keys `hr_departments(id, org_id)` and `hr_employees(id, org_id)` for later composite foreign keys. Later tasks append to the `TABLES` array in `tests/people-schema.test.ts`.
 
 - [ ] **Step 1: Write the failing test** — `tests/people-schema.test.ts`
 
@@ -61,9 +61,9 @@ const CORE = '20261013090000_people_core.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
-  { file: CORE, table: 'departments', kind: 'shared' },
-  { file: CORE, table: 'employees', kind: 'shared' },
-  { file: CORE, table: 'employee_private', kind: 'personal' },
+  { file: CORE, table: 'hr_departments', kind: 'shared' },
+  { file: CORE, table: 'hr_employees', kind: 'shared' },
+  { file: CORE, table: 'hr_employee_private', kind: 'personal' },
 ];
 
 const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
@@ -89,7 +89,7 @@ describe('Lekiu schema', () => {
       const body = text.slice(start, text.indexOf('\n);', start));
       if (!body.includes('employee_id uuid')) continue;
       expect(body, table).toContain(
-        'foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade',
+        'foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade',
       );
     }
   });
@@ -114,13 +114,13 @@ describe('Lekiu schema', () => {
     for (const file of files) {
       const grants = sql(file).match(/grant (insert|update|delete)[^;]*;/g) ?? [];
       if (file === CORE) {
-        for (const g of grants) expect(g).toMatch(/on public\.(departments|employees|employee_private) to authenticated;/);
+        for (const g of grants) expect(g).toMatch(/on public\.hr_(departments|employees|employee_private) to authenticated;/);
       } else {
         expect(grants, file).toEqual([]);
       }
     }
     const core = sql(CORE);
-    for (const table of ['departments', 'employees', 'employee_private']) {
+    for (const table of ['hr_departments', 'hr_employees', 'hr_employee_private']) {
       expect(core).toContain(
         `create policy ${table}_write on public.${table} for all to authenticated\n`
           + '  using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));',
@@ -130,7 +130,7 @@ describe('Lekiu schema', () => {
 
   test('pay and identity fields are not on the directory table', () => {
     const text = sql(CORE);
-    const start = text.indexOf('create table public.employees (');
+    const start = text.indexOf('create table public.hr_employees (');
     const directory = text.slice(start, text.indexOf('\n);', start));
     for (const column of ['nric', 'base_salary_cents', 'bank_account', 'address', 'date_of_birth date']) {
       expect(directory).not.toContain(column);
@@ -141,7 +141,7 @@ describe('Lekiu schema', () => {
     const text = sql(CORE);
     expect(text).toContain('join public.org_members m on m.org_id = e.org_id and m.user_id = e.user_id');
     expect(text).toContain("raise exception 'that user is not a member of this workspace'");
-    expect(text).toContain('create unique index employees_org_user_idx on public.employees (org_id, user_id) where user_id is not null');
+    expect(text).toContain('create unique index hr_employees_org_user_idx on public.hr_employees (org_id, user_id) where user_id is not null');
     expect(text).toContain('after delete on public.org_members');
     expect(text).not.toContain('on delete restrict');
   });
@@ -153,7 +153,7 @@ describe('Lekiu schema', () => {
   test('a department name is unique whatever its capitals or spaces', () => {
     const text = sql(CORE);
     expect(text).toContain(
-      'create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));',
+      'create unique index hr_departments_org_name_idx on public.hr_departments (org_id, lower(trim(name)));',
     );
     expect(text).not.toContain('unique (org_id, name)');
   });
@@ -216,7 +216,7 @@ revoke all on function private.people_touch_updated_at() from public, anon, auth
 
 -- ---- departments ----------------------------------------------------
 
-create table public.departments (
+create table public.hr_departments (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   name text not null check (char_length(trim(name)) between 1 and 80),
@@ -224,13 +224,13 @@ create table public.departments (
   unique (id, org_id)
 );
 -- One department per name, whatever its capitals or stray spaces.
-create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));
+create unique index hr_departments_org_name_idx on public.hr_departments (org_id, lower(trim(name)));
 
 -- ---- employees: the staff directory, readable by every member --------
 -- Nothing a colleague should not see belongs on this table. Pay, identity
 -- numbers and home details are on employee_private.
 
-create table public.employees (
+create table public.hr_employees (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   user_id uuid references auth.users(id) on delete set null,
@@ -250,13 +250,13 @@ create table public.employees (
   updated_at timestamptz not null default now(),
   unique (id, org_id),
   unique (org_id, employee_no),
-  foreign key (department_id, org_id) references public.departments(id, org_id)
+  foreign key (department_id, org_id) references public.hr_departments(id, org_id)
 );
-create index employees_org_name_idx on public.employees (org_id, name);
-create index employees_department_idx on public.employees (department_id);
-create unique index employees_org_user_idx on public.employees (org_id, user_id) where user_id is not null;
-create unique index employees_org_email_idx on public.employees (org_id, lower(work_email)) where work_email is not null;
-create trigger employees_touch before update on public.employees
+create index hr_employees_org_name_idx on public.hr_employees (org_id, name);
+create index hr_employees_department_idx on public.hr_employees (department_id);
+create unique index hr_employees_org_user_idx on public.hr_employees (org_id, user_id) where user_id is not null;
+create unique index hr_employees_org_email_idx on public.hr_employees (org_id, lower(work_email)) where work_email is not null;
+create trigger hr_employees_touch before update on public.hr_employees
   for each row execute function private.people_touch_updated_at();
 
 -- True when the employee record is linked to the caller AND the caller is
@@ -265,7 +265,7 @@ create or replace function private.is_own_employee(target uuid)
 returns boolean language sql security definer stable set search_path = public as $$
   select private.mfa_ok() and exists (
     select 1
-    from public.employees e
+    from public.hr_employees e
     join public.org_members m on m.org_id = e.org_id and m.user_id = e.user_id
     where e.id = target and e.user_id = auth.uid()
   );
@@ -275,7 +275,7 @@ grant execute on function private.is_own_employee(uuid) to authenticated;
 
 -- ---- employee_private: HR and the employee themselves ----------------
 
-create table public.employee_private (
+create table public.hr_employee_private (
   employee_id uuid primary key,
   org_id uuid not null references public.orgs(id) on delete cascade,
   nric text,
@@ -292,37 +292,37 @@ create table public.employee_private (
   emergency_contact_phone text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index employee_private_org_idx on public.employee_private (org_id);
-create trigger employee_private_touch before update on public.employee_private
+create index hr_employee_private_org_idx on public.hr_employee_private (org_id);
+create trigger hr_employee_private_touch before update on public.hr_employee_private
   for each row execute function private.people_touch_updated_at();
 
-select private.people_secure_table('departments', 'shared');
-select private.people_secure_table('employees', 'shared');
-select private.people_secure_table('employee_private', 'personal');
+select private.people_secure_table('hr_departments', 'shared');
+select private.people_secure_table('hr_employees', 'shared');
+select private.people_secure_table('hr_employee_private', 'personal');
 
 -- ---- writes: owner/admin only (grant ceiling + policy, added together) --
 
-create policy departments_write on public.departments for all to authenticated
+create policy hr_departments_write on public.hr_departments for all to authenticated
   using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));
-grant insert on public.departments to authenticated;
-grant update (name) on public.departments to authenticated;
-grant delete on public.departments to authenticated;
+grant insert on public.hr_departments to authenticated;
+grant update (name) on public.hr_departments to authenticated;
+grant delete on public.hr_departments to authenticated;
 
-create policy employees_write on public.employees for all to authenticated
+create policy hr_employees_write on public.hr_employees for all to authenticated
   using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));
-grant insert on public.employees to authenticated;
+grant insert on public.hr_employees to authenticated;
 grant update (user_id, employee_no, name, work_email, department_id, designation, employment_type,
-  is_manager, join_date, status, date_of_birth_day, date_of_birth_month) on public.employees to authenticated;
-grant delete on public.employees to authenticated;
+  is_manager, join_date, status, date_of_birth_day, date_of_birth_month) on public.hr_employees to authenticated;
+grant delete on public.hr_employees to authenticated;
 
-create policy employee_private_write on public.employee_private for all to authenticated
+create policy hr_employee_private_write on public.hr_employee_private for all to authenticated
   using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));
-grant insert on public.employee_private to authenticated;
+grant insert on public.hr_employee_private to authenticated;
 grant update (nric, date_of_birth, phone, address, base_salary_cents, bank_name, bank_account,
-  epf_no, socso_no, tax_no, emergency_contact_name, emergency_contact_phone) on public.employee_private to authenticated;
-grant delete on public.employee_private to authenticated;
+  epf_no, socso_no, tax_no, emergency_contact_name, emergency_contact_phone) on public.hr_employee_private to authenticated;
+grant delete on public.hr_employee_private to authenticated;
 
 -- ---- linking an employee record to a signed-in user ------------------
 -- Automatic matching uses only a confirmed, non-anonymous auth email, never
@@ -342,7 +342,7 @@ begin
       and u.email_confirmed_at is not null
       and lower(u.email) = lower(new.work_email)
       and not exists (
-        select 1 from public.employees x where x.org_id = new.org_id and x.user_id = m.user_id
+        select 1 from public.hr_employees x where x.org_id = new.org_id and x.user_id = m.user_id
       )
     limit 1;
     new.user_id := match;
@@ -355,7 +355,7 @@ begin
   return new;
 end; $$;
 revoke all on function private.employee_link_guard() from public, anon, authenticated;
-create trigger employees_link_guard before insert or update of user_id on public.employees
+create trigger hr_employees_link_guard before insert or update of user_id on public.hr_employees
   for each row execute function private.employee_link_guard();
 
 create or replace function private.link_employee_on_member_join()
@@ -366,14 +366,14 @@ begin
   select lower(email) into addr from auth.users
   where id = new.user_id and is_anonymous is not true and email_confirmed_at is not null;
   if addr is null then return new; end if;
-  update public.employees e set user_id = new.user_id
+  update public.hr_employees e set user_id = new.user_id
   where e.id = (
-    select x.id from public.employees x
+    select x.id from public.hr_employees x
     where x.org_id = new.org_id and x.user_id is null and lower(x.work_email) = addr
     limit 1
   )
   and not exists (
-    select 1 from public.employees y where y.org_id = new.org_id and y.user_id = new.user_id
+    select 1 from public.hr_employees y where y.org_id = new.org_id and y.user_id = new.user_id
   );
   return new;
 end; $$;
@@ -386,7 +386,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   -- Nothing to do when the whole workspace is being deleted: its employees go
   -- with it, and touching them mid-delete would fail their workspace check.
-  update public.employees set user_id = null
+  update public.hr_employees set user_id = null
   where org_id = old.org_id and user_id = old.user_id
     and exists (select 1 from public.orgs o where o.id = old.org_id);
   return old;
@@ -410,15 +410,15 @@ git commit -m "feat(people): core tables, two-tier access helpers and employee-t
 
 ---
 
-### Task 2: Leave — leave_requests, leave_balances, time_off_requests
+### Task 2: Leave — hr_leave_requests, hr_leave_balances, hr_time_off_requests
 
 **Files:**
 - Create: `supabase/migrations/20261013090100_people_leave.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
-- Consumes: `private.people_secure_table(text, text)`, `public.employees(id, org_id)`.
-- Produces: tables `public.leave_requests`, `public.leave_balances`, `public.time_off_requests`. Status values `'pending' | 'approved' | 'rejected' | 'cancelled'`; leave types `'annual' | 'medical' | 'emergency' | 'unpaid' | 'maternity' | 'paternity'`.
+- Consumes: `private.people_secure_table(text, text)`, `public.hr_employees(id, org_id)`.
+- Produces: tables `public.hr_leave_requests`, `public.hr_leave_balances`, `public.hr_time_off_requests`. Status values `'pending' | 'approved' | 'rejected' | 'cancelled'`; leave types `'annual' | 'medical' | 'emergency' | 'unpaid' | 'maternity' | 'paternity'`.
 
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `CORE` constant:
 
@@ -429,9 +429,9 @@ const LEAVE = '20261013090100_people_leave.sql';
 and add to the end of the `TABLES` array:
 
 ```ts
-  { file: LEAVE, table: 'leave_requests', kind: 'personal' },
-  { file: LEAVE, table: 'leave_balances', kind: 'personal' },
-  { file: LEAVE, table: 'time_off_requests', kind: 'personal' },
+  { file: LEAVE, table: 'hr_leave_requests', kind: 'personal' },
+  { file: LEAVE, table: 'hr_leave_balances', kind: 'personal' },
+  { file: LEAVE, table: 'hr_time_off_requests', kind: 'personal' },
 ```
 
 - [ ] **Step 2: Run it and watch it fail**
@@ -445,7 +445,7 @@ Expected: FAIL, `ENOENT … 20261013090100_people_leave.sql`.
 -- Lekiu leave: requests, yearly balances and short time-off. Read-only this
 -- slice; the leave slice adds the write grants and policies.
 
-create table public.leave_requests (
+create table public.hr_leave_requests (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -461,12 +461,12 @@ create table public.leave_requests (
   decided_at timestamptz,
   created_at timestamptz not null default now(),
   check (end_date >= start_date),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index leave_requests_org_start_idx on public.leave_requests (org_id, start_date desc);
-create index leave_requests_employee_idx on public.leave_requests (employee_id, start_date desc);
+create index hr_leave_requests_org_start_idx on public.hr_leave_requests (org_id, start_date desc);
+create index hr_leave_requests_employee_idx on public.hr_leave_requests (employee_id, start_date desc);
 
-create table public.leave_balances (
+create table public.hr_leave_balances (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -477,11 +477,11 @@ create table public.leave_balances (
   used_days numeric(4,1) not null default 0 check (used_days >= 0),
   created_at timestamptz not null default now(),
   unique (employee_id, leave_type, year),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index leave_balances_org_idx on public.leave_balances (org_id, year);
+create index hr_leave_balances_org_idx on public.hr_leave_balances (org_id, year);
 
-create table public.time_off_requests (
+create table public.hr_time_off_requests (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -495,14 +495,14 @@ create table public.time_off_requests (
   decided_at timestamptz,
   created_at timestamptz not null default now(),
   check (end_time > start_time),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index time_off_requests_org_date_idx on public.time_off_requests (org_id, off_date desc);
-create index time_off_requests_employee_idx on public.time_off_requests (employee_id, off_date desc);
+create index hr_time_off_requests_org_date_idx on public.hr_time_off_requests (org_id, off_date desc);
+create index hr_time_off_requests_employee_idx on public.hr_time_off_requests (employee_id, off_date desc);
 
-select private.people_secure_table('leave_requests', 'personal');
-select private.people_secure_table('leave_balances', 'personal');
-select private.people_secure_table('time_off_requests', 'personal');
+select private.people_secure_table('hr_leave_requests', 'personal');
+select private.people_secure_table('hr_leave_balances', 'personal');
+select private.people_secure_table('hr_time_off_requests', 'personal');
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -519,15 +519,15 @@ git commit -m "feat(people): leave, leave balance and time-off tables (read-only
 
 ---
 
-### Task 3: Claims and overtime — claims, overtime_records
+### Task 3: Claims and overtime — hr_claims, hr_overtime_records
 
 **Files:**
 - Create: `supabase/migrations/20261013090200_people_claims_overtime.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
-- Consumes: `private.people_secure_table(text, text)`, `public.employees(id, org_id)`.
-- Produces: tables `public.claims`, `public.overtime_records`. Claim categories `'medical' | 'travel' | 'meals' | 'equipment' | 'other'`; both use status `'pending' | 'approved' | 'rejected' | 'cancelled'`.
+- Consumes: `private.people_secure_table(text, text)`, `public.hr_employees(id, org_id)`.
+- Produces: tables `public.hr_claims`, `public.hr_overtime_records`. Claim categories `'medical' | 'travel' | 'meals' | 'equipment' | 'other'`; both use status `'pending' | 'approved' | 'rejected' | 'cancelled'`.
 
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `LEAVE` constant:
 
@@ -538,8 +538,8 @@ const CLAIMS = '20261013090200_people_claims_overtime.sql';
 and add to the end of the `TABLES` array:
 
 ```ts
-  { file: CLAIMS, table: 'claims', kind: 'personal' },
-  { file: CLAIMS, table: 'overtime_records', kind: 'personal' },
+  { file: CLAIMS, table: 'hr_claims', kind: 'personal' },
+  { file: CLAIMS, table: 'hr_overtime_records', kind: 'personal' },
 ```
 
 - [ ] **Step 2: Run it and watch it fail**
@@ -553,7 +553,7 @@ Expected: FAIL, `ENOENT … 20261013090200_people_claims_overtime.sql`.
 -- Lekiu financial claims and overtime. The OT Claims, Overtime and Approve
 -- Overtime screens are three views of overtime_records. Read-only this slice.
 
-create table public.claims (
+create table public.hr_claims (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -567,12 +567,12 @@ create table public.claims (
   decided_by uuid references auth.users(id) on delete set null,
   decided_at timestamptz,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index claims_org_date_idx on public.claims (org_id, claim_date desc);
-create index claims_employee_idx on public.claims (employee_id, claim_date desc);
+create index hr_claims_org_date_idx on public.hr_claims (org_id, claim_date desc);
+create index hr_claims_employee_idx on public.hr_claims (employee_id, claim_date desc);
 
-create table public.overtime_records (
+create table public.hr_overtime_records (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -585,13 +585,13 @@ create table public.overtime_records (
   decided_by uuid references auth.users(id) on delete set null,
   decided_at timestamptz,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index overtime_records_org_date_idx on public.overtime_records (org_id, work_date desc);
-create index overtime_records_employee_idx on public.overtime_records (employee_id, work_date desc);
+create index hr_overtime_records_org_date_idx on public.hr_overtime_records (org_id, work_date desc);
+create index hr_overtime_records_employee_idx on public.hr_overtime_records (employee_id, work_date desc);
 
-select private.people_secure_table('claims', 'personal');
-select private.people_secure_table('overtime_records', 'personal');
+select private.people_secure_table('hr_claims', 'personal');
+select private.people_secure_table('hr_overtime_records', 'personal');
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -608,15 +608,15 @@ git commit -m "feat(people): claims and overtime tables (read-only)"
 
 ---
 
-### Task 4: Attendance — attendance_days, timesheet_entries, shifts, public_holidays
+### Task 4: Attendance — hr_attendance_days, hr_timesheet_entries, hr_shifts, hr_public_holidays
 
 **Files:**
 - Create: `supabase/migrations/20261013090300_people_attendance.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
-- Consumes: `private.people_secure_table(text, text)`, `public.employees(id, org_id)`.
-- Produces: tables `public.attendance_days` (status `'present' | 'late' | 'absent' | 'on_leave'`), `public.timesheet_entries`, `public.shifts` (shift `'morning' | 'night' | 'off'`), `public.public_holidays` (scope `'national' | 'state'`).
+- Consumes: `private.people_secure_table(text, text)`, `public.hr_employees(id, org_id)`.
+- Produces: tables `public.hr_attendance_days` (status `'present' | 'late' | 'absent' | 'on_leave'`), `public.hr_timesheet_entries`, `public.hr_shifts` (shift `'morning' | 'night' | 'off'`), `public.hr_public_holidays` (scope `'national' | 'state'`).
 
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `CLAIMS` constant:
 
@@ -627,10 +627,10 @@ const ATTENDANCE = '20261013090300_people_attendance.sql';
 and add to the end of the `TABLES` array:
 
 ```ts
-  { file: ATTENDANCE, table: 'attendance_days', kind: 'personal' },
-  { file: ATTENDANCE, table: 'timesheet_entries', kind: 'personal' },
-  { file: ATTENDANCE, table: 'shifts', kind: 'personal' },
-  { file: ATTENDANCE, table: 'public_holidays', kind: 'shared' },
+  { file: ATTENDANCE, table: 'hr_attendance_days', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_timesheet_entries', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_shifts', kind: 'personal' },
+  { file: ATTENDANCE, table: 'hr_public_holidays', kind: 'shared' },
 ```
 
 - [ ] **Step 2: Run it and watch it fail**
@@ -644,7 +644,7 @@ Expected: FAIL, `ENOENT … 20261013090300_people_attendance.sql`.
 -- Lekiu attendance: daily attendance, timesheets, shifts and public holidays.
 -- Read-only this slice.
 
-create table public.attendance_days (
+create table public.hr_attendance_days (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -655,11 +655,11 @@ create table public.attendance_days (
   created_at timestamptz not null default now(),
   unique (employee_id, work_date),
   check (clock_out is null or clock_in is null or clock_out >= clock_in),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index attendance_days_org_date_idx on public.attendance_days (org_id, work_date desc);
+create index hr_attendance_days_org_date_idx on public.hr_attendance_days (org_id, work_date desc);
 
-create table public.timesheet_entries (
+create table public.hr_timesheet_entries (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -669,11 +669,11 @@ create table public.timesheet_entries (
   created_at timestamptz not null default now(),
   unique (employee_id, work_date),
   check (billable_hours <= hours),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index timesheet_entries_org_date_idx on public.timesheet_entries (org_id, work_date desc);
+create index hr_timesheet_entries_org_date_idx on public.hr_timesheet_entries (org_id, work_date desc);
 
-create table public.shifts (
+create table public.hr_shifts (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -681,11 +681,11 @@ create table public.shifts (
   shift text not null check (shift in ('morning','night','off')),
   created_at timestamptz not null default now(),
   unique (employee_id, work_date),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index shifts_org_date_idx on public.shifts (org_id, work_date);
+create index hr_shifts_org_date_idx on public.hr_shifts (org_id, work_date);
 
-create table public.public_holidays (
+create table public.hr_public_holidays (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   name text not null check (char_length(trim(name)) between 1 and 120),
@@ -695,12 +695,12 @@ create table public.public_holidays (
   created_at timestamptz not null default now(),
   unique (org_id, holiday_date, name)
 );
-create index public_holidays_org_date_idx on public.public_holidays (org_id, holiday_date);
+create index hr_public_holidays_org_date_idx on public.hr_public_holidays (org_id, holiday_date);
 
-select private.people_secure_table('attendance_days', 'personal');
-select private.people_secure_table('timesheet_entries', 'personal');
-select private.people_secure_table('shifts', 'personal');
-select private.people_secure_table('public_holidays', 'shared');
+select private.people_secure_table('hr_attendance_days', 'personal');
+select private.people_secure_table('hr_timesheet_entries', 'personal');
+select private.people_secure_table('hr_shifts', 'personal');
+select private.people_secure_table('hr_public_holidays', 'shared');
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -717,15 +717,15 @@ git commit -m "feat(people): attendance, timesheet, shift and public holiday tab
 
 ---
 
-### Task 5: Payroll — payroll_runs, payslips, payment_vouchers
+### Task 5: Payroll — hr_payroll_runs, hr_payslips, hr_payment_vouchers
 
 **Files:**
 - Create: `supabase/migrations/20261013090400_people_payroll.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array, one new test)
 
 **Interfaces:**
-- Consumes: `private.people_secure_table(text, text)`, `public.employees(id, org_id)`.
-- Produces: tables `public.payroll_runs` (status `'draft' | 'paid'`), `public.payslips` (status `'pending' | 'paid'`, generated `net_cents`, own `period_month`), `public.payment_vouchers` (status `'draft' | 'issued' | 'paid'`).
+- Consumes: `private.people_secure_table(text, text)`, `public.hr_employees(id, org_id)`.
+- Produces: tables `public.hr_payroll_runs` (status `'draft' | 'paid'`), `public.hr_payslips` (status `'pending' | 'paid'`, generated `net_cents`, own `period_month`), `public.hr_payment_vouchers` (status `'draft' | 'issued' | 'paid'`).
 
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `ATTENDANCE` constant:
 
@@ -736,9 +736,9 @@ const PAYROLL = '20261013090400_people_payroll.sql';
 add to the end of the `TABLES` array:
 
 ```ts
-  { file: PAYROLL, table: 'payroll_runs', kind: 'hr' },
-  { file: PAYROLL, table: 'payslips', kind: 'personal' },
-  { file: PAYROLL, table: 'payment_vouchers', kind: 'hr' },
+  { file: PAYROLL, table: 'hr_payroll_runs', kind: 'hr' },
+  { file: PAYROLL, table: 'hr_payslips', kind: 'personal' },
+  { file: PAYROLL, table: 'hr_payment_vouchers', kind: 'hr' },
 ```
 
 and add this test inside the `describe` block, after the last test:
@@ -746,7 +746,7 @@ and add this test inside the `describe` block, after the last test:
 ```ts
   test('a payslip carries its own month and a derived net pay', () => {
     const text = sql(PAYROLL);
-    const start = text.indexOf('create table public.payslips (');
+    const start = text.indexOf('create table public.hr_payslips (');
     const body = text.slice(start, text.indexOf('\n);', start));
     // A member cannot read payroll_runs, so the month must be on the payslip.
     expect(body).toContain('period_month date not null');
@@ -769,7 +769,7 @@ Expected: FAIL, `ENOENT … 20261013090400_people_payroll.sql`.
 -- vouchers are HR only; a payslip is readable by HR and by its employee.
 -- Read-only this slice.
 
-create table public.payroll_runs (
+create table public.hr_payroll_runs (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   period_month date not null check (extract(day from period_month) = 1),
@@ -780,7 +780,7 @@ create table public.payroll_runs (
   unique (id, org_id)
 );
 
-create table public.payslips (
+create table public.hr_payslips (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -795,13 +795,13 @@ create table public.payslips (
   status text not null default 'pending' check (status in ('pending','paid')),
   created_at timestamptz not null default now(),
   unique (employee_id, period_month),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade,
-  foreign key (payroll_run_id, org_id) references public.payroll_runs(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade,
+  foreign key (payroll_run_id, org_id) references public.hr_payroll_runs(id, org_id) on delete cascade
 );
-create index payslips_org_period_idx on public.payslips (org_id, period_month desc);
-create index payslips_run_idx on public.payslips (payroll_run_id);
+create index hr_payslips_org_period_idx on public.hr_payslips (org_id, period_month desc);
+create index hr_payslips_run_idx on public.hr_payslips (payroll_run_id);
 
-create table public.payment_vouchers (
+create table public.hr_payment_vouchers (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   voucher_no text not null check (char_length(trim(voucher_no)) between 1 and 30),
@@ -813,11 +813,11 @@ create table public.payment_vouchers (
   created_at timestamptz not null default now(),
   unique (org_id, voucher_no)
 );
-create index payment_vouchers_org_date_idx on public.payment_vouchers (org_id, issued_date desc);
+create index hr_payment_vouchers_org_date_idx on public.hr_payment_vouchers (org_id, issued_date desc);
 
-select private.people_secure_table('payroll_runs', 'hr');
-select private.people_secure_table('payslips', 'personal');
-select private.people_secure_table('payment_vouchers', 'hr');
+select private.people_secure_table('hr_payroll_runs', 'hr');
+select private.people_secure_table('hr_payslips', 'personal');
+select private.people_secure_table('hr_payment_vouchers', 'hr');
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -834,15 +834,15 @@ git commit -m "feat(people): payroll run, payslip and payment voucher tables (re
 
 ---
 
-### Task 6: Performance — goals, scorecards, reviews, trainings, training_enrolments
+### Task 6: Performance — hr_goals, hr_scorecards, hr_reviews, hr_trainings, hr_training_enrolments
 
 **Files:**
 - Create: `supabase/migrations/20261013090500_people_performance.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
-- Consumes: `private.people_secure_table(text, text)`, `public.employees(id, org_id)`.
-- Produces: tables `public.goals` (status `'on_track' | 'at_risk' | 'done'`), `public.scorecards`, `public.reviews` (rating `'exceeds' | 'meets' | 'below'`), `public.trainings` (status `'upcoming' | 'in_progress' | 'completed'`), `public.training_enrolments`.
+- Consumes: `private.people_secure_table(text, text)`, `public.hr_employees(id, org_id)`.
+- Produces: tables `public.hr_goals` (status `'on_track' | 'at_risk' | 'done'`), `public.hr_scorecards`, `public.hr_reviews` (rating `'exceeds' | 'meets' | 'below'`), `public.hr_trainings` (status `'upcoming' | 'in_progress' | 'completed'`), `public.hr_training_enrolments`.
 
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `PAYROLL` constant:
 
@@ -853,11 +853,11 @@ const PERFORMANCE = '20261013090500_people_performance.sql';
 and add to the end of the `TABLES` array:
 
 ```ts
-  { file: PERFORMANCE, table: 'goals', kind: 'personal' },
-  { file: PERFORMANCE, table: 'scorecards', kind: 'personal' },
-  { file: PERFORMANCE, table: 'reviews', kind: 'personal' },
-  { file: PERFORMANCE, table: 'trainings', kind: 'shared' },
-  { file: PERFORMANCE, table: 'training_enrolments', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_goals', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_scorecards', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_reviews', kind: 'personal' },
+  { file: PERFORMANCE, table: 'hr_trainings', kind: 'shared' },
+  { file: PERFORMANCE, table: 'hr_training_enrolments', kind: 'personal' },
 ```
 
 - [ ] **Step 2: Run it and watch it fail**
@@ -872,7 +872,7 @@ Expected: FAIL, `ENOENT … 20261013090500_people_performance.sql`.
 -- enrolments. The training catalogue is shared; who is enrolled is personal.
 -- Read-only this slice.
 
-create table public.goals (
+create table public.hr_goals (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -881,12 +881,12 @@ create table public.goals (
   due_date date,
   status text not null default 'on_track' check (status in ('on_track','at_risk','done')),
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index goals_employee_idx on public.goals (employee_id);
-create index goals_org_idx on public.goals (org_id);
+create index hr_goals_employee_idx on public.hr_goals (employee_id);
+create index hr_goals_org_idx on public.hr_goals (org_id);
 
-create table public.scorecards (
+create table public.hr_scorecards (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -895,11 +895,11 @@ create table public.scorecards (
   competencies jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   unique (employee_id, period),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index scorecards_org_idx on public.scorecards (org_id, period);
+create index hr_scorecards_org_idx on public.hr_scorecards (org_id, period);
 
-create table public.reviews (
+create table public.hr_reviews (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -910,11 +910,11 @@ create table public.reviews (
   reviewed_at date,
   created_at timestamptz not null default now(),
   unique (employee_id, period),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index reviews_org_idx on public.reviews (org_id, period);
+create index hr_reviews_org_idx on public.hr_reviews (org_id, period);
 
-create table public.trainings (
+create table public.hr_trainings (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   title text not null check (char_length(trim(title)) between 1 and 200),
@@ -926,9 +926,9 @@ create table public.trainings (
   created_at timestamptz not null default now(),
   unique (id, org_id)
 );
-create index trainings_org_idx on public.trainings (org_id, starts_on desc);
+create index hr_trainings_org_idx on public.hr_trainings (org_id, starts_on desc);
 
-create table public.training_enrolments (
+create table public.hr_training_enrolments (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -936,17 +936,17 @@ create table public.training_enrolments (
   completed boolean not null default false,
   created_at timestamptz not null default now(),
   unique (employee_id, training_id),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade,
-  foreign key (training_id, org_id) references public.trainings(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade,
+  foreign key (training_id, org_id) references public.hr_trainings(id, org_id) on delete cascade
 );
-create index training_enrolments_training_idx on public.training_enrolments (training_id);
-create index training_enrolments_org_idx on public.training_enrolments (org_id);
+create index hr_training_enrolments_training_idx on public.hr_training_enrolments (training_id);
+create index hr_training_enrolments_org_idx on public.hr_training_enrolments (org_id);
 
-select private.people_secure_table('goals', 'personal');
-select private.people_secure_table('scorecards', 'personal');
-select private.people_secure_table('reviews', 'personal');
-select private.people_secure_table('trainings', 'shared');
-select private.people_secure_table('training_enrolments', 'personal');
+select private.people_secure_table('hr_goals', 'personal');
+select private.people_secure_table('hr_scorecards', 'personal');
+select private.people_secure_table('hr_reviews', 'personal');
+select private.people_secure_table('hr_trainings', 'shared');
+select private.people_secure_table('hr_training_enrolments', 'personal');
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -963,15 +963,15 @@ git commit -m "feat(people): goals, scorecard, review and training tables (read-
 
 ---
 
-### Task 7: Communications and documents — announcements, documents, letters, people_settings
+### Task 7: Communications and hr_documents — hr_announcements, hr_documents, hr_letters, hr_settings
 
 **Files:**
 - Create: `supabase/migrations/20261013090600_people_comms_documents.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array, one new test)
 
 **Interfaces:**
-- Consumes: `private.people_secure_table(text, text)`, `public.employees(id, org_id)`.
-- Produces: tables `public.announcements` (category `'general' | 'holiday' | 'benefits' | 'strategy' | 'policy'`), `public.documents` (doc_type `'payslip' | 'contract' | 'letter' | 'tax' | 'benefits'`; status `'signed' | 'pending_signature' | 'available' | 'expiring'`), `public.letters` (status `'draft' | 'issued'`), `public.people_settings` (one row per org). After this task the `TABLES` array lists all 24 tables.
+- Consumes: `private.people_secure_table(text, text)`, `public.hr_employees(id, org_id)`.
+- Produces: tables `public.hr_announcements` (category `'general' | 'holiday' | 'benefits' | 'strategy' | 'policy'`), `public.hr_documents` (doc_type `'payslip' | 'contract' | 'letter' | 'tax' | 'benefits'`; status `'signed' | 'pending_signature' | 'available' | 'expiring'`), `public.hr_letters` (status `'draft' | 'issued'`), `public.hr_settings` (one row per org). After this task the `TABLES` array lists all 24 tables.
 
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `PERFORMANCE` constant:
 
@@ -982,10 +982,10 @@ const COMMS = '20261013090600_people_comms_documents.sql';
 add to the end of the `TABLES` array:
 
 ```ts
-  { file: COMMS, table: 'announcements', kind: 'shared' },
-  { file: COMMS, table: 'documents', kind: 'personal' },
-  { file: COMMS, table: 'letters', kind: 'personal' },
-  { file: COMMS, table: 'people_settings', kind: 'hr' },
+  { file: COMMS, table: 'hr_announcements', kind: 'shared' },
+  { file: COMMS, table: 'hr_documents', kind: 'personal' },
+  { file: COMMS, table: 'hr_letters', kind: 'personal' },
+  { file: COMMS, table: 'hr_settings', kind: 'hr' },
 ```
 
 and add this test inside the `describe` block, after the last test:
@@ -1010,7 +1010,7 @@ Expected: FAIL, `ENOENT … 20261013090600_people_comms_documents.sql`.
 -- Documents and letters are records only: no file is stored yet.
 -- Read-only this slice.
 
-create table public.announcements (
+create table public.hr_announcements (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   title text not null check (char_length(trim(title)) between 1 and 200),
@@ -1021,9 +1021,9 @@ create table public.announcements (
   author_name text,
   created_at timestamptz not null default now()
 );
-create index announcements_org_published_idx on public.announcements (org_id, published_at desc);
+create index hr_announcements_org_published_idx on public.hr_announcements (org_id, published_at desc);
 
-create table public.documents (
+create table public.hr_documents (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -1034,12 +1034,12 @@ create table public.documents (
   issued_on date,
   expires_on date,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index documents_employee_idx on public.documents (employee_id, issued_on desc);
-create index documents_org_idx on public.documents (org_id);
+create index hr_documents_employee_idx on public.hr_documents (employee_id, issued_on desc);
+create index hr_documents_org_idx on public.hr_documents (org_id);
 
-create table public.letters (
+create table public.hr_letters (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   employee_id uuid not null,
@@ -1048,12 +1048,12 @@ create table public.letters (
   status text not null default 'draft' check (status in ('draft','issued')),
   issued_on date,
   created_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index letters_employee_idx on public.letters (employee_id);
-create index letters_org_idx on public.letters (org_id, created_at desc);
+create index hr_letters_employee_idx on public.hr_letters (employee_id);
+create index hr_letters_org_idx on public.hr_letters (org_id, created_at desc);
 
-create table public.people_settings (
+create table public.hr_settings (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   work_week jsonb not null default '["mon","tue","wed","thu","fri"]'::jsonb,
@@ -1065,10 +1065,10 @@ create table public.people_settings (
   unique (org_id)
 );
 
-select private.people_secure_table('announcements', 'shared');
-select private.people_secure_table('documents', 'personal');
-select private.people_secure_table('letters', 'personal');
-select private.people_secure_table('people_settings', 'hr');
+select private.people_secure_table('hr_announcements', 'shared');
+select private.people_secure_table('hr_documents', 'personal');
+select private.people_secure_table('hr_letters', 'personal');
+select private.people_secure_table('hr_settings', 'hr');
 ```
 
 - [ ] **Step 4: Run the test and watch it pass**
@@ -1147,7 +1147,7 @@ describe('Lekiu demo seed', () => {
 
   test('leaves no time-off request waiting, so pending approvals stay at six', () => {
     const text = seed();
-    const start = text.indexOf('insert into public.time_off_requests');
+    const start = text.indexOf('insert into public.hr_time_off_requests');
     const block = text.slice(start, text.indexOf(') as v(n, day, start_time, end_time, reason, status);', start));
     const rows = block.split('\n').filter((line) => /^\s+\(\d+, -?\d+, '\d\d:\d\d'/.test(line));
     expect(rows).toHaveLength(6);
@@ -1185,22 +1185,22 @@ begin
   this_year := extract(year from today)::int;
 
   -- Deleting employees removes every personal row with them.
-  delete from public.employees where org_id = demo;
-  delete from public.payroll_runs where org_id = demo;
-  delete from public.payment_vouchers where org_id = demo;
-  delete from public.departments where org_id = demo;
-  delete from public.public_holidays where org_id = demo;
-  delete from public.trainings where org_id = demo;
-  delete from public.announcements where org_id = demo;
-  delete from public.people_settings where org_id = demo;
+  delete from public.hr_employees where org_id = demo;
+  delete from public.hr_payroll_runs where org_id = demo;
+  delete from public.hr_payment_vouchers where org_id = demo;
+  delete from public.hr_departments where org_id = demo;
+  delete from public.hr_public_holidays where org_id = demo;
+  delete from public.hr_trainings where org_id = demo;
+  delete from public.hr_announcements where org_id = demo;
+  delete from public.hr_settings where org_id = demo;
 
-  insert into public.departments (id, org_id, name)
+  insert into public.hr_departments (id, org_id, name)
   select md5('rimba-dept-' || d)::uuid, demo, d
   from unnest(array['Sales','Operations','Marketing','Finance','Management']) as d;
 
   -- 20 employees: Sales 6, Operations 5, Marketing 3, Finance 3, Management 3.
   -- tenure = days since joining; bday = days from today to the next birthday.
-  insert into public.employees (id, org_id, employee_no, name, work_email, department_id,
+  insert into public.hr_employees (id, org_id, employee_no, name, work_email, department_id,
     designation, employment_type, is_manager, join_date, status, date_of_birth_day, date_of_birth_month)
   select md5('rimba-emp-' || v.n)::uuid, demo, 'EMP-' || lpad(v.n::text, 3, '0'), v.name,
     v.handle || '@openkuasa.com', md5('rimba-dept-' || v.dept)::uuid, v.designation, v.etype, v.mgr,
@@ -1230,7 +1230,7 @@ begin
   ) as v(n, name, handle, dept, designation, etype, mgr, tenure, bday);
 
   -- Pay: RM 2,800 to RM 5,600 by position in the list; managers RM 3,000 more.
-  insert into public.employee_private (employee_id, org_id, nric, date_of_birth, phone, address,
+  insert into public.hr_employee_private (employee_id, org_id, nric, date_of_birth, phone, address,
     base_salary_cents, bank_name, bank_account, epf_no, socso_no, tax_no,
     emergency_contact_name, emergency_contact_phone)
   select e.id, demo,
@@ -1246,10 +1246,10 @@ begin
     'SG' || lpad((40000 + e.n)::text, 9, '0'),
     'Waris ' || split_part(e.name, ' ', 1),
     '+60 13-555 ' || lpad((2000 + e.n * 41)::text, 4, '0')
-  from (select x.*, substr(x.employee_no, 5)::int as n from public.employees x where x.org_id = demo) e;
+  from (select x.*, substr(x.employee_no, 5)::int as n from public.hr_employees x where x.org_id = demo) e;
 
   -- Leave. First three: approved and covering today. Next three: waiting.
-  insert into public.leave_requests (org_id, employee_id, leave_type, start_date, end_date, days, reason, status, decided_at, created_at)
+  insert into public.hr_leave_requests (org_id, employee_id, leave_type, start_date, end_date, days, reason, status, decided_at, created_at)
   select demo, md5('rimba-emp-' || v.n)::uuid, v.leave_type, today + v.from_day, today + v.to_day, v.days, v.reason, v.status,
     case when v.status = 'pending' then null else now() - interval '3 days' end,
     now() - make_interval(days => v.applied_ago)
@@ -1274,18 +1274,18 @@ begin
     (1, 'annual', -45, -44, 2.0, 'Holiday', 'approved', 60)
   ) as v(n, leave_type, from_day, to_day, days, reason, status, applied_ago);
 
-  insert into public.leave_balances (org_id, employee_id, leave_type, year, entitled_days, used_days)
+  insert into public.hr_leave_balances (org_id, employee_id, leave_type, year, entitled_days, used_days)
   select demo, e.id, t.leave_type, this_year, t.entitled,
     coalesce((
-      select sum(r.days) from public.leave_requests r
+      select sum(r.days) from public.hr_leave_requests r
       where r.employee_id = e.id and r.leave_type = t.leave_type and r.status = 'approved'
         and extract(year from r.start_date) = this_year
     ), 0)
-  from public.employees e
+  from public.hr_employees e
   cross join (values ('annual', 16.0), ('medical', 14.0), ('emergency', 3.0)) as t(leave_type, entitled)
   where e.org_id = demo;
 
-  insert into public.time_off_requests (org_id, employee_id, off_date, start_time, end_time, reason, status, decided_at)
+  insert into public.hr_time_off_requests (org_id, employee_id, off_date, start_time, end_time, reason, status, decided_at)
   select demo, md5('rimba-emp-' || v.n)::uuid, today + v.day, v.start_time::time, v.end_time::time, v.reason, v.status,
     case when v.status = 'pending' then null else now() - interval '2 days' end
   from (values
@@ -1298,7 +1298,7 @@ begin
   ) as v(n, day, start_time, end_time, reason, status);
 
   -- Claims. First two are waiting.
-  insert into public.claims (org_id, employee_id, category, amount_cents, claim_date, description, has_receipt, status, decided_at)
+  insert into public.hr_claims (org_id, employee_id, category, amount_cents, claim_date, description, has_receipt, status, decided_at)
   select demo, md5('rimba-emp-' || v.n)::uuid, v.category, v.amount, today + v.day, v.description, v.receipt, v.status,
     case when v.status = 'pending' then null else now() - interval '2 days' end
   from (values
@@ -1317,7 +1317,7 @@ begin
   ) as v(n, category, amount, day, description, receipt, status);
 
   -- Overtime. The first is waiting; pay is hours x rate x RM 25.
-  insert into public.overtime_records (org_id, employee_id, work_date, hours, rate_multiplier, amount_cents, status, decided_at)
+  insert into public.hr_overtime_records (org_id, employee_id, work_date, hours, rate_multiplier, amount_cents, status, decided_at)
   select demo, md5('rimba-emp-' || v.n)::uuid, today + v.day, v.hours, v.rate,
     round(v.hours * v.rate * 2500)::bigint, v.status,
     case when v.status = 'pending' then null else now() - interval '1 day' end
@@ -1338,7 +1338,7 @@ begin
 
   -- Attendance for the last eight weeks of weekdays. h is a stable 0..39 per
   -- employee and day: 0 is absent, 1 to 4 late, the rest on time.
-  insert into public.attendance_days (org_id, employee_id, work_date, clock_in, clock_out, status)
+  insert into public.hr_attendance_days (org_id, employee_id, work_date, clock_in, clock_out, status)
   select demo, a.employee_id, a.work_date,
     case when a.status in ('absent', 'on_leave') then null
          else (a.work_date + time '09:00'
@@ -1351,37 +1351,37 @@ begin
     select e.id as employee_id, d::date as work_date, x.h,
       case
         when exists (
-          select 1 from public.leave_requests r
+          select 1 from public.hr_leave_requests r
           where r.employee_id = e.id and r.status = 'approved' and d::date between r.start_date and r.end_date
         ) then 'on_leave'
         when x.h = 0 then 'absent'
         when x.h between 1 and 4 then 'late'
         else 'present'
       end as status
-    from public.employees e
+    from public.hr_employees e
     cross join generate_series(today - 55, today, interval '1 day') as d
     cross join lateral (select (abs(hashtext(e.id::text || d::date::text)::bigint) % 40)::int as h) x
     where e.org_id = demo and extract(isodow from d) < 6
   ) a;
 
-  insert into public.timesheet_entries (org_id, employee_id, work_date, hours, billable_hours)
+  insert into public.hr_timesheet_entries (org_id, employee_id, work_date, hours, billable_hours)
   select demo, a.employee_id, a.work_date, t.hours, round(t.hours * 0.8 * 2) / 2
-  from public.attendance_days a
+  from public.hr_attendance_days a
   cross join lateral (
     select 7.5 + (abs(hashtext(a.employee_id::text || a.work_date::text || 'h')::bigint) % 3) * 0.5 as hours
   ) t
   where a.org_id = demo and a.status in ('present', 'late');
 
   -- This week's roster for Operations.
-  insert into public.shifts (org_id, employee_id, work_date, shift)
+  insert into public.hr_shifts (org_id, employee_id, work_date, shift)
   select demo, e.id, week_start + g.i,
     case (substr(e.employee_no, 5)::int + g.i) % 4 when 0 then 'off' when 1 then 'night' else 'morning' end
-  from public.employees e
+  from public.hr_employees e
   cross join generate_series(0, 6) as g(i)
   where e.org_id = demo and e.department_id = md5('rimba-dept-Operations')::uuid;
 
   -- Fixed-date holidays only: the movable ones change every year.
-  insert into public.public_holidays (org_id, name, holiday_date, scope, state)
+  insert into public.hr_public_holidays (org_id, name, holiday_date, scope, state)
   select demo, v.name, make_date(this_year, v.m, v.d), v.scope, v.state
   from (values
     ('New Year''s Day', 1, 1, 'state', 'Kuala Lumpur'),
@@ -1393,13 +1393,13 @@ begin
   ) as v(name, m, d, scope, state);
 
   -- Payroll: this month in draft, the seven before it paid.
-  insert into public.payroll_runs (id, org_id, period_month, status, paid_at)
+  insert into public.hr_payroll_runs (id, org_id, period_month, status, paid_at)
   select md5('rimba-run-' || g.m)::uuid, demo, (month_start - make_interval(months => g.m))::date,
     case when g.m = 0 then 'draft' else 'paid' end,
     case when g.m = 0 then null else (month_start - make_interval(months => g.m) + interval '27 days') end
   from generate_series(0, 7) as g(m);
 
-  insert into public.payslips (org_id, employee_id, payroll_run_id, period_month,
+  insert into public.hr_payslips (org_id, employee_id, payroll_run_id, period_month,
     gross_cents, epf_cents, socso_cents, eis_cents, pcb_cents, status)
   select demo, p.employee_id, r.id, r.period_month, p.base_salary_cents,
     round(p.base_salary_cents * 0.11)::bigint,
@@ -1409,12 +1409,12 @@ begin
          when p.base_salary_cents > 350000 then round((p.base_salary_cents - 350000) * 0.03)::bigint
          else 0 end,
     case when r.status = 'paid' then 'paid' else 'pending' end
-  from public.employee_private p
-  join public.employees e on e.id = p.employee_id
-  join public.payroll_runs r on r.org_id = demo and e.join_date < (r.period_month + interval '1 month')::date
+  from public.hr_employee_private p
+  join public.hr_employees e on e.id = p.employee_id
+  join public.hr_payroll_runs r on r.org_id = demo and e.join_date < (r.period_month + interval '1 month')::date
   where p.org_id = demo;
 
-  insert into public.payment_vouchers (org_id, voucher_no, payee, voucher_type, amount_cents, issued_date, status)
+  insert into public.hr_payment_vouchers (org_id, voucher_no, payee, voucher_type, amount_cents, issued_date, status)
   select demo, 'PV-' || lpad(v.no::text, 4, '0'), v.payee, v.voucher_type, v.amount, today + v.day, v.status
   from (values
     (1041, 'Aisyah Rahim', 'Claim reimbursement', 32000, -10, 'paid'),
@@ -1426,12 +1426,12 @@ begin
   ) as v(no, payee, voucher_type, amount, day, status);
 
   -- Performance.
-  insert into public.goals (org_id, employee_id, title, progress, due_date, status)
+  insert into public.hr_goals (org_id, employee_id, title, progress, due_date, status)
   select demo, e.id, v.title, least(100, v.progress + (e.n * 7) % 20),
     today + v.due,
     case when least(100, v.progress + (e.n * 7) % 20) >= 100 then 'done'
          when v.progress < 40 then 'at_risk' else 'on_track' end
-  from (select x.*, substr(x.employee_no, 5)::int as n from public.employees x where x.org_id = demo) e
+  from (select x.*, substr(x.employee_no, 5)::int as n from public.hr_employees x where x.org_id = demo) e
   cross join (values
     ('Hit the quarterly target', 62, 40),
     ('Complete the compliance course', 85, 20),
@@ -1440,22 +1440,22 @@ begin
   ) as v(title, progress, due)
   where e.n <= 10;
 
-  insert into public.scorecards (org_id, employee_id, period, score, competencies)
+  insert into public.hr_scorecards (org_id, employee_id, period, score, competencies)
   select demo, e.id, 'H1 ' || this_year, 3.0 + ((e.n * 7) % 19) / 10.0,
     jsonb_build_object(
       'Delivery', 3.0 + ((e.n * 3) % 20) / 10.0,
       'Teamwork', 3.0 + ((e.n * 5) % 20) / 10.0,
       'Ownership', 3.0 + ((e.n * 11) % 20) / 10.0,
       'Communication', 3.0 + ((e.n * 13) % 20) / 10.0)
-  from (select x.*, substr(x.employee_no, 5)::int as n from public.employees x where x.org_id = demo) e;
+  from (select x.*, substr(x.employee_no, 5)::int as n from public.hr_employees x where x.org_id = demo) e;
 
-  insert into public.reviews (org_id, employee_id, period, rating, score, reviewer_name, reviewed_at)
+  insert into public.hr_reviews (org_id, employee_id, period, rating, score, reviewer_name, reviewed_at)
   select demo, s.employee_id, s.period,
     case when s.score >= 4.3 then 'exceeds' when s.score >= 3.4 then 'meets' else 'below' end,
     s.score, 'Kavitha Nair', today - 45
-  from public.scorecards s where s.org_id = demo;
+  from public.hr_scorecards s where s.org_id = demo;
 
-  insert into public.trainings (id, org_id, title, category, provider, starts_on, ends_on, status)
+  insert into public.hr_trainings (id, org_id, title, category, provider, starts_on, ends_on, status)
   select md5('rimba-training-' || v.k)::uuid, demo, v.title, v.category, v.provider, today + v.from_day, today + v.to_day, v.status
   from (values
     (1, 'Workplace safety refresher', 'Compliance', 'In-house', -60, -59, 'completed'),
@@ -1465,17 +1465,17 @@ begin
     (5, 'First-time manager programme', 'Leadership', 'External trainer', 30, 32, 'upcoming')
   ) as v(k, title, category, provider, from_day, to_day, status);
 
-  insert into public.training_enrolments (org_id, employee_id, training_id, completed)
+  insert into public.hr_training_enrolments (org_id, employee_id, training_id, completed)
   select demo, e.id, t.id, t.status = 'completed'
-  from (select x.*, substr(x.employee_no, 5)::int as n from public.employees x where x.org_id = demo) e
+  from (select x.*, substr(x.employee_no, 5)::int as n from public.hr_employees x where x.org_id = demo) e
   cross join (
     select tr.id, tr.status, row_number() over (order by tr.starts_on) as k
-    from public.trainings tr where tr.org_id = demo
+    from public.hr_trainings tr where tr.org_id = demo
   ) t
   where (e.n + t.k) % 3 = 0 or (e.n = 1 and t.k <= 3);
 
   -- Communications and documents.
-  insert into public.announcements (org_id, title, body, category, published_at, author_name)
+  insert into public.hr_announcements (org_id, title, body, category, published_at, author_name)
   select demo, v.title, v.body, v.category, now() - make_interval(days => v.ago), 'Siti Lestari'
   from (values
     ('Office closed for National Day', 'The office is closed on 31 August. Support runs a skeleton shift.', 'holiday', 4),
@@ -1485,11 +1485,11 @@ begin
     ('Second-half priorities', 'Leadership has shared the three priorities for the second half.', 'strategy', 34)
   ) as v(title, body, category, ago);
 
-  insert into public.documents (org_id, employee_id, title, doc_type, status, issued_on, expires_on)
+  insert into public.hr_documents (org_id, employee_id, title, doc_type, status, issued_on, expires_on)
   select demo, e.id, 'Employment contract', 'contract', 'signed', e.join_date, null
-  from public.employees e where e.org_id = demo;
+  from public.hr_employees e where e.org_id = demo;
 
-  insert into public.documents (org_id, employee_id, title, doc_type, status, issued_on, expires_on)
+  insert into public.hr_documents (org_id, employee_id, title, doc_type, status, issued_on, expires_on)
   select demo, md5('rimba-emp-1')::uuid, v.title, v.doc_type, v.status, today + v.issued, today + v.expires
   from (values
     ('Payslip, last month', 'payslip', 'available', -8, null),
@@ -1500,7 +1500,7 @@ begin
     ('Medical card', 'benefits', 'expiring', -340, 25)
   ) as v(title, doc_type, status, issued, expires);
 
-  insert into public.letters (org_id, employee_id, letter_type, title, status, issued_on)
+  insert into public.hr_letters (org_id, employee_id, letter_type, title, status, issued_on)
   select demo, md5('rimba-emp-' || v.n)::uuid, v.letter_type, v.title, v.status,
     case when v.status = 'issued' then today + v.day else null end
   from (values
@@ -1511,7 +1511,7 @@ begin
     (16, 'Contract renewal', 'Contract renewal', 'draft', 0)
   ) as v(n, letter_type, title, status, day);
 
-  insert into public.people_settings (org_id, notifications)
+  insert into public.hr_settings (org_id, notifications)
   values (demo, '{"leave_requests":true,"payslip_ready":true,"document_expiry":true,"birthdays":false}'::jsonb);
 end; $$;
 revoke all on function private.reseed_demo_people() from public, anon, authenticated;
@@ -1574,12 +1574,12 @@ const client = (): SupabaseClient =>
 
 const DEMO_EMPLOYEE_ID = 'dea97d89-a5b6-f264-bd42-c6df73f664a7';
 const PERSONAL = [
-  'employee_private', 'leave_requests', 'leave_balances', 'time_off_requests', 'claims',
-  'overtime_records', 'attendance_days', 'timesheet_entries', 'shifts', 'payslips', 'goals',
-  'scorecards', 'reviews', 'training_enrolments', 'documents', 'letters',
+  'hr_employee_private', 'hr_leave_requests', 'hr_leave_balances', 'hr_time_off_requests', 'hr_claims',
+  'hr_overtime_records', 'hr_attendance_days', 'hr_timesheet_entries', 'hr_shifts', 'hr_payslips', 'hr_goals',
+  'hr_scorecards', 'hr_reviews', 'hr_training_enrolments', 'hr_documents', 'hr_letters',
 ];
-const HR_ONLY = ['payroll_runs', 'payment_vouchers', 'people_settings'];
-const SHARED = ['departments', 'employees', 'public_holidays', 'trainings', 'announcements'];
+const HR_ONLY = ['hr_payroll_runs', 'hr_payment_vouchers', 'hr_settings'];
+const SHARED = ['hr_departments', 'hr_employees', 'hr_public_holidays', 'hr_trainings', 'hr_announcements'];
 
 async function ownedOrg(name: string) {
   const c = client();
@@ -1623,14 +1623,14 @@ afterAll(async () => {
 
 testWithSupabase('an owner can add, edit and delete a department and an employee with private details', async () => {
   const dept = await owner.c
-    .from('departments')
+    .from('hr_departments')
     .insert({ org_id: owner.orgId, name: 'Sales' })
     .select('id')
     .single();
   expect(dept.error, dept.error?.message).toBeNull();
 
   const emp = await owner.c
-    .from('employees')
+    .from('hr_employees')
     .insert({ org_id: owner.orgId, employee_no: 'EMP-001', name: 'Farah Idris', department_id: dept.data!.id })
     .select('id, status, user_id, updated_at')
     .single();
@@ -1639,7 +1639,7 @@ testWithSupabase('an owner can add, edit and delete a department and an employee
   expect(emp.data!.user_id).toBeNull();
 
   const priv = await owner.c
-    .from('employee_private')
+    .from('hr_employee_private')
     .insert({ employee_id: emp.data!.id, org_id: owner.orgId, base_salary_cents: 420000, nric: '900101-14-5001' })
     .select('base_salary_cents')
     .single();
@@ -1647,7 +1647,7 @@ testWithSupabase('an owner can add, edit and delete a department and an employee
   expect(priv.data!.base_salary_cents).toBe(420000);
 
   const upd = await owner.c
-    .from('employees')
+    .from('hr_employees')
     .update({ designation: 'Sales Executive' })
     .eq('id', emp.data!.id)
     .select('designation, updated_at')
@@ -1657,21 +1657,21 @@ testWithSupabase('an owner can add, edit and delete a department and an employee
   expect(new Date(upd.data!.updated_at) >= new Date(emp.data!.updated_at)).toBe(true);
 
   // A department that still has an employee cannot be deleted.
-  const blocked = await owner.c.from('departments').delete().eq('id', dept.data!.id);
+  const blocked = await owner.c.from('hr_departments').delete().eq('id', dept.data!.id);
   expect(blocked.error?.code).toBe('23503');
 
   // Deleting the employee takes the private row with it.
-  const del = await owner.c.from('employees').delete().eq('id', emp.data!.id);
+  const del = await owner.c.from('hr_employees').delete().eq('id', emp.data!.id);
   expect(del.error, del.error?.message).toBeNull();
-  expect(await count(owner.c, 'employee_private', owner.orgId)).toBe(0);
-  const delDept = await owner.c.from('departments').delete().eq('id', dept.data!.id);
+  expect(await count(owner.c, 'hr_employee_private', owner.orgId)).toBe(0);
+  const delDept = await owner.c.from('hr_departments').delete().eq('id', dept.data!.id);
   expect(delDept.error, delDept.error?.message).toBeNull();
 });
 
 testWithSupabase('an owner cannot link an employee to someone outside the workspace', async () => {
   const outsider = (await other.c.auth.getUser()).data.user!.id;
   const res = await owner.c
-    .from('employees')
+    .from('hr_employees')
     .insert({ org_id: owner.orgId, employee_no: 'EMP-900', name: 'Not Ours', user_id: outsider })
     .select('id');
   expect(res.error?.message).toContain('not a member of this workspace');
@@ -1679,43 +1679,43 @@ testWithSupabase('an owner cannot link an employee to someone outside the worksp
 
 testWithSupabase('an owner cannot write to a table that is read-only this slice', async () => {
   const emp = await owner.c
-    .from('employees')
+    .from('hr_employees')
     .insert({ org_id: owner.orgId, employee_no: 'EMP-002', name: 'Read Only' })
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
-  const res = await owner.c.from('leave_requests').insert({
+  const res = await owner.c.from('hr_leave_requests').insert({
     org_id: owner.orgId, employee_id: emp.data!.id, leave_type: 'annual',
     start_date: '2026-10-20', end_date: '2026-10-21', days: 2,
   });
   expect(res.error?.code).toBe('42501'); // no insert grant
-  await owner.c.from('employees').delete().eq('id', emp.data!.id);
+  await owner.c.from('hr_employees').delete().eq('id', emp.data!.id);
 });
 
 testWithSupabase('one workspace cannot see or change another workspace\'s HR data', async () => {
   const emp = await owner.c
-    .from('employees')
+    .from('hr_employees')
     .insert({ org_id: owner.orgId, employee_no: 'EMP-003', name: 'Private Person' })
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
   const priv = await owner.c
-    .from('employee_private')
+    .from('hr_employee_private')
     .insert({ employee_id: emp.data!.id, org_id: owner.orgId, base_salary_cents: 500000 });
   expect(priv.error, priv.error?.message).toBeNull();
   // The rows are really there: the zeros below are not zeros of an empty table.
-  expect(await count(owner.c, 'employees', owner.orgId)).toBe(1);
-  expect(await count(owner.c, 'employee_private', owner.orgId)).toBe(1);
+  expect(await count(owner.c, 'hr_employees', owner.orgId)).toBe(1);
+  expect(await count(owner.c, 'hr_employee_private', owner.orgId)).toBe(1);
 
-  expect(await count(other.c, 'employees', owner.orgId)).toBe(0);
-  expect(await count(other.c, 'employee_private', owner.orgId)).toBe(0);
+  expect(await count(other.c, 'hr_employees', owner.orgId)).toBe(0);
+  expect(await count(other.c, 'hr_employee_private', owner.orgId)).toBe(0);
 
-  const hijack = await other.c.from('employees').update({ name: 'Changed' }).eq('id', emp.data!.id).select('id');
+  const hijack = await other.c.from('hr_employees').update({ name: 'Changed' }).eq('id', emp.data!.id).select('id');
   expect(hijack.data ?? []).toHaveLength(0);
-  const plant = await other.c.from('employees').insert({ org_id: owner.orgId, employee_no: 'X', name: 'Planted' });
+  const plant = await other.c.from('hr_employees').insert({ org_id: owner.orgId, employee_no: 'X', name: 'Planted' });
   expect(plant.error?.code).toBe('42501');
 
-  await owner.c.from('employees').delete().eq('id', emp.data!.id);
+  await owner.c.from('hr_employees').delete().eq('id', emp.data!.id);
 });
 
 testWithSupabase('a demo guest reads the whole demo workspace, and it has the promised shape', async () => {
@@ -1724,16 +1724,16 @@ testWithSupabase('a demo guest reads the whole demo workspace, and it has the pr
   for (const table of [...SHARED, ...PERSONAL, ...HR_ONLY]) {
     expect(await count(d.c, table, d.demoId), table).toBeGreaterThan(0);
   }
-  expect(await count(d.c, 'employees', d.demoId)).toBe(20);
-  expect(await count(d.c, 'departments', d.demoId)).toBe(5);
-  expect(await count(d.c, 'payroll_runs', d.demoId)).toBe(8);
+  expect(await count(d.c, 'hr_employees', d.demoId)).toBe(20);
+  expect(await count(d.c, 'hr_departments', d.demoId)).toBe(5);
+  expect(await count(d.c, 'hr_payroll_runs', d.demoId)).toBe(8);
 
-  const me = await d.c.from('employees').select('name').eq('id', DEMO_EMPLOYEE_ID).single();
+  const me = await d.c.from('hr_employees').select('name').eq('id', DEMO_EMPLOYEE_ID).single();
   expect(me.data?.name).toBe('Aisyah Rahim');
 
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }).format(new Date());
   const onLeave = await d.c
-    .from('leave_requests')
+    .from('hr_leave_requests')
     .select('id')
     .eq('org_id', d.demoId)
     .eq('status', 'approved')
@@ -1749,12 +1749,12 @@ testWithSupabase('a demo guest reads the whole demo workspace, and it has the pr
       .eq('status', 'pending');
     return n ?? 0;
   };
-  expect(await pending('leave_requests')).toBe(3);
-  expect(await pending('claims')).toBe(2);
-  expect(await pending('overtime_records')).toBe(1);
-  expect(await pending('time_off_requests')).toBe(0);
+  expect(await pending('hr_leave_requests')).toBe(3);
+  expect(await pending('hr_claims')).toBe(2);
+  expect(await pending('hr_overtime_records')).toBe(1);
+  expect(await pending('hr_time_off_requests')).toBe(0);
 
-  const draft = await d.c.from('payroll_runs').select('period_month').eq('org_id', d.demoId).eq('status', 'draft');
+  const draft = await d.c.from('hr_payroll_runs').select('period_month').eq('org_id', d.demoId).eq('status', 'draft');
   expect(draft.data ?? []).toHaveLength(1);
   expect(draft.data![0].period_month).toBe(`${today.slice(0, 7)}-01`);
 
@@ -1763,13 +1763,13 @@ testWithSupabase('a demo guest reads the whole demo workspace, and it has the pr
 
 testWithSupabase('a demo guest cannot change anything', async () => {
   const d = await demoGuest();
-  const ins = await d.c.from('employees').insert({ org_id: d.demoId, employee_no: 'X', name: 'Guest Edit' });
+  const ins = await d.c.from('hr_employees').insert({ org_id: d.demoId, employee_no: 'X', name: 'Guest Edit' });
   expect(ins.error?.code).toBe('42501');
-  const upd = await d.c.from('employees').update({ name: 'Changed' }).eq('id', DEMO_EMPLOYEE_ID).select('id');
+  const upd = await d.c.from('hr_employees').update({ name: 'Changed' }).eq('id', DEMO_EMPLOYEE_ID).select('id');
   expect(upd.data ?? []).toHaveLength(0);
-  const del = await d.c.from('employees').delete().eq('id', DEMO_EMPLOYEE_ID).select('id');
+  const del = await d.c.from('hr_employees').delete().eq('id', DEMO_EMPLOYEE_ID).select('id');
   expect(del.data ?? []).toHaveLength(0);
-  const pay = await d.c.from('employee_private').update({ base_salary_cents: 1 }).eq('employee_id', DEMO_EMPLOYEE_ID).select('employee_id');
+  const pay = await d.c.from('hr_employee_private').update({ base_salary_cents: 1 }).eq('employee_id', DEMO_EMPLOYEE_ID).select('employee_id');
   expect(pay.data ?? []).toHaveLength(0);
   await d.c.auth.signOut();
 });
@@ -1777,18 +1777,18 @@ testWithSupabase('a demo guest cannot change anything', async () => {
 testWithSupabase('being in the demo opens the demo only', async () => {
   // Someone who is not in the demo sees none of it.
   const guest = await demoGuest();
-  for (const table of ['employees', 'payslips', 'payroll_runs']) {
+  for (const table of ['hr_employees', 'hr_payslips', 'hr_payroll_runs']) {
     expect(await count(owner.c, table, guest.demoId), table).toBe(0);
   }
   // A demo guest sees nothing of a real workspace.
   const emp = await owner.c
-    .from('employees')
+    .from('hr_employees')
     .insert({ org_id: owner.orgId, employee_no: 'EMP-004', name: 'Not For Guests' })
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
-  expect(await count(guest.c, 'employees', owner.orgId)).toBe(0);
-  await owner.c.from('employees').delete().eq('id', emp.data!.id);
+  expect(await count(guest.c, 'hr_employees', owner.orgId)).toBe(0);
+  await owner.c.from('hr_employees').delete().eq('id', emp.data!.id);
   await guest.c.auth.signOut();
 });
 ```
@@ -1823,22 +1823,22 @@ declare
   q text;
   ref text;
   ref_rule text;
-  core text[] := array['departments','employees','employee_private'];
-  shared text[] := array['departments','public_holidays','trainings','announcements'];
+  core text[] := array['hr_departments','hr_employees','hr_employee_private'];
+  shared text[] := array['hr_departments','hr_public_holidays','hr_trainings','hr_announcements'];
   fails text[] := '{}';
-  personal text[] := array['employee_private','leave_requests','claims','payslips','reviews','documents'];
-  hr_only text[] := array['payroll_runs','payment_vouchers','people_settings'];
+  personal text[] := array['hr_employee_private','hr_leave_requests','hr_claims','hr_payslips','hr_reviews','hr_documents'];
+  hr_only text[] := array['hr_payroll_runs','hr_payment_vouchers','hr_settings'];
 begin
   -- ---- every table: the right read rule, and no write it should not have --
   for t, k in
     select x.t, x.k from (values
-      ('departments','shared'), ('employees','shared'), ('employee_private','personal'),
-      ('leave_requests','personal'), ('leave_balances','personal'), ('time_off_requests','personal'),
-      ('claims','personal'), ('overtime_records','personal'),
-      ('attendance_days','personal'), ('timesheet_entries','personal'), ('shifts','personal'), ('public_holidays','shared'),
-      ('payroll_runs','hr'), ('payslips','personal'), ('payment_vouchers','hr'),
-      ('goals','personal'), ('scorecards','personal'), ('reviews','personal'), ('trainings','shared'), ('training_enrolments','personal'),
-      ('announcements','shared'), ('documents','personal'), ('letters','personal'), ('people_settings','hr')
+      ('hr_departments','shared'), ('hr_employees','shared'), ('hr_employee_private','personal'),
+      ('hr_leave_requests','personal'), ('hr_leave_balances','personal'), ('hr_time_off_requests','personal'),
+      ('hr_claims','personal'), ('hr_overtime_records','personal'),
+      ('hr_attendance_days','personal'), ('hr_timesheet_entries','personal'), ('hr_shifts','personal'), ('hr_public_holidays','shared'),
+      ('hr_payroll_runs','hr'), ('hr_payslips','personal'), ('hr_payment_vouchers','hr'),
+      ('hr_goals','personal'), ('hr_scorecards','personal'), ('hr_reviews','personal'), ('hr_trainings','shared'), ('hr_training_enrolments','personal'),
+      ('hr_announcements','shared'), ('hr_documents','personal'), ('hr_letters','personal'), ('hr_settings','hr')
     ) as x(t, k)
   loop
     select p.qual into q from pg_policies p
@@ -1857,7 +1857,7 @@ begin
     -- The rule must be word for word the rule of the table of its kind whose
     -- reads are tested as a member further down, so a rule that keeps every
     -- expected term but adds a wider one cannot pass.
-    ref := case k when 'personal' then 'payslips' when 'hr' then 'payroll_runs' else 'departments' end;
+    ref := case k when 'personal' then 'hr_payslips' when 'hr' then 'hr_payroll_runs' else 'hr_departments' end;
     select p.qual into ref_rule from pg_policies p
     where p.schemaname = 'public' and p.tablename = ref and p.policyname = ref || '_select';
     if q is distinct from ref_rule then
@@ -1909,22 +1909,22 @@ begin
   values (org, admin_id, 'admin'), (other_org, outsider, 'owner');
 
   -- Link on joining: the employee exists first, then the member joins.
-  insert into public.employees (org_id, employee_no, name, work_email)
+  insert into public.hr_employees (org_id, employee_no, name, work_email)
   values (org, 'E1', 'Member One', m1 || '@rls-check.openkuasa-test.dev') returning id into e1;
   insert into public.org_members (org_id, user_id, role) values (org, m1, 'member');
-  select user_id into linked from public.employees where id = e1;
+  select user_id into linked from public.hr_employees where id = e1;
   if linked is distinct from m1 then fails := array_append(fails, 'joining did not link the employee'); end if;
 
   -- Link on adding: the member exists first, then the employee is added.
   insert into public.org_members (org_id, user_id, role) values (org, m2, 'member');
-  insert into public.employees (org_id, employee_no, name, work_email)
+  insert into public.hr_employees (org_id, employee_no, name, work_email)
   values (org, 'E2', 'Member Two', m2 || '@rls-check.openkuasa-test.dev') returning id into e2;
-  select user_id into linked from public.employees where id = e2;
+  select user_id into linked from public.hr_employees where id = e2;
   if linked is distinct from m2 then fails := array_append(fails, 'adding an employee did not link the member'); end if;
 
   -- A link to someone outside the workspace is refused.
   begin
-    update public.employees set user_id = outsider where id = e2;
+    update public.hr_employees set user_id = outsider where id = e2;
     fails := array_append(fails, 'linked an employee to a non-member');
   exception when others then
     if sqlerrm not like '%not a member of this workspace%' then
@@ -1933,26 +1933,26 @@ begin
   end;
 
   -- ---- one personal row each, and the HR-only rows --------------------
-  insert into public.employee_private (employee_id, org_id, base_salary_cents) values (e1, org, 400000), (e2, org, 900000);
-  insert into public.leave_requests (org_id, employee_id, leave_type, start_date, end_date, days)
+  insert into public.hr_employee_private (employee_id, org_id, base_salary_cents) values (e1, org, 400000), (e2, org, 900000);
+  insert into public.hr_leave_requests (org_id, employee_id, leave_type, start_date, end_date, days)
   values (org, e1, 'annual', current_date, current_date, 1), (org, e2, 'medical', current_date, current_date, 1);
-  insert into public.claims (org_id, employee_id, category, amount_cents, claim_date)
+  insert into public.hr_claims (org_id, employee_id, category, amount_cents, claim_date)
   values (org, e1, 'travel', 1000, current_date), (org, e2, 'medical', 2000, current_date);
-  insert into public.payroll_runs (id, org_id, period_month) values (run_id, org, date_trunc('month', current_date)::date);
-  insert into public.payslips (org_id, employee_id, payroll_run_id, period_month, gross_cents)
+  insert into public.hr_payroll_runs (id, org_id, period_month) values (run_id, org, date_trunc('month', current_date)::date);
+  insert into public.hr_payslips (org_id, employee_id, payroll_run_id, period_month, gross_cents)
   values (org, e1, run_id, date_trunc('month', current_date)::date, 400000),
          (org, e2, run_id, date_trunc('month', current_date)::date, 900000);
-  insert into public.reviews (org_id, employee_id, period, rating, score)
+  insert into public.hr_reviews (org_id, employee_id, period, rating, score)
   values (org, e1, 'H1', 'meets', 3.5), (org, e2, 'H1', 'exceeds', 4.5);
-  insert into public.documents (org_id, employee_id, title, doc_type)
+  insert into public.hr_documents (org_id, employee_id, title, doc_type)
   values (org, e1, 'Contract', 'contract'), (org, e2, 'Contract', 'contract');
-  insert into public.payment_vouchers (org_id, voucher_no, payee, voucher_type, amount_cents, issued_date)
+  insert into public.hr_payment_vouchers (org_id, voucher_no, payee, voucher_type, amount_cents, issued_date)
   values (org, 'PV-1', 'Someone', 'Advance', 1000, current_date);
-  insert into public.people_settings (org_id) values (org);
-  insert into public.departments (org_id, name) values (org, 'Sales');
-  insert into public.public_holidays (org_id, name, holiday_date) values (org, 'Labour Day', current_date);
-  insert into public.trainings (org_id, title) values (org, 'Safety refresher');
-  insert into public.announcements (org_id, title) values (org, 'Welcome');
+  insert into public.hr_settings (org_id) values (org);
+  insert into public.hr_departments (org_id, name) values (org, 'Sales');
+  insert into public.hr_public_holidays (org_id, name, holiday_date) values (org, 'Labour Day', current_date);
+  insert into public.hr_trainings (org_id, title) values (org, 'Safety refresher');
+  insert into public.hr_announcements (org_id, title) values (org, 'Welcome');
 
   -- ---- as member one ---------------------------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', m1, 'role', 'authenticated', 'aal', 'aal1')::text, true);
@@ -1962,13 +1962,13 @@ begin
     execute format('select count(*) from public.%I where org_id = %L', t, org) into n;
     if n <> 1 then fails := array_append(fails, format('a member reads %s rows of %s, expected only their own 1', n, t)); end if;
   end loop;
-  execute format('select count(*) from public.payslips where employee_id = %L', e2) into n;
+  execute format('select count(*) from public.hr_payslips where employee_id = %L', e2) into n;
   if n <> 0 then fails := array_append(fails, 'a member reads a colleague''s payslip'); end if;
   foreach t in array hr_only loop
     execute format('select count(*) from public.%I where org_id = %L', t, org) into n;
     if n <> 0 then fails := array_append(fails, format('a member reads %s rows of HR-only %s', n, t)); end if;
   end loop;
-  execute format('select count(*) from public.employees where org_id = %L', org) into n;
+  execute format('select count(*) from public.hr_employees where org_id = %L', org) into n;
   if n <> 2 then fails := array_append(fails, format('a member sees %s of 2 colleagues in the directory', n)); end if;
   foreach t in array shared loop
     execute format('select count(*) from public.%I where org_id = %L', t, org) into n;
@@ -1976,14 +1976,14 @@ begin
   end loop;
 
   begin
-    execute format('insert into public.employees (org_id, employee_no, name) values (%L, ''X'', ''Planted'')', org);
+    execute format('insert into public.hr_employees (org_id, employee_no, name) values (%L, ''X'', ''Planted'')', org);
     fails := array_append(fails, 'a member added an employee');
   exception when insufficient_privilege then null;
   end;
-  execute format('update public.employee_private set base_salary_cents = 1 where employee_id = %L', e1);
+  execute format('update public.hr_employee_private set base_salary_cents = 1 where employee_id = %L', e1);
   get diagnostics n = row_count;
   if n <> 0 then fails := array_append(fails, 'a member changed their own salary'); end if;
-  execute format('delete from public.employees where id = %L', e2);
+  execute format('delete from public.hr_employees where id = %L', e2);
   get diagnostics n = row_count;
   if n <> 0 then fails := array_append(fails, 'a member deleted a colleague'); end if;
 
@@ -2005,7 +2005,7 @@ begin
   -- ---- as the owner of another workspace -------------------------------
   perform set_config('request.jwt.claims', json_build_object('sub', outsider, 'role', 'authenticated', 'aal', 'aal1')::text, true);
   set local role authenticated;
-  foreach t in array personal || hr_only || shared || array['employees'] loop
+  foreach t in array personal || hr_only || shared || array['hr_employees'] loop
     execute format('select count(*) from public.%I where org_id = %L', t, org) into n;
     if n <> 0 then fails := array_append(fails, format('another workspace reads %s rows of %s', n, t)); end if;
   end loop;
@@ -2013,11 +2013,11 @@ begin
 
   -- ---- a member who is removed loses their own rows at once -------------
   delete from public.org_members where org_id = org and user_id = m1;
-  select user_id into linked from public.employees where id = e1;
+  select user_id into linked from public.hr_employees where id = e1;
   if linked is not null then fails := array_append(fails, 'removing a member left the employee linked'); end if;
   perform set_config('request.jwt.claims', json_build_object('sub', m1, 'role', 'authenticated', 'aal', 'aal1')::text, true);
   set local role authenticated;
-  execute format('select count(*) from public.payslips where org_id = %L', org) into n;
+  execute format('select count(*) from public.hr_payslips where org_id = %L', org) into n;
   if n <> 0 then fails := array_append(fails, 'a removed member still reads their payslip'); end if;
   reset role;
 
@@ -2025,18 +2025,18 @@ begin
   select id into demo from public.orgs where slug = 'rimba-ventures-demo';
   perform private.reseed_demo_people();
   perform private.reseed_demo_people();
-  select count(*) into n from public.employees where org_id = demo;
+  select count(*) into n from public.hr_employees where org_id = demo;
   if n <> 20 then fails := array_append(fails, format('the demo has %s employees after two reseeds, expected 20', n)); end if;
-  select count(*) into n from public.employees where org_id = demo and id = 'dea97d89-a5b6-f264-bd42-c6df73f664a7' and name = 'Aisyah Rahim';
+  select count(*) into n from public.hr_employees where org_id = demo and id = 'dea97d89-a5b6-f264-bd42-c6df73f664a7' and name = 'Aisyah Rahim';
   if n <> 1 then fails := array_append(fails, 'the demo employee id changed'); end if;
-  select count(*) into n from public.leave_requests
+  select count(*) into n from public.hr_leave_requests
   where org_id = demo and status = 'approved'
     and (now() at time zone 'Asia/Kuala_Lumpur')::date between start_date and end_date;
   if n <> 3 then fails := array_append(fails, format('%s people on leave today in the demo, expected 3', n)); end if;
-  select (select count(*) from public.leave_requests where org_id = demo and status = 'pending')
-       + (select count(*) from public.claims where org_id = demo and status = 'pending')
-       + (select count(*) from public.overtime_records where org_id = demo and status = 'pending')
-       + (select count(*) from public.time_off_requests where org_id = demo and status = 'pending') into n;
+  select (select count(*) from public.hr_leave_requests where org_id = demo and status = 'pending')
+       + (select count(*) from public.hr_claims where org_id = demo and status = 'pending')
+       + (select count(*) from public.hr_overtime_records where org_id = demo and status = 'pending')
+       + (select count(*) from public.hr_time_off_requests where org_id = demo and status = 'pending') into n;
   if n <> 6 then fails := array_append(fails, format('%s pending approvals across the four queues in the demo, expected 6', n)); end if;
 
   -- ---- a workspace with HR data can still be deleted --------------------
@@ -2056,7 +2056,7 @@ end $$;
 - [ ] **Step 3: Confirm the live test is collected**
 
 Run: `pnpm vitest run --dir tests people.rls`
-Expected on this machine, where the Supabase variables are in the shell environment (the other `*.rls.test.ts` files run here): the 7 tests **fail** with an error naming a missing table such as `public.departments`, because nothing is applied yet. That failure is expected until Task 10. If the variables are absent instead, the 7 tests are skipped and the exit code is 0.
+Expected on this machine, where the Supabase variables are in the shell environment (the other `*.rls.test.ts` files run here): the 7 tests **fail** with an error naming a missing table such as `public.hr_departments`, because nothing is applied yet. That failure is expected until Task 10. If the variables are absent instead, the 7 tests are skipped and the exit code is 0.
 
 - [ ] **Step 4: Run the rest of the suite**
 
@@ -2095,7 +2095,7 @@ Apply Step 2's eight files in one sitting. Between the core tables and the first
 Run this through `mcp__openkuasa-supabase__execute_sql` and expect no `table_clash` or `function_clash` rows, and only `viewer` among the demo roles (checked on 2026-10-10: clean, 2275 viewers):
 
 ```sql
-select 'table_clash' as kind, tablename as name from pg_tables where schemaname = 'public' and tablename in ('departments','employees','employee_private','leave_requests','leave_balances','time_off_requests','claims','overtime_records','attendance_days','timesheet_entries','shifts','public_holidays','payroll_runs','payslips','payment_vouchers','goals','scorecards','reviews','trainings','training_enrolments','announcements','documents','letters','people_settings')
+select 'table_clash' as kind, tablename as name from pg_tables where schemaname = 'public' and tablename in ('hr_departments','hr_employees','hr_employee_private','hr_leave_requests','hr_leave_balances','hr_time_off_requests','hr_claims','hr_overtime_records','hr_attendance_days','hr_timesheet_entries','hr_shifts','hr_public_holidays','hr_payroll_runs','hr_payslips','hr_payment_vouchers','hr_goals','hr_scorecards','hr_reviews','hr_trainings','hr_training_enrolments','hr_announcements','hr_documents','hr_letters','hr_settings')
 union all
 select 'function_clash', p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and (p.proname in ('is_demo_org','is_own_employee','reseed_demo_people','employee_link_guard','link_employee_on_member_join','unlink_employee_on_member_leave') or p.proname like 'people\_%')
 union all
@@ -2151,7 +2151,7 @@ First make the API see the new tables: run `notify pgrst, 'reload schema';` thro
 Run: `pnpm vitest run --dir tests people.rls`
 Expected: PASS, 7 tests. (If they were skipped in Task 9, the Supabase variables are missing: copy `.env.local` into the worktree, it is gitignored.)
 
-If the first test fails on the `update … designation` step with `permission denied for column updated_at`, the touch trigger's write to `updated_at` is being checked against the caller's column grants. Fix it with a new migration, `20261013090900_people_updated_at_grant.sql`, containing `grant update (updated_at) on public.employees to authenticated;` and `grant update (updated_at) on public.employee_private to authenticated;` (the reach tables needed the same for `ad_settings`), apply it, and re-run.
+If the first test fails on the `update … designation` step with `permission denied for column updated_at`, the touch trigger's write to `updated_at` is being checked against the caller's column grants. Fix it with a new migration, `20261013090900_people_updated_at_grant.sql`, containing `grant update (updated_at) on public.hr_employees to authenticated;` and `grant update (updated_at) on public.hr_employee_private to authenticated;` (the reach tables needed the same for `ad_settings`), apply it, and re-run.
 
 - [ ] **Step 5: Apply the schedule and check the advisors**
 

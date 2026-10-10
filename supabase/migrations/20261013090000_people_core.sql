@@ -46,7 +46,7 @@ revoke all on function private.people_touch_updated_at() from public, anon, auth
 
 -- ---- departments ----------------------------------------------------
 
-create table public.departments (
+create table public.hr_departments (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   name text not null check (char_length(trim(name)) between 1 and 80),
@@ -54,13 +54,13 @@ create table public.departments (
   unique (id, org_id)
 );
 -- One department per name, whatever its capitals or stray spaces.
-create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));
+create unique index hr_departments_org_name_idx on public.hr_departments (org_id, lower(trim(name)));
 
 -- ---- employees: the staff directory, readable by every member --------
 -- Nothing a colleague should not see belongs on this table. Pay, identity
 -- numbers and home details are on employee_private.
 
-create table public.employees (
+create table public.hr_employees (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.orgs(id) on delete cascade,
   user_id uuid references auth.users(id) on delete set null,
@@ -80,13 +80,13 @@ create table public.employees (
   updated_at timestamptz not null default now(),
   unique (id, org_id),
   unique (org_id, employee_no),
-  foreign key (department_id, org_id) references public.departments(id, org_id)
+  foreign key (department_id, org_id) references public.hr_departments(id, org_id)
 );
-create index employees_org_name_idx on public.employees (org_id, name);
-create index employees_department_idx on public.employees (department_id);
-create unique index employees_org_user_idx on public.employees (org_id, user_id) where user_id is not null;
-create unique index employees_org_email_idx on public.employees (org_id, lower(work_email)) where work_email is not null;
-create trigger employees_touch before update on public.employees
+create index hr_employees_org_name_idx on public.hr_employees (org_id, name);
+create index hr_employees_department_idx on public.hr_employees (department_id);
+create unique index hr_employees_org_user_idx on public.hr_employees (org_id, user_id) where user_id is not null;
+create unique index hr_employees_org_email_idx on public.hr_employees (org_id, lower(work_email)) where work_email is not null;
+create trigger hr_employees_touch before update on public.hr_employees
   for each row execute function private.people_touch_updated_at();
 
 -- True when the employee record is linked to the caller AND the caller is
@@ -95,7 +95,7 @@ create or replace function private.is_own_employee(target uuid)
 returns boolean language sql security definer stable set search_path = public as $$
   select private.mfa_ok() and exists (
     select 1
-    from public.employees e
+    from public.hr_employees e
     join public.org_members m on m.org_id = e.org_id and m.user_id = e.user_id
     where e.id = target and e.user_id = auth.uid()
   );
@@ -105,7 +105,7 @@ grant execute on function private.is_own_employee(uuid) to authenticated;
 
 -- ---- employee_private: HR and the employee themselves ----------------
 
-create table public.employee_private (
+create table public.hr_employee_private (
   employee_id uuid primary key,
   org_id uuid not null references public.orgs(id) on delete cascade,
   nric text,
@@ -122,37 +122,37 @@ create table public.employee_private (
   emergency_contact_phone text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  foreign key (employee_id, org_id) references public.employees(id, org_id) on delete cascade
+  foreign key (employee_id, org_id) references public.hr_employees(id, org_id) on delete cascade
 );
-create index employee_private_org_idx on public.employee_private (org_id);
-create trigger employee_private_touch before update on public.employee_private
+create index hr_employee_private_org_idx on public.hr_employee_private (org_id);
+create trigger hr_employee_private_touch before update on public.hr_employee_private
   for each row execute function private.people_touch_updated_at();
 
-select private.people_secure_table('departments', 'shared');
-select private.people_secure_table('employees', 'shared');
-select private.people_secure_table('employee_private', 'personal');
+select private.people_secure_table('hr_departments', 'shared');
+select private.people_secure_table('hr_employees', 'shared');
+select private.people_secure_table('hr_employee_private', 'personal');
 
 -- ---- writes: owner/admin only (grant ceiling + policy, added together) --
 
-create policy departments_write on public.departments for all to authenticated
+create policy hr_departments_write on public.hr_departments for all to authenticated
   using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));
-grant insert on public.departments to authenticated;
-grant update (name) on public.departments to authenticated;
-grant delete on public.departments to authenticated;
+grant insert on public.hr_departments to authenticated;
+grant update (name) on public.hr_departments to authenticated;
+grant delete on public.hr_departments to authenticated;
 
-create policy employees_write on public.employees for all to authenticated
+create policy hr_employees_write on public.hr_employees for all to authenticated
   using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));
-grant insert on public.employees to authenticated;
+grant insert on public.hr_employees to authenticated;
 grant update (user_id, employee_no, name, work_email, department_id, designation, employment_type,
-  is_manager, join_date, status, date_of_birth_day, date_of_birth_month) on public.employees to authenticated;
-grant delete on public.employees to authenticated;
+  is_manager, join_date, status, date_of_birth_day, date_of_birth_month) on public.hr_employees to authenticated;
+grant delete on public.hr_employees to authenticated;
 
-create policy employee_private_write on public.employee_private for all to authenticated
+create policy hr_employee_private_write on public.hr_employee_private for all to authenticated
   using (private.is_org_admin(org_id)) with check (private.is_org_admin(org_id));
-grant insert on public.employee_private to authenticated;
+grant insert on public.hr_employee_private to authenticated;
 grant update (nric, date_of_birth, phone, address, base_salary_cents, bank_name, bank_account,
-  epf_no, socso_no, tax_no, emergency_contact_name, emergency_contact_phone) on public.employee_private to authenticated;
-grant delete on public.employee_private to authenticated;
+  epf_no, socso_no, tax_no, emergency_contact_name, emergency_contact_phone) on public.hr_employee_private to authenticated;
+grant delete on public.hr_employee_private to authenticated;
 
 -- ---- linking an employee record to a signed-in user ------------------
 -- Automatic matching uses only a confirmed, non-anonymous auth email, never
@@ -172,7 +172,7 @@ begin
       and u.email_confirmed_at is not null
       and lower(u.email) = lower(new.work_email)
       and not exists (
-        select 1 from public.employees x where x.org_id = new.org_id and x.user_id = m.user_id
+        select 1 from public.hr_employees x where x.org_id = new.org_id and x.user_id = m.user_id
       )
     limit 1;
     new.user_id := match;
@@ -185,7 +185,7 @@ begin
   return new;
 end; $$;
 revoke all on function private.employee_link_guard() from public, anon, authenticated;
-create trigger employees_link_guard before insert or update of user_id on public.employees
+create trigger hr_employees_link_guard before insert or update of user_id on public.hr_employees
   for each row execute function private.employee_link_guard();
 
 create or replace function private.link_employee_on_member_join()
@@ -196,14 +196,14 @@ begin
   select lower(email) into addr from auth.users
   where id = new.user_id and is_anonymous is not true and email_confirmed_at is not null;
   if addr is null then return new; end if;
-  update public.employees e set user_id = new.user_id
+  update public.hr_employees e set user_id = new.user_id
   where e.id = (
-    select x.id from public.employees x
+    select x.id from public.hr_employees x
     where x.org_id = new.org_id and x.user_id is null and lower(x.work_email) = addr
     limit 1
   )
   and not exists (
-    select 1 from public.employees y where y.org_id = new.org_id and y.user_id = new.user_id
+    select 1 from public.hr_employees y where y.org_id = new.org_id and y.user_id = new.user_id
   );
   return new;
 end; $$;
@@ -216,7 +216,7 @@ returns trigger language plpgsql security definer set search_path = public as $$
 begin
   -- Nothing to do when the whole workspace is being deleted: its employees go
   -- with it, and touching them mid-delete would fail their workspace check.
-  update public.employees set user_id = null
+  update public.hr_employees set user_id = null
   where org_id = old.org_id and user_id = old.user_id
     and exists (select 1 from public.orgs o where o.id = old.org_id);
   return old;
