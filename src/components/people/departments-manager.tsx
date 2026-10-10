@@ -60,7 +60,12 @@ export function DepartmentsManager({
                   <Button type="submit" size="sm" disabled={pending}>
                     Save
                   </Button>
-                  <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setRenaming(null)}>
+                  <Button type="button" variant="ghost" size="sm" disabled={pending}
+                    onClick={() => {
+                      setRenaming(null);
+                      setError(null);
+                    }}
+                  >
                     Cancel
                   </Button>
                 </form>
@@ -99,7 +104,12 @@ export function DepartmentsManager({
                           >
                             Delete?
                           </Button>
-                          <Button type="button" variant="ghost" size="sm" disabled={pending} onClick={() => setConfirmingId(null)}>
+                          <Button type="button" variant="ghost" size="sm" disabled={pending}
+                            onClick={() => {
+                              setConfirmingId(null);
+                              setError(null);
+                            }}
+                          >
                             Cancel
                           </Button>
                         </>

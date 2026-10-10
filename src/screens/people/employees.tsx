@@ -33,8 +33,8 @@ export default async function EmployeesScreen() {
     return { ...buildEmployeesModel(employees, departments, todayInMalaysia(now)), members };
   });
 
-  // Owner or admin. The actions and the database both check again.
-  const canEdit = viewer.isHr;
+  // Owner or admin, and not the demo workspace (the server refuses changes there). The actions and the database both check again.
+  const canEdit = viewer.isHr && !viewer.isDemo;
   const totals = model?.totals;
   const departmentMix: Slice[] = (model?.by_department ?? []).map((d, index) => ({
     key: d.department,

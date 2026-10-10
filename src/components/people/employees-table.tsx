@@ -327,6 +327,7 @@ export function EmployeesTable({
           if (!open && !pending) {
             setCreating(false);
             setEditing(null);
+            setError(null);
           }
         }}
       >
@@ -347,6 +348,7 @@ export function EmployeesTable({
                 onCancel={() => {
                   setCreating(false);
                   setEditing(null);
+                  setError(null);
                 }}
                 onSubmit={(input) =>
                   act(editing ? updateEmployeeAction({ id: editing.employee.id, ...input }) : createEmployeeAction(input))
