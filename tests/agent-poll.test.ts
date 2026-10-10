@@ -114,6 +114,7 @@ describe('pollVideos', () => {
     expect(updates[0].patch).toEqual({ status: 'done', storage_path: `${ORG}/run-1/video.mp4` });
     expect(updates[0].eqs).toContainEqual(['id', 'asset-1']);
     expect(updates[0].eqs).toContainEqual(['org_id', ORG]);
+    expect(updates[0].eqs).toContainEqual(['status', 'pending']);
   });
 
   it('leaves a video pending when done but the provider returned no url', async () => {

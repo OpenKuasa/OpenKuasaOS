@@ -43,6 +43,7 @@ export async function runAgents(client: SupabaseClient): Promise<RunAgentsSummar
         .from('agent_configs')
         .update({ last_run_at: new Date(now).toISOString() })
         .eq('id', cfg.id)
+        .eq('enabled', true)
         .or(`last_run_at.is.null,last_run_at.lt.${cutoff}`)
         .select('id, org_id')
         .maybeSingle();
@@ -103,11 +104,15 @@ export async function pollVideos(client: SupabaseClient): Promise<void> {
     asset: PendingVideo,
     patch: { status: 'done' | 'failed'; storage_path?: string },
   ) => {
-    await client
+    // supabase-js returns { error } rather than throwing; a failed write leaves the
+    // asset pending so the next poll retries. Only pending assets may transition.
+    const { error: markErr } = await client
       .from('agent_run_assets')
       .update(patch)
       .eq('id', asset.id)
-      .eq('org_id', asset.org_id);
+      .eq('org_id', asset.org_id)
+      .eq('status', 'pending');
+    void markErr;
   };
 
   for (const asset of data as PendingVideo[]) {

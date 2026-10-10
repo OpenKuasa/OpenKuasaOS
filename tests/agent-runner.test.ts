@@ -14,7 +14,7 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 type Cfg = { id: string; org_id: string; enabled: boolean; cadence: string; last_run_at: string | null };
 
 function fakeClient(configs: Cfg[], claimResult: (cfg: Cfg) => boolean = () => true) {
-  const claims: { id: string; orFilter: string; patch: Record<string, unknown> }[] = [];
+  const claims: { id: string; orFilter: string; enabled?: unknown; patch: Record<string, unknown> }[] = [];
   const client = {
     from(table: string) {
       expect(table).toBe('agent_configs');
@@ -35,10 +35,11 @@ function fakeClient(configs: Cfg[], claimResult: (cfg: Cfg) => boolean = () => t
           return q;
         },
         update(patch: Record<string, unknown>) {
-          const state = { id: '', orFilter: '' };
+          const state: { id: string; orFilter: string; enabled?: unknown } = { id: '', orFilter: '' };
           const q: Record<string, unknown> = {};
-          q.eq = (_c: string, v: string) => {
-            state.id = v;
+          q.eq = (c: string, v: unknown) => {
+            if (c === 'id') state.id = v as string;
+            if (c === 'enabled') state.enabled = v;
             return q;
           };
           q.or = (f: string) => {
@@ -107,6 +108,7 @@ describe('runAgents', () => {
     const { client, claims } = fakeClient([cfg({})], () => false);
     const out = await runAgents(client);
     expect(claims).toHaveLength(1);
+    expect(claims[0].enabled).toBe(true);
     expect(claims[0].orFilter).toContain('last_run_at.is.null');
     expect(claims[0].orFilter).toContain('last_run_at.lt.');
     expect(claims[0].patch).toHaveProperty('last_run_at');
@@ -147,9 +149,10 @@ describe('isTriggerAuthorized', () => {
     expect(isTriggerAuthorized(req({ 'x-service-key': 'short' }))).toBe(false);
   });
   it('rejects everything when the env key is unset', () => {
-    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
-    expect(isTriggerAuthorized(req({ 'x-service-key': '' }))).toBe(false);
-    expect(isTriggerAuthorized(req({ authorization: 'Bearer ' }))).toBe(false);
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', undefined as unknown as string);
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    expect(isTriggerAuthorized(req({ 'x-service-key': 'anything' }))).toBe(false);
+    expect(isTriggerAuthorized(req({ authorization: 'Bearer anything' }))).toBe(false);
   });
 });
 
