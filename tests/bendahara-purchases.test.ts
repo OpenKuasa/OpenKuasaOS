@@ -253,6 +253,25 @@ testWithSupabase('one payment can cover two bills from one supplier, but not two
   expect(mixed.error?.code).toBe('FIN06');
 });
 
+testWithSupabase('a bill cannot be created already posted, or posted empty behind the function', async () => {
+  const direct = await a.c.from('supplier_bills').insert({
+    org_id: a.orgId, supplier_id: a.supplier, bill_no: 'BILL-SNEAKY', due_date: daysFromToday(30), status: 'posted',
+  });
+  expect(direct.error?.code).toBe('FIN01');
+
+  const free = await saveBill(a, [{ description: 'Sample', quantity: 1, unit_price: 0 }]);
+  const sneak = await a.c.from('supplier_bills').update({ status: 'posted', bill_no: 'BILL-SNEAKY' }).eq('id', free.data);
+  expect(sneak.error?.code).toBe('FIN10');
+});
+
+testWithSupabase('a posted bill past its due date shows as overdue', async () => {
+  const saved = await saveBill(a, [GLOVES], { bill_date: daysFromToday(-40), due_date: daysFromToday(-10) });
+  expect(saved.error, saved.error?.message).toBeNull();
+  const posted = await a.c.rpc('finance_post_bill', { target_org: a.orgId, target_bill: saved.data });
+  expect(posted.error, posted.error?.message).toBeNull();
+  expect(await totals(a.c, saved.data)).toMatchObject({ balance: 132.5, display_status: 'overdue' });
+});
+
 testWithSupabase('another workspace cannot see or touch bills, payments or allocations', async () => {
   const bill = await postedBill(a);
   const paid = await pay(a, [{ bill_id: bill.id, amount: 10 }]);

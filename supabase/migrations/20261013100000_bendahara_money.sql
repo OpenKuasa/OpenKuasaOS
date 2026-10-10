@@ -9,6 +9,9 @@
 --   * Guards: a posted bill or payment is locked and can only be voided.
 --   * Functions that save, post and pay in one transaction.
 
+-- Fail fast instead of queueing behind a long transaction and stalling sign-ins.
+set local lock_timeout = '5s';
+
 -- ---- default accounts -------------------------------------------------------
 create or replace function private.finance_seed_accounts(target_org uuid)
 returns void
@@ -212,6 +215,13 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'draft' then
+      raise exception 'a bill starts as a draft' using errcode = 'FIN01';
+    end if;
+    return new;
+  end if;
+
   if tg_op = 'DELETE' then
     if old.status <> 'draft' and exists (select 1 from public.orgs where id = old.org_id) then
       raise exception 'a posted bill cannot be deleted' using errcode = 'FIN01';
@@ -222,6 +232,12 @@ begin
   if old.status = 'draft' then
     if new.status not in ('draft','posted') then
       raise exception 'a draft bill is deleted, not voided' using errcode = 'FIN01';
+    end if;
+    if new.status = 'posted' and coalesce((
+      select sum(amount + sst_amount) from public.supplier_bill_lines
+      where org_id = new.org_id and bill_id = new.id
+    ), 0) <= 0 then
+      raise exception 'a bill needs an amount before it is posted' using errcode = 'FIN10';
     end if;
     return new;
   end if;
@@ -246,7 +262,7 @@ begin
 end $$;
 
 create trigger finance_bill_guard
-  before update or delete on public.supplier_bills
+  before insert or update or delete on public.supplier_bills
   for each row execute function private.finance_bill_guard();
 
 create or replace function private.finance_bill_line_guard()
@@ -262,14 +278,14 @@ begin
     return old;
   end if;
   if tg_op <> 'INSERT' then
-    select status into s from public.supplier_bills where org_id = old.org_id and id = old.bill_id;
+    select status into s from public.supplier_bills where org_id = old.org_id and id = old.bill_id for share;
     -- No parent row: the bill itself is being deleted, and its lines go with it.
     if s is not null and s <> 'draft' then
       raise exception 'the lines of a posted bill cannot be changed' using errcode = 'FIN01';
     end if;
   end if;
   if tg_op <> 'DELETE' then
-    select status into s from public.supplier_bills where org_id = new.org_id and id = new.bill_id;
+    select status into s from public.supplier_bills where org_id = new.org_id and id = new.bill_id for share;
     if s is not null and s <> 'draft' then
       raise exception 'the lines of a posted bill cannot be changed' using errcode = 'FIN01';
     end if;
@@ -293,6 +309,14 @@ begin
       raise exception 'a posted payment cannot be deleted' using errcode = 'FIN09';
     end if;
     return old;
+  end if;
+
+  -- A deleted user is cleared from these two columns by their foreign keys.
+  if new.status = old.status
+     and (to_jsonb(new) - 'created_by' - 'approved_by') = (to_jsonb(old) - 'created_by' - 'approved_by')
+     and (new.created_by is null or new.created_by = old.created_by)
+     and (new.approved_by is null or new.approved_by = old.approved_by) then
+    return new;
   end if;
 
   if old.status = 'posted' and new.status = 'void'
@@ -333,9 +357,12 @@ begin
     if tg_op = 'DELETE' then return old; end if;
   end if;
 
-  select amount, status into t from public.finance_transactions where org_id = new.org_id and id = new.transaction_id;
+  select amount, status, direction into t from public.finance_transactions where org_id = new.org_id and id = new.transaction_id;
   if found and t.status in ('posted','void') then
     raise exception 'the split of a posted payment cannot be changed' using errcode = 'FIN09';
+  end if;
+  if found and t.direction <> 'out' then
+    raise exception 'only money out pays a bill' using errcode = 'FIN04';
   end if;
 
   select coalesce(sum(amount), 0) into taken
@@ -385,6 +412,12 @@ end $$;
 create trigger finance_contact_guard
   before update on public.finance_contacts
   for each row execute function private.finance_contact_guard();
+
+revoke all on function private.finance_bill_guard() from public, anon, authenticated;
+revoke all on function private.finance_bill_line_guard() from public, anon, authenticated;
+revoke all on function private.finance_transaction_guard() from public, anon, authenticated;
+revoke all on function private.finance_allocation_guard() from public, anon, authenticated;
+revoke all on function private.finance_contact_guard() from public, anon, authenticated;
 
 -- ---- functions --------------------------------------------------------------
 -- All run as the caller, so RLS decides who may write and to which workspace.
@@ -529,7 +562,8 @@ begin
 
   insert into public.finance_allocations (org_id, transaction_id, bill_id, amount)
   select target_org, tid, (a->>'bill_id')::uuid, (a->>'amount')::numeric
-  from jsonb_array_elements(allocations) as a;
+  from jsonb_array_elements(allocations) as a
+  order by (a->>'bill_id')::uuid;
 
   if want = 'posted' then
     no := public.finance_next_number(target_org, 'voucher');
