@@ -18,6 +18,7 @@ import type {
   Broadcast,
   Campaign,
   Channel,
+  Creative,
   Form,
   Lead,
   LeadStage,
@@ -212,6 +213,20 @@ export function seedAutomations(now: Date): Automation[] {
   }));
 }
 
+export function seedCreatives(now: Date): Creative[] {
+  const rows: Array<Omit<Creative, 'id' | 'created_at'> & { ageDays: number }> = [
+    { campaign_id: 'camp_1', name: 'Raya hero image', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/raya-hero.jpg', ctr: 3.2, ageDays: 39 },
+    { campaign_id: 'camp_1', name: 'Raya carousel copy', type: 'copy', channel: 'facebook', status: 'active', body: 'Raya datang! Jimat sampai 30%.', ctr: 2.8, ageDays: 38 },
+    { campaign_id: 'camp_2', name: 'eBook promo video', type: 'video', channel: 'whatsapp', status: 'active', body: 'https://assets.openkuasa.com/ebook.mp4', ctr: 4.1, ageDays: 32 },
+    { campaign_id: 'camp_3', name: 'Cart reminder copy', type: 'copy', channel: 'instagram', status: 'active', body: 'Troli anda menunggu — habiskan pembelian hari ni.', ctr: 1.9, ageDays: 25 },
+    { campaign_id: 'camp_4', name: 'Launch teaser', type: 'video', channel: 'tiktok', status: 'draft', body: null, ctr: null, ageDays: 18 },
+    { campaign_id: null, name: 'Evergreen brand image', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/brand.jpg', ctr: 1.2, ageDays: 11 },
+    { campaign_id: null, name: 'Testimoni pelanggan', type: 'copy', channel: 'whatsapp', status: 'archived', body: 'Servis terbaik, respons pantas!', ctr: null, ageDays: 7 },
+    { campaign_id: 'camp_5', name: 'Awareness banner', type: 'image', channel: 'facebook', status: 'active', body: 'https://assets.openkuasa.com/awareness.jpg', ctr: 0.8, ageDays: 5 },
+  ];
+  return rows.map(({ ageDays, ...r }, i) => ({ id: `creative_${i + 1}`, ...r, created_at: daysAgo(now, ageDays) }));
+}
+
 /**
  * Build a seed-backed {@link ReachData} provider anchored to `now`. Called per
  * request (not memoized) so appointment "upcoming" windows stay correct on a
@@ -224,6 +239,7 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
   const forms = seedForms(now);
   const broadcasts = seedBroadcasts(now);
   const automations = seedAutomations(now);
+  const creatives = seedCreatives(now);
   return {
     listCampaigns: async () => campaigns,
     listLeads: async () => leads,
@@ -231,5 +247,6 @@ export function createSeedReachData(now: Date = new Date()): ReachData {
     listForms: async () => forms,
     listBroadcasts: async () => broadcasts,
     listAutomations: async () => automations,
+    listCreatives: async () => creatives,
   };
 }

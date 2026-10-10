@@ -28,6 +28,8 @@ import {
   type Broadcast,
   type Campaign,
   type Channel,
+  type Creative,
+  type CreativeType,
   type Form,
   type Lead,
   LEAD_STAGES,
@@ -260,6 +262,17 @@ export function summarizeAutomations(automations: Automation[], limit = 10) {
     }));
 }
 
+export function summarizeCreatives(
+  creatives: Creative[],
+  opts: { type?: CreativeType; limit?: number } = {},
+) {
+  const { type, limit = 20 } = opts;
+  return creatives
+    .filter((c) => (type ? c.type === type : true))
+    .slice(0, limit)
+    .map((c) => ({ name: c.name, type: c.type, channel: c.channel, status: c.status, ctr: c.ctr }));
+}
+
 const limitSchema = (describe: string) =>
   z.number().int().positive().max(50).optional().describe(describe);
 
@@ -353,6 +366,15 @@ export function createReachTools(
       description: 'Automation workflows with trigger, status and number of runs, most runs first.',
       inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10).') }),
       execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), limit),
+    }),
+
+    getCreatives: tool({
+      description: 'List the org’s ad creatives (image/video/copy) with channel, status and CTR. Optionally filter by type.',
+      inputSchema: z.object({
+        type: z.enum(['image', 'video', 'copy']).optional().describe('Only return creatives of this type.'),
+        limit: limitSchema('Max creatives to return (default 20).'),
+      }),
+      execute: async ({ type, limit }) => summarizeCreatives(await data.listCreatives(), { type, limit }),
     }),
   };
 

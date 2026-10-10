@@ -4,6 +4,7 @@ import type {
   Automation,
   Broadcast,
   Campaign,
+  Creative,
   Form,
   Lead,
   ReachData,
@@ -41,6 +42,10 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
       rows<Appointment>('appointments', 'id,contact_name,kind,scheduled_at,via,created_at', {
         col: 'scheduled_at', asc: true,
       }),
+    listCreatives: () =>
+      rows<Creative>('creatives', 'id,campaign_id,name,type,channel,status,body,ctr,created_at', {
+        col: 'created_at', asc: false,
+      }),
     listForms: async (): Promise<Form[]> => [],
     listBroadcasts: async (): Promise<Broadcast[]> => [],
     listAutomations: async (): Promise<Automation[]> => [],
@@ -54,6 +59,7 @@ const EMPTY_REACH_DATA: ReachData = {
   listForms: async () => [],
   listBroadcasts: async () => [],
   listAutomations: async () => [],
+  listCreatives: async () => [],
 };
 
 /**

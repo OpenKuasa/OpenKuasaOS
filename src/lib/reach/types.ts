@@ -90,6 +90,21 @@ export type Automation = {
   created_at: string;
 };
 
+export type CreativeType = 'image' | 'video' | 'copy';
+export type CreativeStatus = 'draft' | 'active' | 'archived';
+
+export type Creative = {
+  id: string;
+  campaign_id: string | null;
+  name: string;
+  type: CreativeType;
+  channel: Channel;
+  status: CreativeStatus;
+  body: string | null;
+  ctr: number | null;
+  created_at: string;
+};
+
 /**
  * The data seam the AI tools read through. The seed provider returns in-memory
  * fixtures today; the data slice adds a Supabase provider whose methods query
@@ -102,4 +117,5 @@ export interface ReachData {
   listForms(): Promise<Form[]>;
   listBroadcasts(): Promise<Broadcast[]>;
   listAutomations(): Promise<Automation[]>;
+  listCreatives(): Promise<Creative[]>;
 }

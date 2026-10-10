@@ -7,7 +7,7 @@ import type { ReachData } from '@/lib/reach/types';
 const NOW = new Date('2026-10-09T00:00:00.000Z');
 const empty: ReachData = {
   listCampaigns: async () => [], listLeads: async () => [], listAppointments: async () => [],
-  listForms: async () => [], listBroadcasts: async () => [], listAutomations: async () => [],
+  listForms: async () => [], listBroadcasts: async () => [], listAutomations: async () => [], listCreatives: async () => [],
 };
 
 describe('buildOverviewModel', () => {
