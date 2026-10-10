@@ -100,7 +100,7 @@ export function BillsView({
   const [showAll, setShowAll] = useState(false);
   const [open, setOpen] = useState<Open>(null);
   const confirm = useFinanceAction();
-  const loader = useFinanceAction();
+  const loader = useFinanceAction('read');
 
   const matching = filterBills(rows, query, filter);
   const shown = showAll ? matching : matching.slice(0, LATEST_ROWS);
