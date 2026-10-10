@@ -150,6 +150,7 @@ export function summarizeCampaigns(
   return campaigns
     .filter((c) => (status ? c.status === status : true))
     .map((c) => ({
+      id: c.id,
       name: c.name,
       channel: c.channel,
       status: c.status,
@@ -273,7 +274,7 @@ export function summarizeCreatives(
   return creatives
     .filter((c) => (type ? c.type === type : true))
     .slice(0, limit)
-    .map((c) => ({ name: c.name, type: c.type, channel: c.channel, status: c.status, ctr: c.ctr }));
+    .map((c) => ({ id: c.id, name: c.name, type: c.type, channel: c.channel, status: c.status, ctr: c.ctr }));
 }
 
 const limitSchema = (describe: string) =>
