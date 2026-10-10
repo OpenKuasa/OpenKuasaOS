@@ -1,4 +1,4 @@
-import { Plus, Search, ChartColumn, PieChart, FileText } from 'lucide-react';
+import { Plus, ChartColumn, PieChart, FileText } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
@@ -8,37 +8,16 @@ import {
   Sparkline,
   type Series,
 } from '@/components/charts';
-import { LiveDot } from '@/components/ui/live-dot';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { cn } from '@/lib/utils';
-
+import { SupplierBillsTable } from '@/components/finance/supplier-bills-table';
 import {
   loadBillsView,
   type Bill,
-  type BillStatus,
   type BillsView,
 } from '@/lib/finance/purchases';
 
 /* ---- sample data (Rimba Ventures Sdn Bhd) -------------------------- */
 /* Shown when Supabase is not configured or nobody is signed in. */
-
-const COLUMNS = ['No.', 'Date', 'Supplier', 'Due', 'Total', 'Balance', 'Status'];
 
 const BILLS: Bill[] = [
   {
@@ -132,26 +111,6 @@ const SAMPLE: BillsView = {
   billCount: 231,
 };
 
-const STATUS_STYLES: Record<BillStatus, string> = {
-  Paid: 'bg-emerald-500/15 text-emerald-600',
-  Pending: 'bg-amber-500/15 text-amber-600',
-  Overdue: 'bg-red-500/15 text-red-600',
-  Draft: 'bg-muted text-muted-foreground',
-};
-
-function StatusPill({ status }: { status: BillStatus }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
-        STATUS_STYLES[status],
-      )}
-    >
-      {status}
-    </span>
-  );
-}
-
 const SPARK_COLORS = ['var(--primary-foreground)', 'var(--chart-3)', 'var(--chart-4)', 'var(--chart-2)'];
 
 const SUPPLIER_SERIES: Series[] = [
@@ -239,78 +198,7 @@ export default async function SupplierBillsScreen() {
           }
           className="col-span-2 md:col-span-12"
         >
-          <div className="flex flex-wrap items-center gap-2 px-4">
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search bills or suppliers…" className="w-full pl-9" />
-            </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="mt-3 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  {COLUMNS.map((c) => (
-                    <TableHead key={c} className="whitespace-nowrap">
-                      {c}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {view.bills.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={COLUMNS.length}
-                      className="py-8 text-center text-muted-foreground"
-                    >
-                      No supplier bills yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-                {view.bills.map((b) => (
-                  <TableRow key={b.id}>
-                    <TableCell className="font-medium">{b.id}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {b.date}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">{b.supplier}</TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {b.due}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {b.total}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {b.balance}
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <LiveDot active={b.status === 'Paid'} />
-                        <StatusPill status={b.status} />
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>
-              Showing {view.bills.length} of {view.billCount} bills
-            </span>
-          </div>
+          <SupplierBillsTable bills={view.bills} billCount={view.billCount} />
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>

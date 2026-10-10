@@ -163,7 +163,7 @@ export function billsView(bills: BillRow[], payments: PaymentRow[], today: strin
       { key: 'overdue', label: 'Overdue', value: statusCount('overdue'), color: 'var(--chart-4)' },
       { key: 'draft', label: 'Draft', value: statusCount('draft'), color: 'var(--chart-3)' },
     ],
-    bills: bills.slice(0, TABLE_ROWS).map((b) => ({
+    bills: bills.map((b) => ({
       id: b.bill_no,
       date: day(b.bill_date),
       supplier: b.supplier_name,
