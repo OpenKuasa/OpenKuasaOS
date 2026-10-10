@@ -1,7 +1,6 @@
 import { revalidatePath } from 'next/cache';
 import ContactsScreen from '@/screens/reach/contacts';
-import { requireOrg } from '@/lib/auth/current-org';
-import { hasSupabaseEnv } from '@/lib/auth/viewer';
+import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
 import {
   CrmContactFormError,
   createCrmContact,
@@ -18,7 +17,7 @@ async function createContactAction(
   'use server';
 
   const supabase = await createClient();
-  const { orgId } = await requireOrg(supabase);
+  const { orgId } = await getViewer();
 
   // Hand back what was typed, so a rejected form is not emptied.
   const values: Record<string, string> = {};
@@ -43,7 +42,8 @@ export default async function CrmContactsPage() {
   if (!hasSupabaseEnv()) return <ContactsScreen />;
 
   const supabase = await createClient();
-  const { orgId, role } = await requireOrg(supabase);
+  // The layout already loaded the viewer for this request; this reuses it.
+  const { orgId, role } = await getViewer();
 
   let live: Awaited<ReturnType<typeof listCrmContacts>> | null = null;
   try {

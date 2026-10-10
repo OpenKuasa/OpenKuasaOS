@@ -335,7 +335,7 @@ function AddContactCard({ action }: { action: CreateContactAction }) {
             <Plus className="size-4" />
             {pending ? 'Saving…' : 'Save contact'}
           </Button>
-          {state?.error ? (
+          {state?.error && !pending ? (
             <p role="alert" className="pb-2 text-sm text-destructive">
               {state.error}
             </p>
