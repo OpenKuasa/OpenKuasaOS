@@ -9,6 +9,7 @@ import {
   createJob,
   deleteJob,
   setJobStatus,
+  updateApplicationForm,
   updateCareersPage,
   updateJob,
 } from '@/lib/hire/capabilities';
@@ -66,6 +67,19 @@ export async function updateCareersPageAction(input: unknown) {
     revalidatePath('/hire/assistant');
     // The public pages render on every request, so this is not needed today. It is cheap, and it keeps the
     // board right if the pages are ever cached. A literal path takes no `type`.
+    revalidatePath(careersPath(ctx.orgId));
+  }
+  return result;
+}
+
+/** What the apply form asks for: the Settings card, the assistant's view of it, and the public job pages that will carry the form. */
+export async function updateApplicationFormAction(input: unknown) {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const result = await updateApplicationForm(ctx, input as never);
+  if (result.ok) {
+    revalidatePath('/hire/settings');
+    revalidatePath('/hire/assistant');
     revalidatePath(careersPath(ctx.orgId));
   }
   return result;

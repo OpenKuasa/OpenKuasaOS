@@ -171,7 +171,7 @@ describe('hire tools', () => {
     const empty: HireData = {
       listJobs: async () => [], listCandidates: async () => [],
       listApplications: async () => [], listInterviews: async () => [],
-      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
+      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false }),
     };
     const t = createHireTools(empty, NOW);
     for (const name of HIRE_TOOL_NAMES) {
@@ -192,7 +192,7 @@ describe('hire tools', () => {
     const broken: HireData = {
       listJobs: async () => { throw new Error('relation "hire_jobs" does not exist'); },
       listCandidates: async () => [], listApplications: async () => [], listInterviews: async () => [],
-      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
+      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false }),
     };
     const t = createHireTools(broken, NOW);
     const result = await (t.listJobs as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute({}, { toolCallId: 't', messages: [] });
@@ -252,7 +252,7 @@ describe('hire change tools', () => {
 });
 
 describe('getCareersPage', () => {
-  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Join us', careers_tagline: null };
+  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Join us', careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false };
   const withSettings = (over: Record<string, unknown> = {}): HireData => ({
     ...createSeedHireData(NOW),
     getSettings: async () => ({ ...settings, ...over }),

@@ -123,13 +123,14 @@ describe('getHireData', () => {
 
     it('reads the row for the workspace', async () => {
       const { client, seen } = settingsClient({
-        data: { careers_enabled: true, careers_headline: 'Hi', careers_tagline: null }, error: null,
+        data: { careers_enabled: true, careers_headline: 'Hi', careers_tagline: null, require_cv: true }, error: null,
       });
       expect(await (await getHireData(client)).getSettings()).toEqual({
         org_id: 'o1', careers_enabled: true, careers_headline: 'Hi', careers_tagline: null,
+        require_cv: true, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false,
       });
       expect(seen).toEqual({
-        table: 'hire_settings', columns: 'careers_enabled,careers_headline,careers_tagline', column: 'org_id', org: 'o1',
+        table: 'hire_settings', columns: 'careers_enabled,careers_headline,careers_tagline,require_cv,require_cover_letter,ask_portfolio,ask_expected_salary', column: 'org_id', org: 'o1',
       });
     });
 
@@ -137,6 +138,7 @@ describe('getHireData', () => {
       const { client } = settingsClient({ data: null, error: null });
       expect(await (await getHireData(client)).getSettings()).toEqual({
         org_id: 'o1', careers_enabled: false, careers_headline: null, careers_tagline: null,
+        require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false,
       });
     });
 

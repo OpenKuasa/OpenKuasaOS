@@ -9,6 +9,8 @@ import {
   CAREERS_DEMO,
   updateCareersPage,
   updateCareersPageInput,
+  updateApplicationForm,
+  updateApplicationFormInput,
   createJob,
   createJobInput,
   deleteJob,
@@ -23,6 +25,8 @@ import type { Job } from '@/lib/hire/types';
 
 const NOW = new Date('2026-10-11T04:00:00Z'); // 12:00 on 11 Oct in Kuala Lumpur
 const ORG = '11111111-1111-4111-8111-111111111111';
+/** The application form switches as a workspace has them until it changes one. */
+const FORM_OFF = { require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false };
 const OTHER_ORG = '22222222-2222-4222-8222-222222222222';
 const ID = '33333333-3333-4333-8333-333333333333';
 
@@ -323,14 +327,14 @@ function fakeSettings(opts: {
 
 describe('updateCareersPage', () => {
   it('1: updates the existing row with the sent fields and updated_at, filtered by the workspace', async () => {
-    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null } });
+    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null, ...FORM_OFF } });
     const result = await updateCareersPage(ctx, { careers_enabled: true, careers_headline: 'Hi' }, NOW);
     expect(writes()).toEqual([{
       table: 'hire_settings', op: 'update',
       values: { careers_enabled: true, careers_headline: 'Hi', updated_at: NOW.toISOString() },
       filters: { org_id: ORG },
     }]);
-    expect(result).toEqual({ ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null } });
+    expect(result).toEqual({ ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null, ...FORM_OFF } });
   });
   it('2: inserts when there is no row yet, always with the workspace from the session', async () => {
     const { ctx, writes } = fakeSettings({ slug: 'acme', existing: null });
@@ -344,11 +348,11 @@ describe('updateCareersPage', () => {
     const { ctx, writes } = fakeSettings({
       slug: 'acme',
       insertError: { code: '23505', message: 'duplicate key' },
-      updateResults: [null, { org_id: ORG, careers_enabled: true, careers_headline: null, careers_tagline: null }],
+      updateResults: [null, { org_id: ORG, careers_enabled: true, careers_headline: null, careers_tagline: null, ...FORM_OFF }],
     });
     const result = await updateCareersPage(ctx, { careers_enabled: true }, NOW);
     expect(writes().map((w) => w.op)).toEqual(['update', 'insert', 'update']);
-    expect(result).toEqual({ ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: null, careers_tagline: null } });
+    expect(result).toEqual({ ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: null, careers_tagline: null, ...FORM_OFF } });
   });
   it('4: stores a blank headline or tagline as null, and leaves out a field that was not sent', async () => {
     const { ctx, writes } = fakeSettings({ slug: 'acme', existing: { org_id: ORG } });
@@ -367,14 +371,14 @@ describe('updateCareersPage', () => {
     expect(writes()).toHaveLength(1);
   });
   it('6: writes nothing when nothing is sent, and returns the current settings or the defaults', async () => {
-    const current = fakeSettings({ existing: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null } });
+    const current = fakeSettings({ existing: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null, ...FORM_OFF } });
     expect(await updateCareersPage(current.ctx, {}, NOW)).toEqual({
-      ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null },
+      ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null, ...FORM_OFF },
     });
     expect(current.writes()).toHaveLength(0);
     const none = fakeSettings({ existing: null });
     expect(await updateCareersPage(none.ctx, {}, NOW)).toEqual({
-      ok: true, data: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null },
+      ok: true, data: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null, ...FORM_OFF },
     });
     expect(none.writes()).toHaveLength(0);
   });
@@ -408,9 +412,86 @@ describe('updateCareersPage', () => {
   });
 });
 
+describe('updateApplicationForm', () => {
+  const row = { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null, ...FORM_OFF, ask_portfolio: true };
+
+  it('1: updates only the switches sent, with updated_at, filtered by the workspace', async () => {
+    const { ctx, writes } = fakeSettings({ existing: row });
+    const result = await updateApplicationForm(ctx, { require_cv: true }, NOW);
+    expect(writes()).toEqual([{
+      table: 'hire_settings', op: 'update',
+      values: { require_cv: true, updated_at: NOW.toISOString() },
+      filters: { org_id: ORG },
+    }]);
+    // One switch does not reset another, the careers switch or the branding.
+    expect(result).toEqual({ ok: true, data: { ...row, require_cv: true } });
+  });
+  it('2: makes the row when there is none, without touching the careers switch', async () => {
+    const { ctx, writes } = fakeSettings({ existing: null });
+    const result = await updateApplicationForm(ctx, { require_cv: true }, NOW);
+    const inserts = writes().filter((w) => w.op === 'insert');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values).toEqual({ require_cv: true, org_id: ORG });
+    expect(result).toMatchObject({ ok: true, data: { org_id: ORG, require_cv: true, careers_enabled: false, ask_portfolio: false } });
+  });
+  it('3: lets nothing but the four switches and the session workspace reach the database', async () => {
+    const { ctx, writes } = fakeSettings({ existing: null });
+    await updateApplicationForm(ctx, { require_cv: true, org_id: 'evil', careers_enabled: true } as never, NOW);
+    for (const write of writes()) {
+      expect(write.values).not.toHaveProperty('careers_enabled');
+      expect(write.values?.org_id ?? ORG).toBe(ORG);
+    }
+    expect(writes().at(-1)?.values).toEqual({ require_cv: true, org_id: ORG });
+  });
+  it('4: when the insert loses a race (23505), updates the row that now exists', async () => {
+    const { ctx, writes } = fakeSettings({
+      insertError: { code: '23505', message: 'duplicate key' },
+      updateResults: [null, { ...row, require_cover_letter: true }],
+    });
+    const result = await updateApplicationForm(ctx, { require_cover_letter: true }, NOW);
+    expect(writes().map((w) => w.op)).toEqual(['update', 'insert', 'update']);
+    expect(result).toEqual({ ok: true, data: { ...row, require_cover_letter: true } });
+  });
+  it('5: writes nothing when nothing is sent, and returns the current settings or the defaults', async () => {
+    const current = fakeSettings({ existing: row });
+    expect(await updateApplicationForm(current.ctx, {}, NOW)).toEqual({ ok: true, data: row });
+    expect(current.writes()).toHaveLength(0);
+    const none = fakeSettings({ existing: null });
+    expect(await updateApplicationForm(none.ctx, {}, NOW)).toEqual({
+      ok: true, data: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null, ...FORM_OFF },
+    });
+    expect(none.writes()).toHaveLength(0);
+  });
+  it('6: refuses a value that is not true or false, and writes nothing', async () => {
+    const { ctx, writes } = fakeSettings({ existing: row });
+    const result = await updateApplicationForm(ctx, { require_cv: 'yes' } as never, NOW);
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.error).not.toBe('');
+    expect(writes()).toHaveLength(0);
+  });
+  it('7: a database error on the write gives the generic line and logs', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { ctx } = fakeSettings({ updateError: { message: 'permission denied for table hire_settings' } });
+    expect(await updateApplicationForm(ctx, { ask_portfolio: false }, NOW))
+      .toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
+  });
+  it('8: is not refused for the demo workspace, and never reads the workspace row', async () => {
+    const { ctx, calls } = fakeSettings({ slug: 'rimba-ventures-demo', existing: row });
+    expect((await updateApplicationForm(ctx, { ask_expected_salary: true }, NOW)).ok).toBe(true);
+    expect(calls.some((c) => c.table === 'orgs')).toBe(false);
+  });
+  it('9: the careers page change never carries a form switch', async () => {
+    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: row });
+    await updateCareersPage(ctx, { careers_headline: 'New', require_cv: true } as never, NOW);
+    expect(writes()[0].values).toEqual({ careers_headline: 'New', updated_at: NOW.toISOString() });
+  });
+});
+
 describe('input schemas', () => {
   it('convert to JSON Schema, so they can be tool input schemas', () => {
-    for (const schema of [createJobInput, updateJobInput, setJobStatusInput, deleteJobInput, updateCareersPageInput]) {
+    for (const schema of [createJobInput, updateJobInput, setJobStatusInput, deleteJobInput, updateCareersPageInput, updateApplicationFormInput]) {
       expect(z.toJSONSchema(schema)).toMatchObject({ type: 'object' });
     }
   });

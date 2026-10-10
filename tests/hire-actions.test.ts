@@ -17,10 +17,10 @@ vi.mock('@/lib/hire/capabilities', async (importOriginal) => {
     ctl.calls.push({ fn, ctx, input });
     return ctl.fail ? { ok: false, error: 'refused' } : { ok: true, data: { id: 'j1', title: 'Barista' } };
   };
-  return { ...actual, createJob: stub('createJob'), updateJob: stub('updateJob'), setJobStatus: stub('setJobStatus'), deleteJob: stub('deleteJob'), updateCareersPage: stub('updateCareersPage') };
+  return { ...actual, createJob: stub('createJob'), updateJob: stub('updateJob'), setJobStatus: stub('setJobStatus'), deleteJob: stub('deleteJob'), updateCareersPage: stub('updateCareersPage'), updateApplicationForm: stub('updateApplicationForm') };
 });
 
-const { createJobAction, updateJobAction, setJobStatusAction, deleteJobAction, updateCareersPageAction } = await import('@/app/(app)/hire/actions');
+const { createJobAction, updateJobAction, setJobStatusAction, deleteJobAction, updateCareersPageAction, updateApplicationFormAction } = await import('@/app/(app)/hire/actions');
 const ID = '33333333-3333-4333-8333-333333333333';
 
 beforeEach(() => {
@@ -99,6 +99,32 @@ describe('updateCareersPageAction', () => {
     ctl.viewer = { orgId: 'org1', role: 'owner', isDemo: false };
     ctl.fail = true;
     expect(await updateCareersPageAction({ careers_enabled: true })).toEqual({ ok: false, error: 'refused' });
+    expect(ctl.revalidated).toHaveLength(0);
+  });
+});
+
+describe('updateApplicationFormAction', () => {
+  it('refuses a viewer, a demo visitor and a demo owner without calling the capability', async () => {
+    for (const viewer of [{ orgId: 'org1', role: 'viewer', isDemo: false }, { orgId: 'demo', role: 'viewer', isDemo: true }, { orgId: 'org1', role: 'owner', isDemo: true }]) {
+      ctl.viewer = viewer;
+      expect(await updateApplicationFormAction({ require_cv: true })).toEqual({ ok: false, error: 'You do not have permission to make changes here.' });
+    }
+    expect(ctl.calls).toHaveLength(0);
+    expect(ctl.revalidated).toHaveLength(0);
+  });
+  it('runs for an owner with the session context and refreshes the settings screen, the assistant and the public job pages', async () => {
+    ctl.viewer = { orgId: 'org1', role: 'owner', isDemo: false };
+    const sent = { require_cv: true, org_id: 'someone-else' };
+    expect((await updateApplicationFormAction(sent)).ok).toBe(true);
+    expect(ctl.calls).toHaveLength(1);
+    expect(ctl.calls[0]).toMatchObject({ fn: 'updateApplicationForm', ctx: { orgId: 'org1', client: { marker: 'client' } } });
+    expect(ctl.calls[0].input).toEqual(sent);
+    expect(ctl.revalidated).toEqual(['/hire/settings', '/hire/assistant', '/careers/org1']);
+  });
+  it('refreshes nothing when the change was refused', async () => {
+    ctl.viewer = { orgId: 'org1', role: 'owner', isDemo: false };
+    ctl.fail = true;
+    expect(await updateApplicationFormAction({ require_cv: true })).toEqual({ ok: false, error: 'refused' });
     expect(ctl.revalidated).toHaveLength(0);
   });
 });
