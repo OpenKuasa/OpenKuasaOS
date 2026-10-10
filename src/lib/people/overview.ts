@@ -1,0 +1,290 @@
+/**
+ * Pure helpers behind the Lekiu Overview and the lookups that answer the same
+ * questions. Nothing here reads the clock or the database: callers pass rows
+ * and a date, so the chat and the screen cannot disagree.
+ */
+
+import { rm } from '@/lib/reach/format';
+import { addDays, addMonths, daysBetween, formatDay, monthLabel, monthStart, todayInMalaysia } from './dates';
+import type {
+  AttendanceDay,
+  Claim,
+  ClaimCategory,
+  Employee,
+  LeaveRequest,
+  LeaveType,
+  OvertimeRecord,
+  PeopleData,
+  TimeOffRequest,
+} from './types';
+
+const LEAVE_LABEL: Record<LeaveType, string> = {
+  annual: 'Annual leave',
+  medical: 'Medical leave',
+  emergency: 'Emergency leave',
+  unpaid: 'Unpaid leave',
+  maternity: 'Maternity leave',
+  paternity: 'Paternity leave',
+};
+const CLAIM_LABEL: Record<ClaimCategory, string> = {
+  medical: 'Medical claim',
+  travel: 'Travel claim',
+  meals: 'Meals claim',
+  equipment: 'Equipment claim',
+  other: 'Other claim',
+};
+
+export const leaveLabel = (type: LeaveType): string => LEAVE_LABEL[type];
+export const claimLabel = (category: ClaimCategory): string => CLAIM_LABEL[category];
+
+const dayRange = (from: string, to: string) => (from === to ? formatDay(from) : `${formatDay(from)}–${formatDay(to)}`);
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Active staff per department, biggest first, then by name. */
+export function headcountByDepartment(employees: Employee[]): { department: string; headcount: number }[] {
+  const counts = new Map<string, number>();
+  for (const employee of employees) {
+    if (employee.status !== 'active') continue;
+    const department = employee.department_name ?? 'Unassigned';
+    counts.set(department, (counts.get(department) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([department, headcount]) => ({ department, headcount }))
+    .sort((a, b) => b.headcount - a.headcount || a.department.localeCompare(b.department));
+}
+
+/** Approved leave that covers `date`, by name. */
+export function onLeaveOn(leave: LeaveRequest[], date: string): LeaveRequest[] {
+  return leave
+    .filter((r) => r.status === 'approved' && r.start_date <= date && r.end_date >= date)
+    .sort((a, b) => a.employee_name.localeCompare(b.employee_name));
+}
+
+export type ApprovalKind = 'leave' | 'claim' | 'overtime' | 'time_off';
+export type ApprovalRow = {
+  id: string;
+  kind: ApprovalKind;
+  employee: string;
+  /** What is being asked for, such as "Annual leave" or "Travel claim". */
+  type: string;
+  detail: string;
+  requested_at: string;
+};
+
+/** Everything still waiting for a decision, newest request first. */
+export function pendingApprovals(
+  leave: LeaveRequest[],
+  claims: Claim[],
+  overtime: OvertimeRecord[],
+  timeOff: TimeOffRequest[],
+): ApprovalRow[] {
+  const waiting = <T extends { status: string }>(rows: T[]) => rows.filter((r) => r.status === 'pending');
+  return [
+    ...waiting(leave).map((r): ApprovalRow => ({
+      id: r.id,
+      kind: 'leave',
+      employee: r.employee_name,
+      type: leaveLabel(r.leave_type),
+      detail: `${plural(r.days, 'day', 'days')} · ${dayRange(r.start_date, r.end_date)}`,
+      requested_at: r.created_at,
+    })),
+    ...waiting(claims).map((r): ApprovalRow => ({
+      id: r.id,
+      kind: 'claim',
+      employee: r.employee_name,
+      type: claimLabel(r.category),
+      detail: r.description ? `${rm(r.amount_cents)} · ${r.description}` : rm(r.amount_cents),
+      requested_at: r.created_at,
+    })),
+    ...waiting(overtime).map((r): ApprovalRow => ({
+      id: r.id,
+      kind: 'overtime',
+      employee: r.employee_name,
+      type: 'Overtime',
+      detail: `${plural(r.hours, 'hr', 'hrs')} · ${formatDay(r.work_date)}`,
+      requested_at: r.created_at,
+    })),
+    ...waiting(timeOff).map((r): ApprovalRow => ({
+      id: r.id,
+      kind: 'time_off',
+      employee: r.employee_name,
+      type: 'Time-off',
+      detail: `${formatDay(r.off_date)} · ${r.start_time.slice(0, 5)}–${r.end_time.slice(0, 5)}`,
+      requested_at: r.created_at,
+    })),
+  ].sort((a, b) => b.requested_at.localeCompare(a.requested_at));
+}
+
+export function approvalCounts(rows: ApprovalRow[]) {
+  const of = (kind: ApprovalKind) => rows.filter((r) => r.kind === kind).length;
+  return { leave: of('leave'), claims: of('claim'), overtime: of('overtime'), time_off: of('time_off'), total: rows.length };
+}
+
+/**
+ * The words on the approvals card. Someone who is not HR is shown only their
+ * own requests by the database, so the card must not call them "awaiting your
+ * action".
+ */
+export function approvalsHeading(isHr: boolean): { title: string; subtitle: string; empty: string } {
+  return isHr
+    ? { title: 'Pending approvals', subtitle: 'Awaiting your action', empty: 'Nothing is waiting for approval' }
+    : { title: 'Your requests', subtitle: 'Waiting for approval', empty: 'You have no requests waiting' };
+}
+
+/** Approved leave days that start in the month beginning `monthStartDate`, most days first. */
+export function leaveDaysByType(leave: LeaveRequest[], monthStartDate: string): { label: string; days: number }[] {
+  const next = addMonths(monthStartDate, 1);
+  const days = new Map<LeaveType, number>();
+  for (const r of leave) {
+    if (r.status !== 'approved' || r.start_date < monthStartDate || r.start_date >= next) continue;
+    days.set(r.leave_type, (days.get(r.leave_type) ?? 0) + r.days);
+  }
+  return [...days]
+    .map(([type, total]) => ({ label: leaveLabel(type), days: total }))
+    .sort((a, b) => b.days - a.days || a.label.localeCompare(b.label));
+}
+
+/**
+ * Headcount at the end of each of the last `months` months (today, for the
+ * current one), from join dates. The tables hold no leaving date yet, so this
+ * counts today's active staff by when they joined.
+ */
+export function headcountTrend(employees: Employee[], today: string, months = 8): { label: string; headcount: number }[] {
+  const first = monthStart(today);
+  const active = employees.filter((e) => e.status === 'active');
+  return Array.from({ length: months }, (_, i) => {
+    const month = addMonths(first, i - (months - 1));
+    const end = i === months - 1 ? today : addDays(addMonths(month, 1), -1);
+    return {
+      label: monthLabel(month),
+      headcount: active.filter((e) => e.join_date === null || e.join_date <= end).length,
+    };
+  });
+}
+
+const two = (n: number) => String(n).padStart(2, '0');
+
+/** The next time this month and day comes round, on or after `today`. 29 February falls back to the 28th. */
+function nextOn(month: number, day: number, today: string): string {
+  const year = Number(today.slice(0, 4));
+  const at = (y: number) => {
+    const last = new Date(Date.UTC(y, month, 0)).getUTCDate();
+    return `${y}-${two(month)}-${two(Math.min(day, last))}`;
+  };
+  const thisYear = at(year);
+  return thisYear >= today ? thisYear : at(year + 1);
+}
+
+export type Occasion = { name: string; occasion: string; when: string; kind: 'birthday' | 'anniversary' };
+
+/** Birthdays and work anniversaries of active staff in the next `withinDays` days, soonest first. */
+export function upcomingOccasions(employees: Employee[], today: string, withinDays = 30): Occasion[] {
+  const found: (Occasion & { date: string })[] = [];
+  for (const employee of employees) {
+    if (employee.status !== 'active') continue;
+    if (employee.date_of_birth_month !== null && employee.date_of_birth_day !== null) {
+      const date = nextOn(employee.date_of_birth_month, employee.date_of_birth_day, today);
+      found.push({ name: employee.name, occasion: 'Birthday', when: formatDay(date), kind: 'birthday', date });
+    }
+    if (employee.join_date) {
+      const date = nextOn(Number(employee.join_date.slice(5, 7)), Number(employee.join_date.slice(8, 10)), today);
+      const years = Number(date.slice(0, 4)) - Number(employee.join_date.slice(0, 4));
+      if (years >= 1) {
+        found.push({
+          name: employee.name,
+          occasion: `${years}-year anniversary`,
+          when: formatDay(date),
+          kind: 'anniversary',
+          date,
+        });
+      }
+    }
+  }
+  return found
+    .filter((o) => daysBetween(today, o.date) <= withinDays)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name))
+    .map(({ name, occasion, when, kind }): Occasion => ({ name, occasion, when, kind }));
+}
+
+export type AttendanceCounts = {
+  /** On time. */
+  present: number;
+  late: number;
+  absent: number;
+  on_leave: number;
+  /** Present or late. */
+  at_work: number;
+  /** Share of those expected (not on leave) who came in. Null when nobody was expected. */
+  rate_pct: number | null;
+};
+
+export function attendanceOn(days: AttendanceDay[], date: string): AttendanceCounts {
+  const count = (status: AttendanceDay['status']) => days.filter((d) => d.work_date === date && d.status === status).length;
+  const present = count('present');
+  const late = count('late');
+  const absent = count('absent');
+  const expected = present + late + absent;
+  return {
+    present,
+    late,
+    absent,
+    on_leave: count('on_leave'),
+    at_work: present + late,
+    rate_pct: expected === 0 ? null : Math.round(((present + late) / expected) * 100),
+  };
+}
+
+export type PeopleOverviewModel = {
+  today: string;
+  totals: {
+    headcount: number;
+    departments: number;
+    at_work_today: number;
+    attendance_rate_pct: number | null;
+    on_leave_today: number;
+    pending_approvals: number;
+  };
+  trend: { label: string; headcount: number }[];
+  departments: { department: string; headcount: number }[];
+  leaveByType: { label: string; days: number }[];
+  onLeave: { name: string; kind: string; when: string }[];
+  approvals: ApprovalRow[];
+  occasions: Occasion[];
+};
+
+export async function buildPeopleOverviewModel(data: PeopleData, now: Date): Promise<PeopleOverviewModel> {
+  const today = todayInMalaysia(now);
+  const [employees, leave, claims, overtime, timeOff, attendance] = await Promise.all([
+    data.listEmployees(),
+    data.listLeaveRequests(),
+    data.listClaims(),
+    data.listOvertime(),
+    data.listTimeOffRequests(),
+    data.listAttendance(today, today),
+  ]);
+  const departments = headcountByDepartment(employees);
+  const away = onLeaveOn(leave, today);
+  const approvals = pendingApprovals(leave, claims, overtime, timeOff);
+  const counts = attendanceOn(attendance, today);
+  return {
+    today,
+    totals: {
+      headcount: employees.filter((e) => e.status === 'active').length,
+      departments: departments.length,
+      at_work_today: counts.at_work,
+      attendance_rate_pct: counts.rate_pct,
+      on_leave_today: away.length,
+      pending_approvals: approvals.length,
+    },
+    trend: headcountTrend(employees, today),
+    departments,
+    leaveByType: leaveDaysByType(leave, monthStart(today)),
+    onLeave: away.map((r) => ({
+      name: r.employee_name,
+      kind: leaveLabel(r.leave_type),
+      when: dayRange(r.start_date, r.end_date),
+    })),
+    approvals,
+    occasions: upcomingOccasions(employees, today),
+  };
+}
