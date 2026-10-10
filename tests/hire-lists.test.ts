@@ -35,6 +35,8 @@ describe('jobs', () => {
   it('charts no bars for open jobs that have no applications', async () => {
     const job = (id: string): Job => ({
       id, title: id, department: null, location: null, employment_type: 'full_time', status: 'open',
+      description: null, salary_min_cents: null, salary_max_cents: null, show_salary: false, closes_on: null,
+      work_arrangement: null, headcount: 1,
       opened_at: '2026-09-01T00:00:00Z', closed_at: null, created_at: '2026-09-01T00:00:00Z',
     });
     const model = await buildJobsModel({ ...EMPTY, listJobs: async () => [job('j1'), job('j2')] }, NOW);
