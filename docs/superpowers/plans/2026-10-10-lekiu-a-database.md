@@ -18,9 +18,9 @@
 - **Supabase project:** `ugchntdgaeefmufumchx`, through the **`openkuasa-supabase`** MCP only. Not the `supabase`, `supabase-postvote` or `claude_ai_Supabase` MCPs, and not the `supabase-migrations` skill (all other projects).
 - **Applying to the live database needs the owner's explicit go-ahead** (Task 10). Tasks 1–9 only write files.
 - **GitHub identity:** `OpenKuasa`. Run `gh api user --jq .login` and confirm before any push or `gh` call.
-- **Migration prefix:** `20261013090000` … `20261013090800`. Before the PR, check no file on `origin/main` shares a prefix.
+- **Migration prefix:** `20261014090000` … `20261014090800`. Before the PR, check no file on `origin/main` shares a prefix.
 - **Every table:** `id uuid primary key default gen_random_uuid()`, `org_id uuid not null references public.orgs(id) on delete cascade`, `created_at timestamptz not null default now()`, and one call to `private.people_secure_table`. No table is secured by hand.
-- **Write grants exist only in `20261013090000_people_core.sql`**, and only on `hr_departments`, `hr_employees`, `hr_employee_private`.
+- **Write grants exist only in `20261014090000_people_core.sql`**, and only on `hr_departments`, `hr_employees`, `hr_employee_private`.
 - **Foreign keys to `hr_departments`/`hr_employees` are composite** (`(employee_id, org_id) references public.hr_employees(id, org_id)`) so a row can never point across workspaces. The `hr_departments` reference uses the default `no action`, never `restrict`: `restrict` would stop a workspace from being deleted.
 - **Money** is `bigint` cents in a `*_cents` column.
 - **Demo data is fictional:** Rimba Ventures, `@openkuasa.com` addresses. No Kuasa names.
@@ -40,7 +40,7 @@
 ### Task 1: Core — helpers, hr_departments, hr_employees, hr_employee_private
 
 **Files:**
-- Create: `supabase/migrations/20261013090000_people_core.sql`
+- Create: `supabase/migrations/20261014090000_people_core.sql`
 - Create: `tests/people-schema.test.ts`
 
 **Interfaces:**
@@ -57,7 +57,7 @@ import { describe, expect, test } from 'vitest';
 type Kind = 'shared' | 'personal' | 'hr';
 
 const DIR = join(process.cwd(), 'supabase/migrations');
-const CORE = '20261013090000_people_core.sql';
+const CORE = '20261014090000_people_core.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
@@ -163,9 +163,9 @@ describe('Lekiu schema', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT: no such file or directory … 20261013090000_people_core.sql`.
+Expected: FAIL, `ENOENT: no such file or directory … 20261014090000_people_core.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090000_people_core.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090000_people_core.sql`
 
 ```sql
 -- Lekiu (people) core: access helpers, departments, employees, employee_private.
@@ -404,7 +404,7 @@ Expected: PASS, 13 tests (3 tables × 2 parameterised tests, plus 7).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090000_people_core.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090000_people_core.sql tests/people-schema.test.ts
 git commit -m "feat(people): core tables, two-tier access helpers and employee-to-user linking"
 ```
 
@@ -413,7 +413,7 @@ git commit -m "feat(people): core tables, two-tier access helpers and employee-t
 ### Task 2: Leave — hr_leave_requests, hr_leave_balances, hr_time_off_requests
 
 **Files:**
-- Create: `supabase/migrations/20261013090100_people_leave.sql`
+- Create: `supabase/migrations/20261014090100_people_leave.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
@@ -423,7 +423,7 @@ git commit -m "feat(people): core tables, two-tier access helpers and employee-t
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `CORE` constant:
 
 ```ts
-const LEAVE = '20261013090100_people_leave.sql';
+const LEAVE = '20261014090100_people_leave.sql';
 ```
 
 and add to the end of the `TABLES` array:
@@ -437,9 +437,9 @@ and add to the end of the `TABLES` array:
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT … 20261013090100_people_leave.sql`.
+Expected: FAIL, `ENOENT … 20261014090100_people_leave.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090100_people_leave.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090100_people_leave.sql`
 
 ```sql
 -- Lekiu leave: requests, yearly balances and short time-off. Read-only this
@@ -513,7 +513,7 @@ Expected: PASS, 19 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090100_people_leave.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090100_people_leave.sql tests/people-schema.test.ts
 git commit -m "feat(people): leave, leave balance and time-off tables (read-only)"
 ```
 
@@ -522,7 +522,7 @@ git commit -m "feat(people): leave, leave balance and time-off tables (read-only
 ### Task 3: Claims and overtime — hr_claims, hr_overtime_records
 
 **Files:**
-- Create: `supabase/migrations/20261013090200_people_claims_overtime.sql`
+- Create: `supabase/migrations/20261014090200_people_claims_overtime.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
@@ -532,7 +532,7 @@ git commit -m "feat(people): leave, leave balance and time-off tables (read-only
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `LEAVE` constant:
 
 ```ts
-const CLAIMS = '20261013090200_people_claims_overtime.sql';
+const CLAIMS = '20261014090200_people_claims_overtime.sql';
 ```
 
 and add to the end of the `TABLES` array:
@@ -545,9 +545,9 @@ and add to the end of the `TABLES` array:
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT … 20261013090200_people_claims_overtime.sql`.
+Expected: FAIL, `ENOENT … 20261014090200_people_claims_overtime.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090200_people_claims_overtime.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090200_people_claims_overtime.sql`
 
 ```sql
 -- Lekiu financial claims and overtime. The OT Claims, Overtime and Approve
@@ -602,7 +602,7 @@ Expected: PASS, 23 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090200_people_claims_overtime.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090200_people_claims_overtime.sql tests/people-schema.test.ts
 git commit -m "feat(people): claims and overtime tables (read-only)"
 ```
 
@@ -611,7 +611,7 @@ git commit -m "feat(people): claims and overtime tables (read-only)"
 ### Task 4: Attendance — hr_attendance_days, hr_timesheet_entries, hr_shifts, hr_public_holidays
 
 **Files:**
-- Create: `supabase/migrations/20261013090300_people_attendance.sql`
+- Create: `supabase/migrations/20261014090300_people_attendance.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
@@ -621,7 +621,7 @@ git commit -m "feat(people): claims and overtime tables (read-only)"
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `CLAIMS` constant:
 
 ```ts
-const ATTENDANCE = '20261013090300_people_attendance.sql';
+const ATTENDANCE = '20261014090300_people_attendance.sql';
 ```
 
 and add to the end of the `TABLES` array:
@@ -636,9 +636,9 @@ and add to the end of the `TABLES` array:
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT … 20261013090300_people_attendance.sql`.
+Expected: FAIL, `ENOENT … 20261014090300_people_attendance.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090300_people_attendance.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090300_people_attendance.sql`
 
 ```sql
 -- Lekiu attendance: daily attendance, timesheets, shifts and public holidays.
@@ -711,7 +711,7 @@ Expected: PASS, 31 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090300_people_attendance.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090300_people_attendance.sql tests/people-schema.test.ts
 git commit -m "feat(people): attendance, timesheet, shift and public holiday tables (read-only)"
 ```
 
@@ -720,7 +720,7 @@ git commit -m "feat(people): attendance, timesheet, shift and public holiday tab
 ### Task 5: Payroll — hr_payroll_runs, hr_payslips, hr_payment_vouchers
 
 **Files:**
-- Create: `supabase/migrations/20261013090400_people_payroll.sql`
+- Create: `supabase/migrations/20261014090400_people_payroll.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array, one new test)
 
 **Interfaces:**
@@ -730,7 +730,7 @@ git commit -m "feat(people): attendance, timesheet, shift and public holiday tab
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `ATTENDANCE` constant:
 
 ```ts
-const PAYROLL = '20261013090400_people_payroll.sql';
+const PAYROLL = '20261014090400_people_payroll.sql';
 ```
 
 add to the end of the `TABLES` array:
@@ -760,9 +760,9 @@ and add this test inside the `describe` block, after the last test:
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT … 20261013090400_people_payroll.sql`.
+Expected: FAIL, `ENOENT … 20261014090400_people_payroll.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090400_people_payroll.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090400_people_payroll.sql`
 
 ```sql
 -- Lekiu payroll: monthly runs, payslips and payment vouchers. Runs and
@@ -828,7 +828,7 @@ Expected: PASS, 38 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090400_people_payroll.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090400_people_payroll.sql tests/people-schema.test.ts
 git commit -m "feat(people): payroll run, payslip and payment voucher tables (read-only)"
 ```
 
@@ -837,7 +837,7 @@ git commit -m "feat(people): payroll run, payslip and payment voucher tables (re
 ### Task 6: Performance — hr_goals, hr_scorecards, hr_reviews, hr_trainings, hr_training_enrolments
 
 **Files:**
-- Create: `supabase/migrations/20261013090500_people_performance.sql`
+- Create: `supabase/migrations/20261014090500_people_performance.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array)
 
 **Interfaces:**
@@ -847,7 +847,7 @@ git commit -m "feat(people): payroll run, payslip and payment voucher tables (re
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `PAYROLL` constant:
 
 ```ts
-const PERFORMANCE = '20261013090500_people_performance.sql';
+const PERFORMANCE = '20261014090500_people_performance.sql';
 ```
 
 and add to the end of the `TABLES` array:
@@ -863,9 +863,9 @@ and add to the end of the `TABLES` array:
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT … 20261013090500_people_performance.sql`.
+Expected: FAIL, `ENOENT … 20261014090500_people_performance.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090500_people_performance.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090500_people_performance.sql`
 
 ```sql
 -- Lekiu performance: goals, scorecards, reviews, and training with
@@ -957,7 +957,7 @@ Expected: PASS, 48 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090500_people_performance.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090500_people_performance.sql tests/people-schema.test.ts
 git commit -m "feat(people): goals, scorecard, review and training tables (read-only)"
 ```
 
@@ -966,7 +966,7 @@ git commit -m "feat(people): goals, scorecard, review and training tables (read-
 ### Task 7: Communications and hr_documents — hr_announcements, hr_documents, hr_letters, hr_settings
 
 **Files:**
-- Create: `supabase/migrations/20261013090600_people_comms_documents.sql`
+- Create: `supabase/migrations/20261014090600_people_comms_documents.sql`
 - Modify: `tests/people-schema.test.ts` (the `TABLES` array, one new test)
 
 **Interfaces:**
@@ -976,7 +976,7 @@ git commit -m "feat(people): goals, scorecard, review and training tables (read-
 - [ ] **Step 1: Extend the failing test.** In `tests/people-schema.test.ts`, add below the `PERFORMANCE` constant:
 
 ```ts
-const COMMS = '20261013090600_people_comms_documents.sql';
+const COMMS = '20261014090600_people_comms_documents.sql';
 ```
 
 add to the end of the `TABLES` array:
@@ -1001,9 +1001,9 @@ and add this test inside the `describe` block, after the last test:
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: FAIL, `ENOENT … 20261013090600_people_comms_documents.sql`.
+Expected: FAIL, `ENOENT … 20261014090600_people_comms_documents.sql`.
 
-- [ ] **Step 3: Write the migration** — `supabase/migrations/20261013090600_people_comms_documents.sql`
+- [ ] **Step 3: Write the migration** — `supabase/migrations/20261014090600_people_comms_documents.sql`
 
 ```sql
 -- Lekiu announcements, employee documents, HR letters and HR settings.
@@ -1079,7 +1079,7 @@ Expected: PASS, 57 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261013090600_people_comms_documents.sql tests/people-schema.test.ts
+git add supabase/migrations/20261014090600_people_comms_documents.sql tests/people-schema.test.ts
 git commit -m "feat(people): announcement, document, letter and settings tables (read-only)"
 ```
 
@@ -1088,8 +1088,8 @@ git commit -m "feat(people): announcement, document, letter and settings tables 
 ### Task 8: Demo data — `private.reseed_demo_people()` and its hourly schedule
 
 **Files:**
-- Create: `supabase/migrations/20261013090700_people_demo_seed.sql`
-- Create: `supabase/migrations/20261013090800_people_demo_cron.sql`
+- Create: `supabase/migrations/20261014090700_people_demo_seed.sql`
+- Create: `supabase/migrations/20261014090800_people_demo_cron.sql`
 - Create: `tests/people-demo-seed.test.ts`
 
 **Interfaces:**
@@ -1104,8 +1104,8 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const DIR = join(process.cwd(), 'supabase/migrations');
-const seed = () => readFileSync(join(DIR, '20261013090700_people_demo_seed.sql'), 'utf8');
-const cron = () => readFileSync(join(DIR, '20261013090800_people_demo_cron.sql'), 'utf8');
+const seed = () => readFileSync(join(DIR, '20261014090700_people_demo_seed.sql'), 'utf8');
+const cron = () => readFileSync(join(DIR, '20261014090800_people_demo_cron.sql'), 'utf8');
 
 describe('Lekiu demo seed', () => {
   test('rebuilds only the demo workspace', () => {
@@ -1159,9 +1159,9 @@ describe('Lekiu demo seed', () => {
 - [ ] **Step 2: Run it and watch it fail**
 
 Run: `pnpm vitest run --dir tests people-demo-seed`
-Expected: FAIL, `ENOENT … 20261013090700_people_demo_seed.sql`.
+Expected: FAIL, `ENOENT … 20261014090700_people_demo_seed.sql`.
 
-- [ ] **Step 3: Write the seed migration** — `supabase/migrations/20261013090700_people_demo_seed.sql`
+- [ ] **Step 3: Write the seed migration** — `supabase/migrations/20261014090700_people_demo_seed.sql`
 
 ```sql
 -- Demo-workspace HR seed (fictional Rimba Ventures). Idempotent and anchored
@@ -1519,7 +1519,7 @@ revoke all on function private.reseed_demo_people() from public, anon, authentic
 select private.reseed_demo_people();
 ```
 
-- [ ] **Step 4: Write the schedule migration** — `supabase/migrations/20261013090800_people_demo_cron.sql`
+- [ ] **Step 4: Write the schedule migration** — `supabase/migrations/20261014090800_people_demo_cron.sql`
 
 ```sql
 -- Keep the Lekiu demo fresh. Its own migration so a pg_cron problem can never
@@ -1537,7 +1537,7 @@ Expected: PASS, 6 tests.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20261013090700_people_demo_seed.sql supabase/migrations/20261013090800_people_demo_cron.sql tests/people-demo-seed.test.ts
+git add supabase/migrations/20261014090700_people_demo_seed.sql supabase/migrations/20261014090800_people_demo_cron.sql tests/people-demo-seed.test.ts
 git commit -m "feat(people): demo HR data, rebuilt hourly and anchored to today"
 ```
 
@@ -2102,7 +2102,7 @@ union all
 select 'demo_role', m.role || ' x ' || count(*) from public.org_members m where m.org_id = (select id from public.orgs where slug = 'rimba-ventures-demo') group by m.role;
 ```
 
-Call `mcp__openkuasa-supabase__list_migrations`. Expected: no migration named `people_*`. Run `git fetch origin` then `git ls-tree --name-only origin/main supabase/migrations/` and confirm no file there starts with `20261013`. If one does, rename these nine files to the next free prefix, update the three filename constants in `tests/people-schema.test.ts` and the two in `tests/people-demo-seed.test.ts`, re-run both tests, and commit.
+Call `mcp__openkuasa-supabase__list_migrations`. Expected: no migration named `people_*`. Run `git fetch origin` then `git ls-tree --name-only origin/main supabase/migrations/` and confirm no file there starts with `20261014`. If one does, rename these nine files to the next free prefix, update the three filename constants in `tests/people-schema.test.ts` and the two in `tests/people-demo-seed.test.ts`, re-run both tests, and commit.
 
 - [ ] **Step 2: Apply the eight table and seed migrations, in order**
 
@@ -2151,7 +2151,7 @@ First make the API see the new tables: run `notify pgrst, 'reload schema';` thro
 Run: `pnpm vitest run --dir tests people.rls`
 Expected: PASS, 7 tests. (If they were skipped in Task 9, the Supabase variables are missing: copy `.env.local` into the worktree, it is gitignored.)
 
-If the first test fails on the `update … designation` step with `permission denied for column updated_at`, the touch trigger's write to `updated_at` is being checked against the caller's column grants. Fix it with a new migration, `20261013090900_people_updated_at_grant.sql`, containing `grant update (updated_at) on public.hr_employees to authenticated;` and `grant update (updated_at) on public.hr_employee_private to authenticated;` (the reach tables needed the same for `ad_settings`), apply it, and re-run.
+If the first test fails on the `update … designation` step with `permission denied for column updated_at`, the touch trigger's write to `updated_at` is being checked against the caller's column grants. Fix it with a new migration, `20261014090900_people_updated_at_grant.sql`, containing `grant update (updated_at) on public.hr_employees to authenticated;` and `grant update (updated_at) on public.hr_employee_private to authenticated;` (the reach tables needed the same for `ad_settings`), apply it, and re-run.
 
 - [ ] **Step 5: Apply the schedule and check the advisors**
 

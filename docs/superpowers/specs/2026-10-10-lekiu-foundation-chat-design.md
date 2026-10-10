@@ -484,7 +484,7 @@ Files, in order, all under `supabase/migrations/` with timestamps after the late
 `people_demo_cron`.
 
 Other branches are adding migrations in parallel (`20261012160000_agent_runs` on feat-082,
-`20261012160000_bendahara_purchases` on `main`). These files take a `20261013…` prefix, and
+`20261012160000_bendahara_purchases` on `main`). These files take a `20261014…` prefix, and
 the prefixes are checked against `main` again just before the PR.
 
 The work is delivered as three plans, each its own PR: (A) the database — these

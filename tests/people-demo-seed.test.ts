@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const DIR = join(process.cwd(), 'supabase/migrations');
-const seed = () => readFileSync(join(DIR, '20261013090700_people_demo_seed.sql'), 'utf8');
-const cron = () => readFileSync(join(DIR, '20261013090800_people_demo_cron.sql'), 'utf8');
+const seed = () => readFileSync(join(DIR, '20261014090700_people_demo_seed.sql'), 'utf8');
+const cron = () => readFileSync(join(DIR, '20261014090800_people_demo_cron.sql'), 'utf8');
 
 describe('Lekiu demo seed', () => {
   test('rebuilds only the demo workspace', () => {

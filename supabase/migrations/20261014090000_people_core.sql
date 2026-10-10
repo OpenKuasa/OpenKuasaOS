@@ -58,7 +58,7 @@ create unique index hr_departments_org_name_idx on public.hr_departments (org_id
 
 -- ---- employees: the staff directory, readable by every member --------
 -- Nothing a colleague should not see belongs on this table. Pay, identity
--- numbers and home details are on employee_private.
+-- numbers and home details are on hr_employee_private.
 
 create table public.hr_employees (
   id uuid primary key default gen_random_uuid(),

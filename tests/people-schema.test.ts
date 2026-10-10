@@ -5,13 +5,13 @@ import { describe, expect, test } from 'vitest';
 type Kind = 'shared' | 'personal' | 'hr';
 
 const DIR = join(process.cwd(), 'supabase/migrations');
-const CORE = '20261013090000_people_core.sql';
-const LEAVE = '20261013090100_people_leave.sql';
-const CLAIMS = '20261013090200_people_claims_overtime.sql';
-const ATTENDANCE = '20261013090300_people_attendance.sql';
-const PAYROLL = '20261013090400_people_payroll.sql';
-const PERFORMANCE = '20261013090500_people_performance.sql';
-const COMMS = '20261013090600_people_comms_documents.sql';
+const CORE = '20261014090000_people_core.sql';
+const LEAVE = '20261014090100_people_leave.sql';
+const CLAIMS = '20261014090200_people_claims_overtime.sql';
+const ATTENDANCE = '20261014090300_people_attendance.sql';
+const PAYROLL = '20261014090400_people_payroll.sql';
+const PERFORMANCE = '20261014090500_people_performance.sql';
+const COMMS = '20261014090600_people_comms_documents.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
@@ -137,7 +137,7 @@ describe('Lekiu schema', () => {
     const text = sql(PAYROLL);
     const start = text.indexOf('create table public.hr_payslips (');
     const body = text.slice(start, text.indexOf('\n);', start));
-    // A member cannot read payroll_runs, so the month must be on the payslip.
+    // A member cannot read hr_payroll_runs, so the month must be on the payslip.
     expect(body).toContain('period_month date not null');
     expect(body).toContain('unique (employee_id, period_month)');
     expect(body).toContain(

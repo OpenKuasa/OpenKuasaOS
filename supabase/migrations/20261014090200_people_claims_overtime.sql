@@ -1,5 +1,5 @@
 -- Lekiu financial claims and overtime. The OT Claims, Overtime and Approve
--- Overtime screens are three views of overtime_records. Read-only this slice.
+-- Overtime screens are three views of hr_overtime_records. Read-only this slice.
 
 create table public.hr_claims (
   id uuid primary key default gen_random_uuid(),
