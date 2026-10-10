@@ -13,6 +13,7 @@ import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
 import { type BillDisplayStatus, type BillListRow, listBills } from '@/lib/finance/bills';
 import { listContacts } from '@/lib/finance/contacts';
 import { type PaymentOutRow, listAccounts, listPaymentsOut } from '@/lib/finance/money';
+import { heldByBill } from '@/lib/finance/payment-form';
 import { listProducts } from '@/lib/finance/products';
 import { billsView, todayUtc } from '@/lib/finance/purchase-views';
 import { createClient } from '@/lib/supabase/server';
@@ -86,7 +87,13 @@ const ACTIONS: BillActions = {
 
 export default async function SupplierBillsScreen() {
   if (!hasSupabaseEnv()) {
-    return <BillsView rows={SAMPLE_BILLS} view={billsView(SAMPLE_BILLS, SAMPLE_PAYMENTS, SAMPLE_TODAY)} />;
+    return (
+      <BillsView
+        rows={SAMPLE_BILLS}
+        view={billsView(SAMPLE_BILLS, SAMPLE_PAYMENTS, SAMPLE_TODAY)}
+        held={heldByBill(SAMPLE_PAYMENTS)}
+      />
+    );
   }
   const viewer = await getViewer();
   const ctx = { client: await createClient(), orgId: viewer.orgId };
@@ -103,6 +110,8 @@ export default async function SupplierBillsScreen() {
     <BillsView
       rows={rows}
       view={billsView(rows, payments, todayUtc())}
+      // Worked out here for everyone: a viewer has no payment rows in the browser, but still sees what is scheduled.
+      held={heldByBill(payments)}
       writer={
         canEdit
           ? {

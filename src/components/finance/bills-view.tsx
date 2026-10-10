@@ -84,11 +84,14 @@ const billName = (bill: BillListRow) => `${bill.bill_no ?? 'the draft bill'} fro
 export function BillsView({
   rows,
   view,
+  held,
   writer,
 }: {
   /** Every bill, newest first; drafts and void ones included. */
   rows: BillListRow[];
   view: BillsViewData;
+  /** What payments not yet paid already hold of each bill, by bill id, from `heldByBill`. */
+  held: Record<string, number>;
   writer?: BillsWriter;
 }) {
   const [query, setQuery] = useState('');
@@ -430,6 +433,8 @@ export function BillsView({
                   const asked = question(b);
                   if (asked) return asked;
                   const items = writer ? menu(b, writer.actions) : [];
+                  // A balance that scheduled payments already hold says so: such a bill may have no Pay choice.
+                  const scheduled = b.display_status === 'pending' || b.display_status === 'overdue' ? (held[b.id] ?? 0) : 0;
                   return (
                     <TableRow key={b.id} className={cn(b.display_status === 'void' && 'opacity-60')}>
                       <TableCell className="whitespace-nowrap font-medium">{b.bill_no ?? '—'}</TableCell>
@@ -437,7 +442,12 @@ export function BillsView({
                       <TableCell className="whitespace-nowrap">{b.supplier_name}</TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">{displayDate(b.due_date)}</TableCell>
                       <TableCell className="whitespace-nowrap text-right tabular-nums">{rm(b.total)}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">{rm(b.balance)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-right tabular-nums">
+                        {rm(b.balance)}
+                        {scheduled > 0 ? (
+                          <span className="block text-xs text-muted-foreground">{rm(scheduled)} scheduled</span>
+                        ) : null}
+                      </TableCell>
                       <TableCell>
                         <span className="flex items-center gap-2">
                           <LiveDot active={b.display_status === 'paid'} />

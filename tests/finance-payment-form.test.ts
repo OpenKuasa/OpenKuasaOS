@@ -7,6 +7,7 @@ import {
   amountText,
   billsOf,
   chooseSupplier,
+  heldByBill,
   keepPayable,
   newPaymentForm,
   payableBills,
@@ -127,6 +128,33 @@ describe('payableBills', () => {
       [],
     );
     expect(payable.map((b) => b.bill_no)).toEqual(['BILL-0003', 'BILL-0002', 'BILL-0001']);
+  });
+});
+
+describe('heldByBill', () => {
+  it('sums the scheduled payments of one bill', () => {
+    expect(heldByBill([paid(1, { status: 'scheduled', amount: 150 }), paid(1, { status: 'scheduled', amount: 50.5 })])).toEqual({
+      [billId(1)]: 200.5,
+    });
+  });
+  it('ignores paid and void payments, and leaves out a bill with nothing held', () => {
+    const held = heldByBill([
+      paid(1, { status: 'posted', amount: 50 }),
+      paid(2, { status: 'void', amount: 80 }),
+      paid(3, { status: 'rejected', amount: 10 }),
+      paid(4, { status: 'scheduled', amount: 20 }),
+    ]);
+    expect(held).toEqual({ [billId(4)]: 20 });
+    expect(billId(1) in held).toBe(false);
+    expect(heldByBill([])).toEqual({});
+  });
+  it('counts a payment still being written or awaiting approval, as payableBills does', () => {
+    expect(heldByBill([paid(1, { status: 'draft', amount: 30 }), paid(1, { status: 'pending_approval', amount: 30.5 })])).toEqual({
+      [billId(1)]: 60.5,
+    });
+  });
+  it('adds to the sen, without floating point drift', () => {
+    expect(heldByBill([paid(1, { status: 'scheduled', amount: 0.1 }), paid(1, { status: 'scheduled', amount: 0.2 })])[billId(1)]).toBe(0.3);
   });
 });
 

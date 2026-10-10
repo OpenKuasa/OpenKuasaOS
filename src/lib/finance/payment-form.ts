@@ -48,19 +48,29 @@ const sen = (n: number) => Math.round(n * 100);
 const HOLDING: ReadonlySet<PaymentOutRow['status']> = new Set(['draft', 'pending_approval', 'scheduled']);
 
 /**
+ * What payments that have not been paid yet already hold of each bill, to the
+ * sen, by bill id. A bill with nothing held is not in the answer. Supplier
+ * Bills shows it under a balance, so a bill with no Pay choice says why.
+ */
+export function heldByBill(payments: PaymentOutRow[]): Record<string, number> {
+  const held = new Map<string, number>();
+  for (const p of payments) {
+    if (HOLDING.has(p.status)) held.set(p.bill_id, (held.get(p.bill_id) ?? 0) + sen(p.amount));
+  }
+  return Object.fromEntries([...held].filter(([, total]) => total > 0).map(([id, total]) => [id, total / 100]));
+}
+
+/**
  * The bills a payment can be recorded against: posted, not fully paid, and not
  * already covered by scheduled payments. The database refuses a payment for
  * more than balance − scheduled, so that is what the form offers.
  */
 export function payableBills(bills: BillListRow[], payments: PaymentOutRow[]): PayableBill[] {
-  const held = new Map<string, number>();
-  for (const p of payments) {
-    if (HOLDING.has(p.status)) held.set(p.bill_id, (held.get(p.bill_id) ?? 0) + p.amount);
-  }
+  const held = heldByBill(payments);
   return bills
     .filter((b) => (b.display_status === 'pending' || b.display_status === 'overdue') && b.balance > 0)
     .map((b) => {
-      const scheduled = round2(held.get(b.id) ?? 0);
+      const scheduled = held[b.id] ?? 0;
       return {
         id: b.id,
         bill_no: b.bill_no ?? '—',
