@@ -389,7 +389,7 @@ function ProductFormCard({
         </div>
         <div className="space-y-1.5 md:col-span-3">
           <Label htmlFor={`${id}-cost`}>Cost (RM)</Label>
-          <Input id={`${id}-cost`} type="number" inputMode="decimal" min={0} step="0.01" value={cost} placeholder="0.00" onChange={(e) => setCost(e.target.value)} />
+          <Input id={`${id}-cost`} type="number" inputMode="decimal" min={0} step="0.0001" value={cost} placeholder="0.0000" onChange={(e) => setCost(e.target.value)} />
         </div>
         <div className="space-y-1.5 md:col-span-3">
           <Label htmlFor={`${id}-sst`}>SST rate (%)</Label>
