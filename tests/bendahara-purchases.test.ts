@@ -49,7 +49,7 @@ beforeAll(async () => {
   b = await anonUserWithOrg('Purchases B Sdn Bhd');
   supplierA = await insertOne(a.c, 'finance_contacts', {
     org_id: a.orgId,
-    type: 'supplier',
+    is_supplier: true,
     name: 'Supplier of A',
   });
   billA = await insertOne(a.c, 'supplier_bills', {
@@ -190,7 +190,7 @@ testWithSupabase('a demo viewer reads the seeded bills but cannot write', async 
     .from('finance_contacts')
     .select('id')
     .eq('org_id', demoId)
-    .eq('type', 'supplier')
+    .eq('is_supplier', true)
     .limit(1)
     .single();
   const write = await c.from('supplier_bills').insert({
