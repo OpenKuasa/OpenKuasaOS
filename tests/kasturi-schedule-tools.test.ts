@@ -9,6 +9,7 @@ import {
   kasturiSharedProduct,
   reachProduct,
 } from '@/lib/ai/products';
+import { filterUpcomingAppointments } from '@/lib/ai/tools';
 import { nameIn } from '@/lib/chat/change-titles';
 import { createSeedReachData } from '@/lib/reach/seed';
 
@@ -156,9 +157,31 @@ describe('Kasturi’s calendar tool', () => {
     };
     expect(result.month).toBe('2026-10');
     expect(result.entries).toEqual([
-      { date: '2026-10-12', time: null, kind: 'follow-up', what: 'Send quote' },
-      { date: '2026-10-15', time: '7:30 am', kind: 'appointment', what: 'Lim Wei · Demo' },
+      { date_in_malaysia: '2026-10-12', time_in_malaysia: null, kind: 'follow-up', what: 'Send quote' },
+      { date_in_malaysia: '2026-10-15', time_in_malaysia: '7:30 am', kind: 'appointment', what: 'Lim Wei · Demo' },
     ]);
+  });
+});
+
+describe('upcoming appointments', () => {
+  it('carry their time in Malaysia, ready to say as given', () => {
+    const [first] = filterUpcomingAppointments(
+      [
+        {
+          id: 'a1',
+          contact_name: 'Lim Wei',
+          kind: 'Demo',
+          // 23:30 UTC on the 14th is 7:30 am on the 15th in Malaysia.
+          scheduled_at: '2026-10-14T23:30:00.000Z',
+          via: 'Zoom',
+          status: 'scheduled',
+          created_at: '2026-10-01T00:00:00.000Z',
+        },
+      ],
+      new Date('2026-10-10T00:00:00.000Z'),
+    );
+    expect(first.malaysia_time).toBe('15 Oct 2026, 7:30 am');
+    expect(first.scheduled_at).toBe('2026-10-14T23:30:00.000Z');
   });
 });
 

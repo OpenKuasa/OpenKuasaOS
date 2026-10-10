@@ -190,6 +190,23 @@ export function summarizeCampaigns(
     .sort((a, b) => (a.cpl_cents ?? Infinity) - (b.cpl_cents ?? Infinity));
 }
 
+/** '15 Oct 2026, 7:30 am': an appointment's time as people in Malaysia read it. */
+function malaysiaTime(iso: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Kuala_Lumpur',
+  })
+    .format(new Date(iso))
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b[a-z]{3}\b(?= \d{4})/, (month) => month.charAt(0).toUpperCase() + month.slice(1));
+}
+
 export function filterUpcomingAppointments(
   appointments: Appointment[],
   now: Date,
@@ -206,6 +223,8 @@ export function filterUpcomingAppointments(
       via: a.via,
       status: a.status,
       scheduled_at: a.scheduled_at,
+      // Said as given: the model must not shift a time it is told is already local.
+      malaysia_time: malaysiaTime(a.scheduled_at),
     }));
 }
 
@@ -360,7 +379,9 @@ export function createReachTools(
     }),
 
     getUpcomingAppointments: tool({
-      description: 'The org’s upcoming appointments (discovery calls, demos, follow-ups), soonest first.',
+      description:
+        'The org’s upcoming appointments (discovery calls, demos, follow-ups), soonest first. ' +
+        'malaysia_time is when each one is, in Malaysian time: say that to the user as given. scheduled_at is the same moment in UTC.',
       inputSchema: z.object({
         limit: limitSchema('Max appointments to return (default 5, at most 20).'),
       }),

@@ -40,6 +40,8 @@ describe('KASTURI_SYSTEM', () => {
   });
   it('converts appointment times between Malaysia and UTC', () => {
     expect(t).toContain('3:00 pm in malaysia is 07:00 utc');
+    // Lookups are already local: shifting them again was a real mistake on prod.
+    expect(t).toContain('never add or subtract hours from them');
   });
   it('never promises a reminder a follow-up does not send', () => {
     expect(t).toContain('does not send anyone a notification');
