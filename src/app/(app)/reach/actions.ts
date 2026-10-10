@@ -62,6 +62,7 @@ import {
 } from '@/lib/agents/config';
 import { serviceClient } from '@/lib/supabase/service';
 import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
+import { RUN_MAX_AGE_MS } from '@/lib/agents/runner';
 import { createSupabaseReachData, getReachData } from '@/lib/reach/supabase';
 import { FORM_MESSAGES } from '@/lib/reach/forms';
 import { leadsToCsv } from '@/lib/reach/csv';
@@ -312,8 +313,24 @@ export async function runAgentNowAction(
   void input; // deliberately ignored: nothing the caller sends may pick the org
   const ctx = await writeCtx();
   if (!ctx) return { ok: false, error: 'You do not have permission to make changes here.' };
+  const service = serviceClient();
   try {
-    const result = await runWeeklyStudio(serviceClient(), ctx.orgId, 'manual');
+    // Throttle: one manual run at a time per org. A run older than RUN_MAX_AGE_MS
+    // is treated as dead (reaped by the poll cron), so a stuck run never blocks
+    // forever. The window keeps a stale row from permanently locking Run now.
+    const since = new Date(Date.now() - RUN_MAX_AGE_MS).toISOString();
+    const { data: inflight } = await service
+      .from('agent_runs')
+      .select('id')
+      .eq('org_id', ctx.orgId)
+      .eq('status', 'running')
+      .gte('started_at', since)
+      .limit(1)
+      .maybeSingle();
+    if (inflight) {
+      return { ok: false, error: 'A run is already in progress. Please wait for it to finish.' };
+    }
+    const result = await runWeeklyStudio(service, ctx.orgId, 'manual');
     for (const path of AGENTS_PATHS) revalidatePath(path);
     return { ok: true, runId: result.runId };
   } catch {

@@ -1,16 +1,21 @@
 import { NextResponse } from 'next/server';
-import { pollVideos } from '@/lib/agents/runner';
+import { pollVideos, reapStaleRuns } from '@/lib/agents/runner';
 import { isTriggerAuthorized } from '@/lib/agents/trigger-auth';
 import { serviceClient } from '@/lib/supabase/service';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Finalizes pending videos (operator cron). Authed by the service-role key header. */
+/**
+ * Finalizes pending videos and fails runs stuck in 'running' (operator cron).
+ * Authed by the service-role key header.
+ */
 export async function POST(req: Request) {
   if (!isTriggerAuthorized(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  await pollVideos(serviceClient());
+  const service = serviceClient();
+  await reapStaleRuns(service);
+  await pollVideos(service);
   return NextResponse.json({ ok: true });
 }
