@@ -32,7 +32,7 @@ The columns follow what the screens already show.
 |---|---|---|
 | Contacts | `crm_contacts` | `first_name`, `last_name`, `company`, `email`, `phone`, `country`, `status`, `lead_score`, `last_interaction_at`. The person in charge is `owner_user_id`; the display name comes from `profiles.full_name`. |
 | Contacts: follow-ups | `crm_activities` | A follow-up is an activity of `type = 'task'` on a contact, with a `title` and an optional `due_at`. Marking it done sets `completed_at`. The page lists the open ones under each contact. |
-| Deals | `crm_deals`, `crm_pipelines`, `crm_pipeline_stages` | A board column is a stage of the selected pipeline, in `position` order, empty ones included. A card shows the contact's `company`, `title`, `value_cents`, `tag`, the owner (`owner_user_id`, named from `profiles` like a contact's person in charge), `last_activity_at` and `expected_close_date`. People who can write add, edit, move, mark as lost, reopen and delete deals from the page. |
+| Deals | `crm_deals`, `crm_pipelines`, `crm_pipeline_stages` | A board column is a stage of the selected pipeline, in `position` order, empty ones included. A card shows the contact's `company`, `title`, `value_cents`, `tag`, the owner (`owner_user_id`, named from `profiles` like a contact's person in charge), `last_activity_at` and `expected_close_date`. People who can write add, edit, move (by dragging or from the card's menu), mark as lost, reopen and delete deals from the page, and create, rename and delete pipelines. |
 | Overview, Reports | read from the tables above | No tables of their own. |
 | Appointments, Calendar | `appointments` (Jebat foundation) | Already on `main`; Kasturi should read the same table and not add a second one. |
 | Lead Forms, Broadcast, AI Chatbot, Automations, Landing Page, Billings, Plugins, Settings, AI Agents | not in this slice | Each gets its own table when its page is wired up. |
@@ -52,6 +52,15 @@ Import reads a CSV or Excel (`.xlsx`) file in the browser, lets the person match
 ## How the Deals page works
 
 **Pipeline.** A workspace needs a pipeline before it can hold deals. The first time someone who can write opens the page in a workspace with none, the page creates "Sales pipeline" (`is_default`) with the stages Lead (10%), Qualified (30%), Proposal (50%), Negotiation (70%) and Won (100%) (`ensureDefaultPipeline` in `src/lib/crm/pipelines.ts`). Two tabs doing this at once is safe: a unique violation means the other one got there first. If it fails the page still loads and says so. A viewer in a workspace with no pipeline sees an explanation and no board.
+
+**More pipelines.** People who can write get a "Manage pipelines" button beside the pipeline select. It opens a card that lists every pipeline with its stages, its number of loaded deals and a "Default" marker, and offers (`src/lib/crm/pipelines.ts`, `src/screens/crm/deal-pipelines.tsx`):
+
+- New pipeline: a name (required, unique in the workspace, at most 60 characters) and its stages as one line of names separated by commas, prefilled with the starting five. Two to twelve stages, each 1 to 30 characters, no repeats ignoring capitals. Positions follow the order typed. Probabilities are spread evenly and end at 100 (five stages get 20, 40, 60, 80, 100); this one rule applies whatever the names, so a new pipeline with the starting names does not get the starting pipeline's 10 to 100. The pipeline is inserted first and its stages second, in one statement; if the stages fail the pipeline is deleted again. The board then switches to the new pipeline.
+- Rename. A name already in use (Postgres `23505`) becomes "Another pipeline already uses that name."
+- Make default. Nothing in the database limits a workspace to one default, so this is two updates: the chosen pipeline is marked first, the others are cleared second. A failure in between leaves two defaults, never none; the page then opens on the older of the two, the card marks only that one, and Make default on the other puts it right.
+- Delete, after a confirmation in the card. Refused for the last pipeline and for one that still has deals: the card says so from the loaded deals, the write counts the pipeline's deals itself, and a foreign-key error from a deal added meanwhile (`23503`) becomes the same message. Deleting the default first makes the oldest other pipeline the default, and undoes that if the delete fails. Stages go with their pipeline through the table's cascade.
+
+**Dragging.** People who can write can drag a card to another stage column (the browser's own drag and drop, no library). The column under the card is highlighted; dropping on the card's own column does nothing. The move goes through the same action as "Move to", so the status rules below apply unchanged. The card shows in its new column at once (`useOptimistic` over the loaded deals, computed by `applyDealMove` in `src/lib/crm/deal-board.ts` with the same status rule as the write) and the page's fresh deals take over when the server answers. If the move fails the card goes back and shows the message. A card cannot be dragged by its "⋯" button, while it has a move on its way, or while a confirmation has taken its place. Drag and drop does not work on touch screens or from the keyboard: "Move to" in the card's menu is the way there, and it behaves as before (the card stays put and says "Moving…" until the server answers).
 
 **Status and stage.** A deal's `status` (`open`, `won`, `lost`) is separate from its stage.
 
@@ -89,8 +98,11 @@ The migration reuses the private tenancy helper functions:
 ## Not included yet
 
 - UI wiring and server actions for pages other than Contacts and Deals
-- Creating, renaming or reordering pipelines and stages (the Deals page only creates the starting pipeline)
-- Changing a deal's owner, and dragging cards between stages
+- Editing the stages of an existing pipeline: adding, renaming, reordering or removing a stage, or changing its probability (stages are set once, when the pipeline is created)
+- Moving a deal to another pipeline
+- A database rule for one default pipeline per workspace (the write paths keep to it)
+- Changing a deal's owner
+- Dragging on touch screens, and reordering cards within a stage
 - Activities and notes on a deal
 - Supabase Storage bucket policies
 - Audit trigger functions
