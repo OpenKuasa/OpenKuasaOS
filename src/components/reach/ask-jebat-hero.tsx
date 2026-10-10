@@ -12,7 +12,7 @@
  * sign-up gate (never POST, $0 LLM).
  */
 
-import { useEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
 import {
@@ -30,125 +30,35 @@ import {
 } from 'ai';
 import {
   ArrowUp,
-  CalendarDays,
   Check,
-  ClipboardList,
-  Coins,
   FileText,
   ImageIcon,
   Loader2,
-  Megaphone,
   Mic,
   Paperclip,
-  PieChart,
-  Send,
   Sparkles,
-  TrendingUp,
-  Users,
-  Wrench,
   X,
-  Zap,
 } from 'lucide-react';
-
-type Icon = ComponentType<{ className?: string }>;
-
-const TOOL_META: Record<string, { label: string; Icon: Icon }> = {
-  getAdsOverview: { label: 'Ads overview', Icon: PieChart },
-  getCampaigns: { label: 'Campaigns', Icon: Megaphone },
-  getLeadSummary: { label: 'Lead summary', Icon: TrendingUp },
-  getSpendByChannel: { label: 'Spend by channel', Icon: Coins },
-  getUpcomingAppointments: { label: 'Appointments', Icon: CalendarDays },
-  listContacts: { label: 'Contacts', Icon: Users },
-  listForms: { label: 'Lead forms', Icon: ClipboardList },
-  listBroadcasts: { label: 'Broadcasts', Icon: Send },
-  listAutomations: { label: 'Automations', Icon: Zap },
-};
-
-function humanize(name: string): string {
-  const spaced = name.replace(/^(get|list)/, '').replace(/([a-z])([A-Z])/g, '$1 $2');
-  return (spaced.charAt(0).toUpperCase() + spaced.slice(1)).trim();
-}
-
-function toolMeta(name: string): { label: string; Icon: Icon } {
-  return TOOL_META[name] ?? { label: humanize(name) || 'Tool', Icon: Wrench };
-}
+import {
+  approvalDetail,
+  approvalTitle,
+  hasVisibleContent,
+  isText,
+  toPendingApproval,
+  toToolStep,
+  toolMeta,
+  type AnyPart,
+  type ToolStep,
+} from '@/components/chat/tool-parts';
 
 const CANNED_DEMO_ANSWER =
   'Jap, saya tengok dulu… Cost-per-lead terbaik awak ialah campaign "Lead Magnet — eBook" pada RM 6.88, manakala "Brand Awareness" paling mahal (RM 50.00). WhatsApp bawa paling banyak lead. Untuk Jebat jawab guna nombor sebenar bisnes awak, sila sign up akaun percuma.';
 
-type AnyPart = UIMessage['parts'][number];
-
-function isText(p: AnyPart): p is Extract<AnyPart, { type: 'text' }> {
-  return p.type === 'text';
-}
 function isFile(p: AnyPart): p is Extract<AnyPart, { type: 'file' }> {
   return p.type === 'file';
 }
 function textOf(message: UIMessage): string {
   return message.parts.filter(isText).map((p) => p.text).join('');
-}
-
-type ToolStep = { key: string; name: string; running: boolean; output: unknown };
-
-function toToolStep(part: AnyPart, messageId: string, index: number): ToolStep | null {
-  const type = part.type;
-  let name: string | null = null;
-  if (type === 'dynamic-tool') name = (part as { toolName?: string }).toolName ?? null;
-  else if (typeof type === 'string' && type.startsWith('tool-')) name = type.slice('tool-'.length);
-  if (!name) return null;
-  const state = 'state' in part ? (part.state as string) : undefined;
-  const running = state !== 'output-available' && state !== 'output-error';
-  const output = 'output' in part ? part.output : undefined;
-  const key = ('toolCallId' in part ? (part.toolCallId as string) : undefined) ?? `${messageId}-${index}`;
-  return { key, name, running, output };
-}
-
-type PendingApproval = { approvalId: string; toolName: string; input: unknown };
-
-function toPendingApproval(part: AnyPart): PendingApproval | null {
-  const type = part.type;
-  if (typeof type !== 'string' || !type.startsWith('tool-')) return null;
-  if (!('state' in part) || (part as { state?: string }).state !== 'approval-requested') return null;
-  const approval = (part as { approval?: { id?: string } }).approval;
-  if (!approval?.id) return null;
-  return { approvalId: approval.id, toolName: type.slice('tool-'.length), input: (part as { input?: unknown }).input };
-}
-
-function approvalTitle(toolName: string, input: unknown): string {
-  const i = (input ?? {}) as Record<string, unknown>;
-  switch (toolName) {
-    case 'createCampaign': return `Create campaign “${i.name ?? ''}”?`;
-    case 'updateCampaign': return 'Save changes to this campaign?';
-    case 'setCampaignStatus': return i.status === 'paused' ? 'Pause this campaign?' : 'Resume this campaign?';
-    case 'deleteCampaign': return 'Delete this campaign?';
-    case 'createCreative': return `Add creative “${i.name ?? ''}”?`;
-    case 'updateCreative': return 'Save changes to this creative?';
-    case 'deleteCreative': return 'Delete this creative?';
-    case 'updateAdSettings': return 'Update ad settings?';
-    case 'createForm': return `Create lead form “${i.name ?? ''}”?`;
-    case 'updateForm': return 'Save changes to this lead form?';
-    case 'setFormStatus':
-      return i.status === 'active'
-        ? 'Activate this lead form?'
-        : i.status === 'paused'
-          ? 'Pause this lead form?'
-          : 'Move this lead form back to draft?';
-    case 'deleteForm': return 'Delete this lead form?';
-    default: return 'Approve this change?';
-  }
-}
-
-function approvalDetail(toolName: string, _input: unknown): string | null {
-  if (toolName === 'deleteCampaign' || toolName === 'deleteCreative' || toolName === 'deleteForm') return 'This cannot be undone.';
-  return null;
-}
-
-function hasVisibleContent(message: UIMessage): boolean {
-  return message.parts.some(
-    (p) =>
-      (isText(p) && p.text.trim().length > 0) ||
-      (typeof p.type === 'string' && (p.type.startsWith('tool-') || p.type === 'dynamic-tool')),
-  );
 }
 
 export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: boolean }) {
@@ -438,7 +348,7 @@ function Thread({
                 }
                 const pending = toPendingApproval(part);
                 if (pending) {
-                  const detail = approvalDetail(pending.toolName, pending.input);
+                  const detail = approvalDetail(pending.toolName);
                   return (
                     <div
                       key={`appr-${pending.approvalId}`}
