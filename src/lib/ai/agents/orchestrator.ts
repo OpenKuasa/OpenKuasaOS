@@ -16,7 +16,7 @@ import {
   reachProduct,
   type ReachAccess,
 } from '@/lib/ai/products';
-import { JEBAT_SYSTEM, tuahSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
+import { JEBAT_SYSTEM, KASTURI_SYSTEM, tuahSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
 import { createTeamTools, type TeamContext } from '@/lib/ai/agents/specialists';
 import type { Screen } from '@/lib/chat/screen';
 
@@ -43,6 +43,33 @@ export function runJebat(
     stopWhen: stepCountIs(8),
     maxOutputTokens: 1000,
     // Stop in-flight model/tool work if the client disconnects.
+    abortSignal,
+  });
+}
+
+/**
+ * "Kasturi, your sales co-pilot": the same single agent as Jebat, holding the
+ * CRM tools instead of the marketing ones. Lookups run on their own; each
+ * change waits for the owner's approval.
+ */
+export function runKasturi(
+  messages: ModelMessage[],
+  crm: CrmAccess,
+  abortSignal?: AbortSignal,
+  /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
+  apiKey?: string,
+) {
+  const { tools, toolApproval } = combineToolkits([crmProduct(crm)]);
+  return streamText({
+    model: getModel('orchestrator', apiKey),
+    system: KASTURI_SYSTEM,
+    messages,
+    tools,
+    toolApproval,
+    onLanguageModelCallEnd: logModelCall('kasturi', pickModelId('orchestrator')),
+    // A CRM change often needs two lookups first (the contact, then the stage).
+    stopWhen: stepCountIs(10),
+    maxOutputTokens: 1000,
     abortSignal,
   });
 }
