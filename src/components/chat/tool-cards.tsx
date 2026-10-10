@@ -13,9 +13,16 @@ import {
 import { cn } from '@/lib/utils';
 
 /** One lookup the assistant ran: what it was, and its result on request. */
-export function ToolStepCard({ step }: { step: ToolStep }) {
+export function ToolStepCard({
+  step,
+  as,
+}: {
+  step: ToolStep;
+  /** The tool this step stands for, when it ran through another (a prepared change). */
+  as?: string;
+}) {
   const [open, setOpen] = useState(false);
-  const { label, Icon } = toolMeta(step.name);
+  const { label, Icon } = toolMeta(as ?? step.name);
   const canExpand = !step.running && step.output != null;
 
   return (
@@ -64,21 +71,25 @@ export function ToolStepCard({ step }: { step: ToolStep }) {
 export function ApprovalCard({
   approval,
   named,
+  proposal,
   onDecide,
 }: {
   approval: PendingApproval;
+  /** A change a specialist prepared: its wording was settled when it was prepared. */
+  proposal?: { title: string; detail: string | null } | null;
   /** Looks up the name of a row the change mentions by id. */
   named?: (id: unknown, kind?: ItemKind) => string | null;
   onDecide: (approved: boolean) => void;
 }) {
-  const detail = approvalDetail(approval.toolName);
+  const detail = proposal ? proposal.detail : approvalDetail(approval.toolName);
+  const title = proposal?.title ?? approvalTitle(approval.toolName, approval.input, named);
   return (
     <div
       role="group"
       aria-label="Change waiting for your approval"
       className="rounded-xl border bg-card p-3 text-sm text-card-foreground shadow-sm"
     >
-      <p className="font-medium">{approvalTitle(approval.toolName, approval.input, named)}</p>
+      <p className="font-medium">{title}</p>
       {detail ? (
         <p className="mt-1 flex items-center gap-1.5 text-muted-foreground">
           <TriangleAlert className="size-4 shrink-0" aria-hidden />

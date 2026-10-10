@@ -59,12 +59,15 @@ import {
   type ChatThread,
 } from '@/lib/chat/threads';
 import { screenFromPath, screenLabel } from '@/lib/chat/screen';
+import { SpecialistCard } from '@/components/chat/specialist-card';
 import { ApprovalCard, ToolStepCard } from '@/components/chat/tool-cards';
 import {
   nameFinder,
   hasVisibleContent,
   isText,
+  proposalFor,
   toPendingApproval,
+  toSpecialistWork,
   toToolStep,
   type AnyPart,
 } from '@/components/chat/tool-parts';
@@ -245,6 +248,20 @@ function savedSession(userId: string, id: string): Session {
   };
 }
 
+/**
+ * Whether Tuah answers with its team of specialists. Off unless switched on
+ * for this browser: open any page with `?team=1` (or `?team=0` to switch off).
+ */
+function teamMode(): boolean {
+  try {
+    const asked = new URL(window.location.href).searchParams.get('team');
+    if (asked === '1' || asked === '0') window.localStorage.setItem('ok.tuah.team', asked);
+    return window.localStorage.getItem('ok.tuah.team') === '1';
+  } catch {
+    return false;
+  }
+}
+
 /** `?chat=<id>` keeps a saved thread on screen across refresh and back. */
 function showInUrl(threadId: string | null, mode: 'push' | 'replace') {
   const url = new URL(window.location.href);
@@ -300,6 +317,10 @@ export function SariConversation({
     keepsHistory && !initialThreads ? 'loading' : 'ready',
   );
   const [notice, setNotice] = useState<string | null>(null);
+  // Picks up `?team=1` / `?team=0` as soon as the page opens, not at the first question.
+  useEffect(() => {
+    teamMode();
+  }, []);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   // The address bar leads: back, forward and picking a thread all arrive here.
@@ -768,7 +789,10 @@ function ChatPane({
   const midAnswer =
     !!lastPart &&
     ((isText(lastPart) && lastPart.text.trim().length > 0) ||
-      (toToolStep(lastPart, '', 0)?.running ?? false));
+      // A specialist's card shows its own progress for as long as it works.
+      (toSpecialistWork(lastPart, '', 0)?.running ??
+        toToolStep(lastPart, '', 0)?.running ??
+        false));
   const messages = live ? liveMessages : demoMessages;
 
   // A thread read back moments after its question (a reload mid-answer): the
@@ -844,7 +868,11 @@ function ChatPane({
       }
       if (keep) keepChat(viewer.userId, liveChat);
       setAwaiting('settled');
-      const options = pathname ? { body: { pathname } } : undefined;
+      const team = teamMode();
+      const options =
+        pathname || team
+          ? { body: { ...(pathname ? { pathname } : {}), ...(team ? { team: true } : {}) } }
+          : undefined;
       void chat.sendMessage(
         attachments.length === 0
           ? { text: q }
@@ -1020,6 +1048,12 @@ function ChatPane({
                                 </p>
                               ) : null;
                             }
+                            const asked = toSpecialistWork(part, String(m.id), i);
+                            if (asked) {
+                              return (
+                                <SpecialistCard key={asked.key} work={asked.work} failed={asked.failed} />
+                              );
+                            }
                             const pending = toPendingApproval(part);
                             if (pending) {
                               return (
@@ -1027,6 +1061,7 @@ function ChatPane({
                                   key={pending.approvalId}
                                   approval={pending}
                                   named={nameFinder(chat.messages)}
+                                  proposal={proposalFor(pending.input, chat.messages)}
                                   onDecide={(approved) => {
                                     setAttachNote(null);
                                     void chat.addToolApprovalResponse({
@@ -1038,7 +1073,15 @@ function ChatPane({
                               );
                             }
                             const step = toToolStep(part, String(m.id), i);
-                            return step ? <ToolStepCard key={step.key} step={step} /> : null;
+                            if (!step) return null;
+                            const input = 'input' in part ? part.input : undefined;
+                            return (
+                              <ToolStepCard
+                                key={step.key}
+                                step={step}
+                                as={proposalFor(input, chat.messages)?.action}
+                              />
+                            );
                           })
                         ) : (
                           <p className="whitespace-pre-wrap text-sm leading-relaxed">
