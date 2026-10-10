@@ -5,6 +5,7 @@ import {
   createEmployee,
   createEmployeeInput,
   deleteDepartment,
+  deleteDepartmentInput,
   deleteEmployee,
   linkEmployeeToMember,
   setEmployeeStatus,
@@ -424,5 +425,37 @@ describe('linkEmployeeToMember', () => {
       ok: false,
       error: 'That person is not a member of this workspace.',
     });
+  });
+});
+
+describe('ids and bad input', () => {
+  const ODD = 'dea97d89-a5b6-f264-bd42-c6df73f664a7';
+  it('accepts any database uuid and refuses a non-id', () => {
+    expect(updateEmployeeInput.safeParse({ id: ODD }).success).toBe(true);
+    expect(deleteDepartmentInput.safeParse({ id: ODD }).success).toBe(true);
+    expect(updateEmployeeInput.safeParse({ id: 'not-an-id' }).success).toBe(false);
+    expect(deleteDepartmentInput.safeParse({ id: 'not-an-id' }).success).toBe(false);
+  });
+  it('refuses bad input in words, without a database call', async () => {
+    const { client, calls } = fakeSupabase();
+    expect(await createDepartment(ctxOf(client), { name: ' ' })).toEqual({ ok: false, error: 'Give the department a name.' });
+    const bad = await deleteEmployee(ctxOf(client), { id: 'not-an-id' });
+    expect(bad.ok).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
+  it('logs it when the rollback of a half-made employee fails too', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { client } = fakeSupabase({
+      'hr_employees.select': { data: [] },
+      'hr_employees.insert': { data: saved },
+      'hr_employee_private.insert': { error: { code: '42501', message: 'permission denied' } },
+      'hr_employees.delete': { error: { code: '57014', message: 'canceling statement' } },
+    });
+    const result = await createEmployee(ctxOf(client), { name: 'Farah Idris', private: { base_salary: 3000 } });
+    expect(result).toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    const logged = JSON.stringify(log.mock.calls);
+    expect(logged).toContain('rollback');
+    expect(logged).toContain('57014');
+    expect(logged).not.toContain('3000');
   });
 });

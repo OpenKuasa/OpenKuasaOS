@@ -37,10 +37,18 @@ export function writeFailed(fn: string, error: DbError): Refusal {
 export const violates = (error: DbError, code: string, needle?: string): boolean =>
   error?.code === code && (!needle || (error.message ?? '').includes(needle));
 
+/** Checks an input against its schema, so a bad one is refused in words rather than thrown. */
+function parseInput<S extends z.ZodType>(schema: S, input: unknown): CapResult<z.infer<S>> {
+  const parsed = schema.safeParse(input);
+  if (parsed.success) return { ok: true, data: parsed.data };
+  return refuse(parsed.error.issues[0]?.message ?? 'That input was not valid.');
+}
+
 const UNIQUE = '23505';
 const FOREIGN_KEY = '23503';
 
-const id = z.string().uuid();
+// Any Postgres uuid: `.uuid()` would refuse ids that are valid but not RFC-versioned (such as the demo's md5-made ones).
+const id = z.guid();
 
 // ---- Departments ------------------------------------------------------------
 
@@ -67,7 +75,9 @@ export async function createDepartment(
   ctx: PeopleWriteContext,
   input: z.infer<typeof createDepartmentInput>,
 ): Promise<CapResult<Department>> {
-  const { name } = createDepartmentInput.parse(input);
+  const parsed = parseInput(createDepartmentInput, input);
+  if (!parsed.ok) return parsed;
+  const { name } = parsed.data;
   const { data, error } = await ctx.client
     .from('hr_departments')
     .insert({ name, org_id: ctx.orgId })
@@ -82,7 +92,9 @@ export async function updateDepartment(
   ctx: PeopleWriteContext,
   input: z.infer<typeof updateDepartmentInput>,
 ): Promise<CapResult<Department>> {
-  const { id: departmentId, name } = updateDepartmentInput.parse(input);
+  const parsed = parseInput(updateDepartmentInput, input);
+  if (!parsed.ok) return parsed;
+  const { id: departmentId, name } = parsed.data;
   const { data, error } = await ctx.client
     .from('hr_departments')
     .update({ name })
@@ -100,7 +112,9 @@ export async function deleteDepartment(
   ctx: PeopleWriteContext,
   input: z.infer<typeof deleteDepartmentInput>,
 ): Promise<CapResult<{ id: string; name: string }>> {
-  const { id: departmentId } = deleteDepartmentInput.parse(input);
+  const parsed = parseInput(deleteDepartmentInput, input);
+  if (!parsed.ok) return parsed;
+  const { id: departmentId } = parsed.data;
   const { data, error } = await ctx.client
     .from('hr_departments')
     .delete()
@@ -285,7 +299,9 @@ export async function createEmployee(
   ctx: PeopleWriteContext,
   input: z.infer<typeof createEmployeeInput>,
 ): Promise<CapResult<SavedEmployee>> {
-  const values = createEmployeeInput.parse(input);
+  const parsed = parseInput(createEmployeeInput, input);
+  if (!parsed.ok) return parsed;
+  const values = parsed.data;
   const row = directoryValues(values);
   if (!row.ok) return row;
 
@@ -314,7 +330,8 @@ export async function createEmployee(
       .insert({ ...priv, employee_id: saved.id, org_id: ctx.orgId });
     if (privateError) {
       // Two tables, no transaction: take the employee back out so nothing is left half-made.
-      await ctx.client.from('hr_employees').delete().eq('id', saved.id).eq('org_id', ctx.orgId);
+      const undo = await ctx.client.from('hr_employees').delete().eq('id', saved.id).eq('org_id', ctx.orgId);
+      if (undo.error) writeFailed('createEmployee (rollback)', undo.error);
       return writeFailed('createEmployee (private details)', privateError);
     }
   }
@@ -325,7 +342,9 @@ export async function updateEmployee(
   ctx: PeopleWriteContext,
   input: z.infer<typeof updateEmployeeInput>,
 ): Promise<CapResult<SavedEmployee>> {
-  const { id: target, ...fields } = updateEmployeeInput.parse(input);
+  const parsed = parseInput(updateEmployeeInput, input);
+  if (!parsed.ok) return parsed;
+  const { id: target, ...fields } = parsed.data;
   const row = directoryValues(fields);
   if (!row.ok) return row;
   const priv = privateValues(fields.private);
@@ -393,7 +412,9 @@ export async function setEmployeeStatus(
   ctx: PeopleWriteContext,
   input: z.infer<typeof setEmployeeStatusInput>,
 ): Promise<CapResult<SavedEmployee>> {
-  const { id: target, status } = setEmployeeStatusInput.parse(input);
+  const parsed = parseInput(setEmployeeStatusInput, input);
+  if (!parsed.ok) return parsed;
+  const { id: target, status } = parsed.data;
   return updateEmployee(ctx, { id: target, status });
 }
 
@@ -402,7 +423,9 @@ export async function deleteEmployee(
   ctx: PeopleWriteContext,
   input: z.infer<typeof deleteEmployeeInput>,
 ): Promise<CapResult<{ id: string; name: string }>> {
-  const { id: target } = deleteEmployeeInput.parse(input);
+  const parsed = parseInput(deleteEmployeeInput, input);
+  if (!parsed.ok) return parsed;
+  const { id: target } = parsed.data;
   const { data, error } = await ctx.client
     .from('hr_employees')
     .delete()
@@ -420,7 +443,9 @@ export async function linkEmployeeToMember(
   ctx: PeopleWriteContext,
   input: z.infer<typeof linkEmployeeToMemberInput>,
 ): Promise<CapResult<{ id: string; name: string; user_id: string | null }>> {
-  const { id: target, user_id } = linkEmployeeToMemberInput.parse(input);
+  const parsed = parseInput(linkEmployeeToMemberInput, input);
+  if (!parsed.ok) return parsed;
+  const { id: target, user_id } = parsed.data;
   const { data, error } = await ctx.client
     .from('hr_employees')
     .update({ user_id })
