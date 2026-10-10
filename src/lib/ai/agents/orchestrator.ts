@@ -49,8 +49,9 @@ export function runJebat(
 
 /** What each specialist is for, as Tuah's instructions put it. */
 const TEAM_AREA = {
-  reach: 'marketing: ads and campaigns, spend, leads, lead forms, creatives, appointments and ad settings',
-  crm: 'the CRM: contacts, deals, pipelines and their stages',
+  reach:
+    'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
+  crm: 'the CRM: contacts, deals, pipelines and their stages. A lead is not a contact yet: anything about a lead goes to Jebat',
 } as const;
 
 /**
