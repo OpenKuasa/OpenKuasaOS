@@ -24,6 +24,7 @@ import {
 import {
   convertFileListToFileUIParts,
   DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
   type FileUIPart,
   type UIMessage,
 } from 'ai';
@@ -150,7 +151,11 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
   const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
-  const { messages, sendMessage, status, error, addToolApprovalResponse } = useChat({ transport, throttle: 50 });
+  const { messages, sendMessage, status, error, addToolApprovalResponse } = useChat({
+    transport,
+    throttle: 50,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+  });
 
   // Who is paying: the workspace's own key, or the user's free weekly questions.
   const { status: chatStatus, refresh: refreshChatStatus } = useChatStatus(!isDemo);

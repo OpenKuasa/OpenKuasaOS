@@ -34,6 +34,12 @@ export const deleteCampaignInput = z.object({ id: z.string().uuid() });
 
 const WRITE_FAILED = 'That change could not be saved. Please try again.';
 
+/** Logs the DB error for triage; callers only ever see the generic user-facing message. */
+function writeFailed(fnName: string, error: unknown): { ok: false; error: string } {
+  console.error(`[reach-capability] ${fnName} failed:`, error);
+  return { ok: false, error: WRITE_FAILED };
+}
+
 export async function createCampaign(
   ctx: ReachWriteContext,
   input: z.infer<typeof createCampaignInput>,
@@ -44,7 +50,7 @@ export async function createCampaign(
     .insert({ ...values, org_id: ctx.orgId })
     .select('id,name,channel,status,leads_count,spend_cents,cpl_cents,created_at')
     .single();
-  if (error || !data) return { ok: false, error: WRITE_FAILED };
+  if (error || !data) return writeFailed('createCampaign', error);
   return { ok: true, data: data as Campaign };
 }
 
@@ -63,7 +69,7 @@ export async function updateCampaign(
     .eq('org_id', ctx.orgId)
     .select('id,name,channel,status,leads_count,spend_cents,cpl_cents,created_at')
     .maybeSingle();
-  if (error) return { ok: false, error: WRITE_FAILED };
+  if (error) return writeFailed('updateCampaign', error);
   if (!data) return { ok: false, error: 'That campaign was not found.' };
   return { ok: true, data: data as Campaign };
 }
@@ -88,7 +94,7 @@ export async function deleteCampaign(
     .eq('org_id', ctx.orgId)
     .select('id')
     .maybeSingle();
-  if (error) return { ok: false, error: WRITE_FAILED };
+  if (error) return writeFailed('deleteCampaign', error);
   if (!data) return { ok: false, error: 'That campaign was not found.' };
   return { ok: true, data: { id: data.id } };
 }
@@ -129,7 +135,7 @@ export async function createCreative(
     .insert({ ...values, org_id: ctx.orgId })
     .select(CREATIVE_COLS)
     .single();
-  if (error || !data) return { ok: false, error: WRITE_FAILED };
+  if (error || !data) return writeFailed('createCreative', error);
   return { ok: true, data: data as Creative };
 }
 
@@ -148,7 +154,7 @@ export async function updateCreative(
     .eq('org_id', ctx.orgId)
     .select(CREATIVE_COLS)
     .maybeSingle();
-  if (error) return { ok: false, error: WRITE_FAILED };
+  if (error) return writeFailed('updateCreative', error);
   if (!data) return { ok: false, error: 'That creative was not found.' };
   return { ok: true, data: data as Creative };
 }
@@ -165,7 +171,7 @@ export async function deleteCreative(
     .eq('org_id', ctx.orgId)
     .select('id')
     .maybeSingle();
-  if (error) return { ok: false, error: WRITE_FAILED };
+  if (error) return writeFailed('deleteCreative', error);
   if (!data) return { ok: false, error: 'That creative was not found.' };
   return { ok: true, data: { id: data.id } };
 }
@@ -193,13 +199,13 @@ export async function updateAdSettings(
     .eq('org_id', ctx.orgId)
     .select(cols)
     .maybeSingle();
-  if (upd.error) return { ok: false, error: WRITE_FAILED };
+  if (upd.error) return writeFailed('updateAdSettings', upd.error);
   if (upd.data) return { ok: true, data: upd.data as AdSettings };
   const ins = await ctx.client
     .from('ad_settings')
     .insert({ ...parsed, org_id: ctx.orgId })
     .select(cols)
     .single();
-  if (ins.error || !ins.data) return { ok: false, error: WRITE_FAILED };
+  if (ins.error || !ins.data) return writeFailed('updateAdSettings', ins.error);
   return { ok: true, data: ins.data as AdSettings };
 }

@@ -59,6 +59,7 @@ export function AdStudioTable({
   canEdit: boolean;
 }) {
   const [pending, start] = useTransition();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Campaign | null>(null);
   const [creating, setCreating] = useState(false);
@@ -173,17 +174,45 @@ export function AdStudioTable({
                         )}
                         {c.status === 'active' ? 'Pause' : 'Resume'}
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        disabled={pending}
-                        onClick={() => act(deleteCampaignAction({ id: c.id }))}
-                      >
-                        <Trash2 className="size-4" />
-                        Delete
-                      </Button>
+                      {confirmingId === c.id ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => {
+                              setConfirmingId(null);
+                              act(deleteCampaignAction({ id: c.id }));
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                            Confirm?
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => setConfirmingId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={pending}
+                          aria-label="Delete"
+                          onClick={() => setConfirmingId(c.id)}
+                        >
+                          <Trash2 className="size-4" />
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 )}
