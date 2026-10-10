@@ -1,14 +1,10 @@
 import {
   Activity,
-  ArrowUp,
   Filter,
   Flame,
   Gauge,
   ListChecks,
-  Mic,
   PieChart,
-  Plus,
-  Sparkles,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -25,7 +21,10 @@ import {
   type Slice,
 } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
+import { createClient } from '@/lib/supabase/server';
+import { isLiveChatAllowed } from '@/lib/ai/access';
 import { cn } from '@/lib/utils';
+import { AskKasturiHero } from './ask-kasturi-hero';
 
 /* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
 
@@ -99,62 +98,30 @@ const TASKS = [
   { text: 'Prepare proposal for Siti Decor event', when: '4:00pm', done: false },
 ];
 
+// Each is answered by a lookup Kasturi has, on the workspace's own data.
 const PROMPTS = [
-  'Which deals are stuck in my pipeline?',
-  'Draft a follow-up to Aisyah Trading',
-  "What's my win rate this month?",
-  'Who should I call today?',
+  'How much is my pipeline worth?',
+  'Which stage holds the most deals?',
+  'Show my newest contacts',
 ];
 
 const formatRM = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
 
 /* ------------------------------------------------------------------ */
 
-export default function OverviewScreen() {
+export default async function OverviewScreen() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const isDemo = !isLiveChatAllowed(user);
+
   return (
     <ScreenContainer>
       <BentoGrid>
         {/* Ask-Kasturi hero */}
         <BentoCard tone="primary" className="col-span-2 md:col-span-12">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground/70">
-                <Sparkles className="size-3.5 animate-twinkle" />
-                Kasturi · your sales co-pilot
-              </div>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight">
-                How can we close more deals, Saudara?
-              </h1>
-              <p className="mt-1 text-xs text-primary-foreground/70">
-                Firm and relentless about the pipeline. Powered by Taming Sari.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {PROMPTS.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className="rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-medium text-primary-foreground ring-1 ring-inset ring-primary-foreground/20 transition hover:bg-primary-foreground/20"
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex w-full items-center gap-2 rounded-2xl bg-primary-foreground/10 p-2 ring-1 ring-inset ring-primary-foreground/20 lg:w-96">
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground/15">
-                <Plus className="size-4" />
-              </span>
-              <span className="flex-1 truncate text-sm text-primary-foreground/70">
-                Ask Kasturi anything…
-              </span>
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground/15">
-                <Mic className="size-4" />
-              </span>
-              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary-foreground text-primary">
-                <ArrowUp className="size-4" />
-              </span>
-            </div>
-          </div>
+          <AskKasturiHero prompts={PROMPTS} isDemo={isDemo} />
         </BentoCard>
 
         {/* KPI row */}
