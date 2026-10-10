@@ -52,6 +52,16 @@ import {
   updateLead,
   updateLeadInput,
 } from '@/lib/reach/capabilities';
+import {
+  setAgentCadence,
+  setAgentCadenceInput,
+  setAgentCap,
+  setAgentCapInput,
+  setAgentEnabled,
+  setAgentEnabledInput,
+} from '@/lib/agents/config';
+import { serviceClient } from '@/lib/supabase/service';
+import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
 import { createSupabaseReachData, getReachData } from '@/lib/reach/supabase';
 import { FORM_MESSAGES } from '@/lib/reach/forms';
 import { leadsToCsv } from '@/lib/reach/csv';
@@ -256,6 +266,59 @@ export async function setAppointmentStatusAction(input: unknown) {
 }
 export async function deleteAppointmentAction(input: unknown) {
   return runAppointments(deleteAppointmentInput, input, deleteAppointment);
+}
+
+// ─── agents ──────────────────────────────────────────────────────────────────
+
+/** The Agents screen is Reach-only: crm/finance map to their own components. */
+const AGENTS_PATHS = ['/reach/agents'];
+
+/** Same shape as {@link runLeads}, refreshing the Agents screen. */
+async function runAgentConfig<I, O>(
+  schema: ZodType<I>,
+  input: unknown,
+  fn: (ctx: ReachWriteContext, parsed: I) => Promise<CapResult<O>>,
+): Promise<CapResult<O>> {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'That input was not valid.' };
+  }
+  const result = await fn(ctx, parsed.data);
+  if (result.ok) for (const path of AGENTS_PATHS) revalidatePath(path);
+  return result;
+}
+
+export async function setAgentEnabledAction(input: unknown) {
+  return runAgentConfig(setAgentEnabledInput, input, setAgentEnabled);
+}
+export async function setAgentCadenceAction(input: unknown) {
+  return runAgentConfig(setAgentCadenceInput, input, setAgentCadence);
+}
+export async function setAgentCapAction(input: unknown) {
+  return runAgentConfig(setAgentCapInput, input, setAgentCap);
+}
+
+/**
+ * Manual "Run now". The viewer gate (writer only) is the authorization; the
+ * org comes from the authenticated viewer, never from input. agent_runs and
+ * agent_run_assets have no authenticated write grant, so the service client
+ * is the writer.
+ */
+export async function runAgentNowAction(
+  input?: unknown,
+): Promise<{ ok: true; runId: string } | { ok: false; error: string }> {
+  void input; // deliberately ignored: nothing the caller sends may pick the org
+  const ctx = await writeCtx();
+  if (!ctx) return { ok: false, error: 'You do not have permission to make changes here.' };
+  try {
+    const result = await runWeeklyStudio(serviceClient(), ctx.orgId, 'manual');
+    for (const path of AGENTS_PATHS) revalidatePath(path);
+    return { ok: true, runId: result.runId };
+  } catch {
+    return { ok: false, error: 'The run could not be started.' };
+  }
 }
 
 export async function exportLeadsCsv(

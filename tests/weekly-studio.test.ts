@@ -1,0 +1,255 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/agents/openrouter-media', () => ({
+  webSearch: vi.fn(),
+  writeDigest: vi.fn(),
+  generateImage: vi.fn(),
+  startVideo: vi.fn(),
+}));
+vi.mock('@/lib/ai/key-crypto', () => ({
+  hasKeySecret: () => true,
+  decryptApiKey: (c: string) => `decrypted-${c}`,
+}));
+vi.mock('@/lib/reach/supabase', () => ({
+  createSupabaseReachData: () => ({
+    listCampaigns: async () => [],
+    listLeads: async () => [],
+    listAppointments: async () => [],
+  }),
+}));
+
+import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
+import { generateImage, startVideo, webSearch, writeDigest } from '@/lib/agents/openrouter-media';
+
+const ORG = 'org-123';
+
+type Call = { table: string; op: string; payload?: unknown; eqs: [string, unknown][] };
+
+function fakeService(
+  keyRow: { ciphertext: string } | null,
+  cap: { max_cost_cents: number } | null = { max_cost_cents: 200 },
+) {
+  const calls: Call[] = [];
+  const runs: Record<string, unknown>[] = [];
+  const assets: Record<string, unknown>[] = [];
+  const uploads: { path: string; bytes: unknown; opts: unknown }[] = [];
+  const service = {
+    from(table: string) {
+      return {
+        select() {
+          const call: Call = { table, op: 'select', eqs: [] };
+          calls.push(call);
+          const b = {
+            eq(col: string, val: unknown) {
+              call.eqs.push([col, val]);
+              return b;
+            },
+            maybeSingle: async () => ({ data: table === 'agent_configs' ? cap : keyRow, error: null }),
+          };
+          return b;
+        },
+        insert(payload: Record<string, unknown>) {
+          const call: Call = { table, op: 'insert', payload, eqs: [] };
+          calls.push(call);
+          if (table === 'agent_run_assets') {
+            assets.push(payload);
+            return Promise.resolve({ error: null });
+          }
+          const row = { id: 'run-1', ...payload };
+          runs.push(row);
+          return { select: () => ({ single: async () => ({ data: row, error: null }) }) };
+        },
+        update(patch: Record<string, unknown>) {
+          const call: Call = { table, op: 'update', payload: patch, eqs: [] };
+          calls.push(call);
+          const b = {
+            eq(col: string, val: unknown) {
+              call.eqs.push([col, val]);
+              return b;
+            },
+            then(resolve: (v: { error: null }) => void) {
+              Object.assign(runs[0], patch);
+              resolve({ error: null });
+            },
+          };
+          return b;
+        },
+      };
+    },
+    storage: {
+      from: (bucket: string) => ({
+        upload: async (path: string, bytes: unknown, opts: unknown) => {
+          uploads.push({ path: `${bucket}/${path}`, bytes, opts });
+          return { data: { path }, error: null };
+        },
+      }),
+    },
+  };
+  return { service: service as never, calls, runs, assets, uploads };
+}
+
+beforeEach(() => {
+  vi.mocked(webSearch).mockReset();
+  vi.mocked(writeDigest).mockReset();
+  vi.mocked(generateImage).mockReset();
+  vi.mocked(startVideo).mockReset();
+  vi.mocked(startVideo).mockResolvedValue({ jobId: 'job-9', cost_cents: 20 });
+  vi.mocked(generateImage).mockResolvedValue({
+    bytes: new Uint8Array([1, 2, 3]),
+    contentType: 'image/png',
+    cost_cents: 5,
+  });
+});
+
+describe('runWeeklyStudio', () => {
+  it('fails with "no AI key" and makes no media call when the org has no key', async () => {
+    const { service, runs } = fakeService(null);
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res).toEqual({ runId: 'run-1', status: 'failed' });
+    expect(runs[0].status).toBe('failed');
+    expect(String(runs[0].error)).toContain('no AI key');
+    expect(runs[0].trigger).toBe('manual');
+    expect(webSearch).not.toHaveBeenCalled();
+    expect(writeDigest).not.toHaveBeenCalled();
+  });
+
+  it('runs search + digest + images and finishes done with summed cost', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'angle', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: '# Digest', cost_cents: 4 });
+    const { service, runs } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'schedule');
+    expect(res.status).toBe('done');
+    expect(webSearch).toHaveBeenCalledWith('decrypted-abc', expect.any(String));
+    expect(writeDigest).toHaveBeenCalledWith('decrypted-abc', expect.stringContaining('angle'));
+    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest', cost_cents: 37, trigger: 'schedule' });
+    expect(runs[0].finished_at).toBeTruthy();
+  });
+
+  it('persists an INTEGER cost_cents even when a media call reports a fractional cost', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'angle', cost_cents: 1.2 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: '# Digest', cost_cents: 3.4 });
+    const { service, runs, calls } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    const finishes = calls.filter(
+      (c) => c.table === 'agent_runs' && c.op === 'update' && (c.payload as { status?: string }).status === 'done',
+    );
+    expect(finishes).toHaveLength(1);
+    const cents = (finishes[0].payload as { cost_cents: number }).cost_cents;
+    expect(Number.isInteger(cents)).toBe(true);
+    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest' });
+  });
+
+  it('marks the run failed with a safe error when a media call throws', async () => {
+    vi.mocked(webSearch).mockRejectedValue(new Error('boom sk-or-secret'));
+    const { service, runs } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('failed');
+    expect(runs[0].status).toBe('failed');
+    expect(String(runs[0].error)).not.toContain('secret');
+    expect(writeDigest).not.toHaveBeenCalled();
+  });
+
+  it('scopes the key read and every agent_runs write by org_id', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 1 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 1 });
+    const { service, calls } = fakeService({ ciphertext: 'abc' });
+    await runWeeklyStudio(service, ORG, 'manual');
+    const keyRead = calls.find((c) => c.table === 'org_ai_keys');
+    expect(keyRead?.eqs).toContainEqual(['org_id', ORG]);
+    const insert = calls.find((c) => c.table === 'agent_runs' && c.op === 'insert');
+    expect(insert?.payload).toMatchObject({ org_id: ORG });
+    const updates = calls.filter((c) => c.table === 'agent_runs' && c.op === 'update');
+    expect(updates.length).toBeGreaterThan(0);
+    for (const u of updates) expect(u.eqs).toContainEqual(['org_id', ORG]);
+  });
+
+  it('generates poster + hero, uploads via the passed service, and records done assets', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 4 });
+    const { service, runs, assets, uploads } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(generateImage).toHaveBeenCalledTimes(2);
+    expect(uploads.map((u) => u.path)).toEqual([
+      `agent-assets/${ORG}/run-1/poster.png`,
+      `agent-assets/${ORG}/run-1/image.png`,
+    ]);
+    expect(uploads[0].opts).toMatchObject({ contentType: 'image/png', upsert: true });
+    expect(assets).toHaveLength(3);
+    expect(assets[0]).toMatchObject({
+      org_id: ORG,
+      run_id: 'run-1',
+      kind: 'poster',
+      status: 'done',
+      storage_path: `${ORG}/run-1/poster.png`,
+    });
+    expect(assets[1]).toMatchObject({ kind: 'image', status: 'done' });
+    expect(runs[0].cost_cents).toBe(3 + 4 + 5 + 5 + 20);
+  });
+
+  it('skips image generation when the per-run cap would be exceeded but still persists the digest', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: '# Digest', cost_cents: 4 });
+    const { service, runs, assets, uploads } = fakeService(
+      { ciphertext: 'abc' },
+      { max_cost_cents: 1 },
+    );
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(generateImage).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(0);
+    expect(assets).toHaveLength(0);
+    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest', cost_cents: 7 });
+    expect(startVideo).not.toHaveBeenCalled();
+  });
+
+  it('kicks off a video and records a pending asset with its job id via the passed service', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 4 });
+    const { service, assets } = fakeService({ ciphertext: 'abc' });
+    await runWeeklyStudio(service, ORG, 'manual');
+    expect(startVideo).toHaveBeenCalledWith('decrypted-abc', expect.any(String));
+    const video = assets.find((a) => a.kind === 'video');
+    expect(video).toMatchObject({
+      org_id: ORG,
+      run_id: 'run-1',
+      status: 'pending',
+      provider_job_id: 'job-9',
+    });
+  });
+
+  it('skips the video (but keeps images and the run) when its estimate would exceed the cap', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 4 });
+    const { service, runs, assets } = fakeService({ ciphertext: 'abc' }, { max_cost_cents: 40 });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(startVideo).not.toHaveBeenCalled();
+    expect(assets.map((a) => a.kind)).toEqual(['poster', 'image']);
+    expect(runs[0].status).toBe('done');
+  });
+
+  it('does not fail the run when the video kick-off throws', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 4 });
+    vi.mocked(startVideo).mockRejectedValue(new Error('boom sk-or-secret'));
+    const { service, runs, assets } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(runs[0].digest_md).toBe('d');
+    expect(assets.some((a) => a.kind === 'video')).toBe(false);
+  });
+
+  it('records a failed asset (no secret) when an image fails and keeps the run done', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 1 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 1 });
+    vi.mocked(generateImage).mockRejectedValue(new Error('boom sk-or-secret'));
+    const { service, runs, assets } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(runs[0].digest_md).toBe('d');
+    expect(assets.filter((a) => a.kind !== 'video').map((a) => a.status)).toEqual(['failed', 'failed']);
+    expect(JSON.stringify(assets)).not.toContain('secret');
+  });
+});
