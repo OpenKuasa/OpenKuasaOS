@@ -326,6 +326,9 @@ begin
   if old.status in ('posted','void') then
     raise exception 'a posted payment cannot be changed' using errcode = 'FIN09';
   end if;
+  if new.status = 'void' then
+    raise exception 'only a paid payment is voided; delete this one' using errcode = 'FIN09';
+  end if;
   return new;
 end $$;
 

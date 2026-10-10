@@ -233,6 +233,16 @@ testWithSupabase('a paid payment cannot be edited or deleted, only voided; voidi
   expect(await totals(a.c, bill.id)).toMatchObject({ display_status: 'void' });
 });
 
+testWithSupabase('a scheduled payment is deleted, not voided', async () => {
+  const bill = await postedBill(a);
+  const scheduled = await pay(a, [{ bill_id: bill.id, amount: 10 }], 'scheduled');
+  expect(scheduled.error, scheduled.error?.message).toBeNull();
+  const voided = await a.c.from('finance_transactions').update({ status: 'void' }).eq('id', scheduled.data);
+  expect(voided.error?.code).toBe('FIN09');
+  const removed = await a.c.from('finance_transactions').delete().eq('id', scheduled.data);
+  expect(removed.error, removed.error?.message).toBeNull();
+});
+
 testWithSupabase('one payment can cover two bills from one supplier, but not two suppliers', async () => {
   const first = await postedBill(a);
   const second = await postedBill(a);
