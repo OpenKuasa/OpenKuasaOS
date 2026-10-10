@@ -130,4 +130,10 @@ describe('hire seed', () => {
       expect(new Date(interview.scheduled_at).getTime(), interview.scheduled_at).toBeLessThan(eveningNow.getTime());
     }
   });
+
+  it('has the careers page off, with no workspace id', async () => {
+    expect(await createSeedHireData(new Date()).getSettings()).toEqual({
+      org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null,
+    });
+  });
 });

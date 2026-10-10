@@ -2,8 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { createSeedHireData } from './seed';
-import { JOB_COLUMNS } from './types';
-import type { Application, Candidate, HireData, Interview, Job } from './types';
+import { DEFAULT_HIRE_SETTINGS, JOB_COLUMNS, SETTINGS_COLUMNS } from './types';
+import type { Application, Candidate, HireData, HireSettings, Interview, Job } from './types';
 
 /** The API answers with at most this many rows per request. */
 const PAGE_SIZE = 1000;
@@ -66,6 +66,12 @@ export function createSupabaseHireData(client: SupabaseClient, orgId: string): H
           candidate_name: application?.candidate?.name ?? UNKNOWN,
           job_title: application?.job?.title ?? UNKNOWN,
         })),
+    getSettings: async () => {
+      const { data, error } = await client
+        .from('hire_settings').select(SETTINGS_COLUMNS).eq('org_id', orgId).maybeSingle();
+      if (error) throw error;
+      return { org_id: orgId, ...DEFAULT_HIRE_SETTINGS, ...((data ?? {}) as Partial<HireSettings>) };
+    },
   };
 }
 
@@ -74,6 +80,7 @@ const EMPTY_HIRE_DATA: HireData = {
   listCandidates: async () => [],
   listApplications: async () => [],
   listInterviews: async () => [],
+  getSettings: async () => ({ org_id: null, ...DEFAULT_HIRE_SETTINGS }),
 };
 
 /**

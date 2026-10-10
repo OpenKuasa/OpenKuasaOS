@@ -18,6 +18,7 @@ const EMPTY: HireData = {
   listCandidates: async () => [],
   listApplications: async () => [],
   listInterviews: async () => [],
+  getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
 };
 
 describe('jobs', () => {

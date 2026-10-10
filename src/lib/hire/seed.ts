@@ -20,6 +20,7 @@ import type {
   PoolStatus,
   WorkArrangement,
 } from './types';
+import { DEFAULT_HIRE_SETTINGS } from './types';
 
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -231,5 +232,6 @@ export function createSeedHireData(now: Date = new Date()): HireData {
       [...applications].sort((a, b) => b.applied_at.localeCompare(a.applied_at)),
     listInterviews: async () =>
       [...interviews].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
+    getSettings: async () => ({ org_id: null, ...DEFAULT_HIRE_SETTINGS }),
   };
 }

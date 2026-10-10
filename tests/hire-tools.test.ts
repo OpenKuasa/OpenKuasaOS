@@ -169,6 +169,7 @@ describe('hire tools', () => {
     const empty: HireData = {
       listJobs: async () => [], listCandidates: async () => [],
       listApplications: async () => [], listInterviews: async () => [],
+      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
     };
     const t = createHireTools(empty, NOW);
     for (const name of HIRE_TOOL_NAMES) {
@@ -189,6 +190,7 @@ describe('hire tools', () => {
     const broken: HireData = {
       listJobs: async () => { throw new Error('relation "hire_jobs" does not exist'); },
       listCandidates: async () => [], listApplications: async () => [], listInterviews: async () => [],
+      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
     };
     const t = createHireTools(broken, NOW);
     const result = await (t.listJobs as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute({}, { toolCallId: 't', messages: [] });
