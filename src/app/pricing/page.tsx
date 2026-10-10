@@ -85,7 +85,7 @@ const FAQS = [
   },
   {
     q: 'Is it ready to run my business on?',
-    a: 'Not yet. OpenKuasa is in early development: the interface is built and runs on sample data, while the backend, AI features and integrations are still being wired up. Check the README for current status.',
+    a: 'Not yet. OpenKuasa is a work in progress. Accounts, teams, AI chat and a first set of screens in Jebat and Kasturi work with your own data. The other screens still show sample data, and integrations are not connected. Each screen that is not ready says so.',
   },
   {
     q: 'Who builds OpenKuasa?',
@@ -293,8 +293,9 @@ export default function PricingPage() {
           </ol>
 
           <p className="mx-auto mt-10 max-w-2xl text-center text-sm text-mk-muted">
-            OpenKuasa is in early development and currently runs on sample
-            data. It is provided as is, without warranty of any kind.
+            OpenKuasa is a work in progress: some screens work with your own
+            data and the rest still show sample data. It is provided as is,
+            without warranty of any kind.
           </p>
         </div>
       </section>
