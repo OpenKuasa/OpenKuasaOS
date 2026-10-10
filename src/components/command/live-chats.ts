@@ -55,3 +55,37 @@ export function dropChat(userId: string, threadId: string): void {
   kept.delete(key);
   if (isBusy(chat)) void chat.stop();
 }
+
+const PANEL_THREAD_KEY = 'ok.assistant.thread';
+
+/**
+ * The thread the floating assistant has open, so closing the panel, changing
+ * page or reloading brings the same conversation back. Kept per browser tab.
+ */
+export function panelThread(userId: string): string | null {
+  try {
+    const raw = window.sessionStorage.getItem(PANEL_THREAD_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as { userId?: unknown; threadId?: unknown };
+    return saved.userId === userId && typeof saved.threadId === 'string'
+      ? saved.threadId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function rememberPanelThread(userId: string, threadId: string | null): void {
+  try {
+    if (threadId) {
+      window.sessionStorage.setItem(
+        PANEL_THREAD_KEY,
+        JSON.stringify({ userId, threadId }),
+      );
+    } else {
+      window.sessionStorage.removeItem(PANEL_THREAD_KEY);
+    }
+  } catch {
+    // Storage can be unavailable (private mode); the chat still works.
+  }
+}

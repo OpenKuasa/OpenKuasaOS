@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
 import {
   Sparkles,
@@ -18,6 +19,17 @@ import {
   Landmark,
   PanelLeft,
   SquarePen,
+  Maximize2,
+  X,
+  Contact,
+  Send,
+  FileUp,
+  CalendarCheck,
+  Wallet,
+  ClipboardCheck,
+  FileText,
+  Briefcase,
+  MessageSquareText,
   type LucideIcon,
 } from 'lucide-react';
 import { ASSISTANT } from '@/config/nav';
@@ -45,12 +57,15 @@ import {
   titleFromText,
   type ChatThread,
 } from '@/lib/chat/threads';
+import { screenFromPath, screenLabel } from '@/lib/chat/screen';
 import {
   createChat,
   dropChat,
   isAnswering,
   keepChat,
   keptChat,
+  panelThread,
+  rememberPanelThread,
   type LiveChat,
 } from '@/components/command/live-chats';
 import { cn } from '@/lib/utils';
@@ -113,6 +128,43 @@ const SUGGESTIONS: { label: string; icon: LucideIcon }[] = [
   { label: 'Show me overdue invoices', icon: Receipt },
   { label: 'What should I focus on right now?', icon: Lightbulb },
 ];
+
+/**
+ * Starters for the floating assistant, by the product it was opened from.
+ * They are things Tuah can do today: explain the product and draft words.
+ */
+const SCREEN_SUGGESTIONS: Record<string, { label: string; icon: LucideIcon }[]> = {
+  reach: [
+    { label: 'How do I launch my first ad campaign?', icon: Megaphone },
+    { label: 'Write three ad headlines for my business', icon: MessageSquareText },
+    { label: 'How do lead forms work?', icon: ClipboardCheck },
+    { label: 'What makes a good ad creative?', icon: Lightbulb },
+  ],
+  crm: [
+    { label: 'How do I import my contacts?', icon: FileUp },
+    { label: 'Draft a follow-up message to a new lead', icon: Send },
+    { label: 'How should I set up my deal stages?', icon: SquareKanban },
+    { label: 'What should I record about each contact?', icon: Contact },
+  ],
+  people: [
+    { label: 'How do I set up leave types?', icon: CalendarCheck },
+    { label: 'Explain EPF and SOCSO contributions simply', icon: Wallet },
+    { label: 'Draft an announcement for a public holiday', icon: Megaphone },
+    { label: 'What goes into a monthly payroll run?', icon: Receipt },
+  ],
+  hire: [
+    { label: 'Write a job post for a sales executive', icon: Briefcase },
+    { label: 'Suggest interview questions for a first round', icon: MessageSquareText },
+    { label: 'How do I move a candidate between stages?', icon: SquareKanban },
+    { label: 'Draft a polite rejection email', icon: Send },
+  ],
+  finance: [
+    { label: 'How do I create and send an invoice?', icon: FileText },
+    { label: 'Explain e-Invoice LHDN in simple terms', icon: ClipboardCheck },
+    { label: 'Draft a payment reminder for an overdue invoice', icon: Send },
+    { label: 'When do I need to charge SST?', icon: Receipt },
+  ],
+};
 
 const AGENTS: { label: string; icon: LucideIcon; prompt: string }[] = [
   { label: 'CEO', icon: Compass, prompt: 'How is my business doing this month?' },
@@ -180,8 +232,12 @@ export function SariConversation({
   urlThreadId = null,
   initialThreads = null,
   listedAt,
+  pathname,
+  onClose,
 }: {
+  /** The full page: saved chats in a column beside the conversation. */
   showSidebar?: boolean;
+  /** The floating assistant: a narrow panel with its own header. */
   compact?: boolean;
   /** The thread named in the address bar, on the page that keeps history. */
   urlThreadId?: string | null;
@@ -189,16 +245,25 @@ export function SariConversation({
   initialThreads?: ChatThread[] | null;
   /** When the page read that list. */
   listedAt?: string;
+  /** The screen the floating assistant was opened from. */
+  pathname?: string;
+  /** Closes the floating assistant. */
+  onClose?: () => void;
 }) {
   const viewer = useViewer();
   const userId = viewer.userId;
   // Demo guests chat with sample answers and nothing of theirs is saved.
-  const keepsHistory = showSidebar && !viewer.isDemo;
-  const wanted = keepsHistory && isThreadId(urlThreadId) ? urlThreadId : null;
+  const hasHistory = showSidebar || compact;
+  const keepsHistory = hasHistory && !viewer.isDemo;
+  // Only the full page names its thread in the address bar. The floating
+  // assistant sits on top of other screens, so it remembers its thread itself.
+  const wanted =
+    showSidebar && keepsHistory && isThreadId(urlThreadId) ? urlThreadId : null;
 
-  const [session, setSession] = useState<Session>(() =>
-    wanted ? savedSession(userId, wanted) : freshSession(),
-  );
+  const [session, setSession] = useState<Session>(() => {
+    const open = wanted ?? (compact && keepsHistory ? panelThread(userId) : null);
+    return open && isThreadId(open) ? savedSession(userId, open) : freshSession();
+  });
   const [threads, setThreads] = useState<ChatThread[]>(
     () => (keepsHistory && initialThreads) || [],
   );
@@ -215,6 +280,15 @@ export function SariConversation({
     if (wanted && wanted !== session.id) setSession(savedSession(userId, wanted));
     else if (!wanted && session.saved) setSession(freshSession());
   }
+
+  /** Records which thread is on screen: in the URL, or in the panel's memory. */
+  const pointTo = useCallback(
+    (threadId: string | null, mode: 'push' | 'replace') => {
+      if (showSidebar) showInUrl(threadId, mode);
+      else if (compact) rememberPanelThread(userId, threadId);
+    },
+    [showSidebar, compact, userId],
+  );
 
   const sessionId = session.id;
   const sessionStatus = session.status;
@@ -246,7 +320,7 @@ export function SariConversation({
       } else if (loaded.reason === 'missing') {
         setNotice('That chat is no longer available, so here is a new one.');
         setSession(freshSession());
-        showInUrl(null, 'replace');
+        pointTo(null, 'replace');
       } else {
         setSession((s) => (s.id === sessionId ? { ...s, status: 'error' } : s));
       }
@@ -255,7 +329,7 @@ export function SariConversation({
     return () => {
       current = false;
     };
-  }, [sessionId, sessionStatus, userId]);
+  }, [sessionId, sessionStatus, userId, pointTo]);
 
   // A list read can land after a question was asked but before its thread
   // was saved. Threads still being answered here are kept on top, so a slow
@@ -307,14 +381,23 @@ export function SariConversation({
     };
   }, [keepsHistory, applyThreads, initialThreads]);
 
+  // Escape closes the list of chats first, and only then whatever holds it.
   useEffect(() => {
     if (!drawerOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false);
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setDrawerOpen(false);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [drawerOpen]);
+
+  function openDrawer() {
+    setDrawerOpen(true);
+    // Chats asked elsewhere since this list was read belong in it too.
+    if (keepsHistory) void refreshThreads();
+  }
 
   const handleAsk = useCallback(
     (text: string) => {
@@ -331,9 +414,9 @@ export function SariConversation({
         return [thread, ...list.filter((t) => t.id !== sessionId)];
       });
       setSession((s) => (s.id === sessionId ? { ...s, saved: true } : s));
-      showInUrl(sessionId, 'replace');
+      pointTo(sessionId, 'replace');
     },
-    [keepsHistory, sessionId],
+    [keepsHistory, sessionId, pointTo],
   );
 
   const handleSettled = useCallback(() => {
@@ -344,7 +427,7 @@ export function SariConversation({
     setDrawerOpen(false);
     setNotice(null);
     setSession(freshSession());
-    if (showSidebar) showInUrl(null, 'push');
+    pointTo(null, 'push');
   }
 
   function selectThread(id: string) {
@@ -352,7 +435,7 @@ export function SariConversation({
     setNotice(null);
     if (id === session.id) return;
     setSession(savedSession(userId, id));
-    showInUrl(id, 'push');
+    pointTo(id, 'push');
   }
 
   async function renameThread(id: string, title: string): Promise<boolean> {
@@ -369,12 +452,15 @@ export function SariConversation({
     setThreads((list) => list.filter((t) => t.id !== id));
     if (id === session.id) {
       setSession(freshSession());
-      showInUrl(null, 'replace');
+      pointTo(null, 'replace');
     }
     return true;
   }
 
   const activeTitle = threads.find((t) => t.id === session.id)?.title ?? 'New chat';
+  const screen = compact ? screenFromPath(pathname) : null;
+  // The assistant's own name until the chat has a title of its own.
+  const panelTitle = threads.find((t) => t.id === session.id)?.title ?? ASSISTANT.name;
   const history = (
     <ChatHistory
       threads={threads}
@@ -394,16 +480,16 @@ export function SariConversation({
   );
 
   return (
-    <div className="flex h-full">
+    <div className="relative flex h-full">
       {showSidebar ? (
         <aside className="hidden w-72 shrink-0 border-r bg-sidebar lg:block">
           {history}
         </aside>
       ) : null}
 
-      {showSidebar && drawerOpen ? (
+      {hasHistory && drawerOpen ? (
         <div
-          className="fixed inset-0 z-50 lg:hidden"
+          className={cn('z-50', compact ? 'absolute inset-0' : 'fixed inset-0 lg:hidden')}
           role="dialog"
           aria-modal="true"
           aria-label="Your chats"
@@ -414,18 +500,77 @@ export function SariConversation({
             onClick={() => setDrawerOpen(false)}
             className="absolute inset-0 cursor-default bg-black/50 animate-in fade-in-0 duration-200"
           />
-          <div className="absolute inset-y-0 left-0 w-80 max-w-[85vw] border-r bg-sidebar shadow-xl animate-in slide-in-from-left duration-200">
+          <div
+            className={cn(
+              'absolute inset-y-0 left-0 w-80 border-r bg-sidebar shadow-xl animate-in slide-in-from-left duration-200',
+              compact ? 'max-w-[85%]' : 'max-w-[85vw]',
+            )}
+          >
             {history}
           </div>
         </div>
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col bg-background">
-        {showSidebar ? (
+        {compact ? (
+          <div className="flex h-14 shrink-0 items-center gap-0.5 border-b px-2">
+            <button
+              type="button"
+              onClick={openDrawer}
+              aria-label="Open your chats"
+              aria-expanded={drawerOpen}
+              title="Your chats"
+              className={PANEL_BUTTON}
+            >
+              <PanelLeft className="size-5" aria-hidden />
+            </button>
+            <span
+              className="hidden size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground min-[400px]:grid"
+              aria-hidden
+            >
+              <Sparkles className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1 px-2">
+              <p className="truncate text-sm font-bold leading-tight" title={panelTitle}>
+                {panelTitle}
+              </p>
+              <p className="truncate text-xs leading-tight text-muted-foreground">
+                {screen ? `Asking from ${screenLabel(screen)}` : 'Ask anything about your business'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={newChat}
+              aria-label="New chat"
+              title="New chat"
+              className={PANEL_BUTTON}
+            >
+              <SquarePen className="size-5" aria-hidden />
+            </button>
+            <Link
+              href={session.saved ? `/command?chat=${session.id}` : '/command'}
+              onClick={onClose}
+              aria-label="Open in Tuah"
+              title="Open in Tuah"
+              className={PANEL_BUTTON}
+            >
+              <Maximize2 className="size-[18px]" aria-hidden />
+            </Link>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              title="Close"
+              className={PANEL_BUTTON}
+            >
+              <X className="size-5" aria-hidden />
+            </button>
+          </div>
+        ) : showSidebar ? (
           <div className="flex h-12 shrink-0 items-center gap-1 border-b px-2 lg:hidden">
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={openDrawer}
               aria-label="Open your chats"
               className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -477,6 +622,7 @@ export function SariConversation({
             answer={session.answer}
             keep={keepsHistory}
             compact={compact}
+            pathname={compact ? pathname : undefined}
             onAsk={handleAsk}
             onSettled={handleSettled}
           />
@@ -485,6 +631,9 @@ export function SariConversation({
     </div>
   );
 }
+
+const PANEL_BUTTON =
+  'grid size-11 shrink-0 cursor-pointer place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 function ThreadSkeleton({ compact }: { compact: boolean }) {
   return (
@@ -517,6 +666,7 @@ function ChatPane({
   answer,
   keep,
   compact,
+  pathname,
   onAsk,
   onSettled,
 }: {
@@ -526,6 +676,8 @@ function ChatPane({
   /** Keep the chat alive after this screen moves on (the page with history). */
   keep: boolean;
   compact: boolean;
+  /** The screen the question is asked from; sent along so the answer fits it. */
+  pathname?: string;
   /** A question was sent to the live assistant. */
   onAsk: (text: string) => void;
   /** A live turn finished, whether it answered or was refused. */
@@ -621,7 +773,7 @@ function ChatPane({
       if (busy || locked || awaiting === 'coming') return;
       if (keep) keepChat(viewer.userId, liveChat);
       setAwaiting('settled');
-      void chat.sendMessage({ text: q });
+      void chat.sendMessage({ text: q }, pathname ? { body: { pathname } } : undefined);
       onAsk(q);
       setInput('');
       return;
@@ -642,7 +794,11 @@ function ChatPane({
 
   const empty = messages.length === 0;
   const width = compact ? '' : 'mx-auto max-w-2xl';
-  const suggestions = compact ? SUGGESTIONS.slice(0, 4) : SUGGESTIONS;
+  // Demo guests keep the starters their sample answers are written for.
+  const screenKey = screenFromPath(pathname)?.key;
+  const suggestions = !compact
+    ? SUGGESTIONS
+    : ((live && screenKey && SCREEN_SUGGESTIONS[screenKey]) || SUGGESTIONS.slice(0, 4));
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -716,7 +872,7 @@ function ChatPane({
                       key={s.label}
                       type="button"
                       onClick={() => send(s.label)}
-                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent"
+                      className="flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <Icon className="size-4 shrink-0 text-muted-foreground" />
                       {s.label}
