@@ -7,6 +7,7 @@ import {
   deleteProduct,
   productsView,
   updateProduct,
+  updateProductInput,
 } from '@/lib/finance/products';
 
 const ID = '22222222-2222-4222-8222-222222222222';
@@ -66,6 +67,14 @@ describe('product schemas', () => {
   });
   it('rounds a price to two decimals', () => {
     expect(createProductInput.parse({ ...valid, price: 14.506 }).price).toBe(14.51);
+  });
+  it('keeps four decimals on a cost, as the column does', () => {
+    expect(createProductInput.parse({ ...valid, cost: 0.0375 }).cost).toBe(0.0375);
+    expect(createProductInput.parse({ ...valid, cost: 0.03754 }).cost).toBe(0.0375);
+    expect(updateProductInput.parse({ id: ID, cost: 2.3456 }).cost).toBe(2.3456);
+  });
+  it('refuses a cost too large for the column', () => {
+    expect(first(createProductInput, { ...valid, cost: 10_000_000_000 })).toBe('Enter a cost of 0 or more.');
   });
 });
 

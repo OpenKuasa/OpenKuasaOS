@@ -45,7 +45,9 @@ export const PRODUCT_MESSAGES = {
 } as const;
 
 const M = PRODUCT_MESSAGES;
-const MAX_MONEY = 999_999_999_999.99;
+/** price is numeric(14,2); cost is numeric(14,4), which holds sub-sen unit costs. */
+const MAX_PRICE = 999_999_999_999.99;
+const MAX_COST = 9_999_999_999.9999;
 
 const name = z.string({ error: M.name }).trim().min(1, M.name).max(PRODUCT_NAME_MAX, M.nameTooLong);
 const text = z
@@ -55,12 +57,16 @@ const text = z
   .transform((v) => (v === '' ? null : v))
   .nullable();
 const type = z.enum(['product', 'service'], { error: M.type });
-const money = (message: string) =>
-  z
-    .number({ error: message })
-    .min(0, message)
-    .max(MAX_MONEY, message)
-    .transform((v) => Math.round(v * 100) / 100);
+const price = z
+  .number({ error: M.price })
+  .min(0, M.price)
+  .max(MAX_PRICE, M.price)
+  .transform((v) => Math.round(v * 100) / 100);
+const cost = z
+  .number({ error: M.cost })
+  .min(0, M.cost)
+  .max(MAX_COST, M.cost)
+  .transform((v) => Math.round(v * 10000) / 10000);
 const sst = z.number({ error: M.sst }).min(0, M.sst).max(100, M.sst);
 const uom = z
   .string({ error: M.tooLong })
@@ -75,8 +81,8 @@ export const createProductInput = z.object({
   sku: text.default(null),
   category: text.default(null),
   uom: uom.default('unit'),
-  price: money(M.price),
-  cost: money(M.cost).default(0),
+  price,
+  cost: cost.default(0),
   sst_rate: sst.default(0),
 });
 
@@ -87,8 +93,8 @@ export const updateProductInput = z.object({
   sku: text.optional(),
   category: text.optional(),
   uom: uom.optional(),
-  price: money(M.price).optional(),
-  cost: money(M.cost).optional(),
+  price: price.optional(),
+  cost: cost.optional(),
   sst_rate: sst.optional(),
 });
 
