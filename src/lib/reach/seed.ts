@@ -161,11 +161,12 @@ export function seedLeads(now: Date): Lead[] {
 
 /** Three upcoming appointments, relative to `now`. */
 export function seedAppointments(now: Date): Appointment[] {
-  return [
-    { id: 'appt_1', contact_name: 'Aisyah Rahim', kind: 'Discovery call', via: 'WhatsApp', scheduled_at: hoursFromNow(now, 5) },
-    { id: 'appt_2', contact_name: 'Faiz Hakim', kind: 'Product demo', via: 'Zoom', scheduled_at: hoursFromNow(now, 26) },
-    { id: 'appt_3', contact_name: 'Nurul Huda', kind: 'Follow-up', via: 'Call', scheduled_at: hoursFromNow(now, 72) },
-  ].map((a) => ({ ...a, created_at: daysAgo(now, 2) }));
+  const rows: Array<Omit<Appointment, 'created_at'>> = [
+    { id: 'appt_1', contact_name: 'Aisyah Rahim', kind: 'Discovery call', via: 'WhatsApp', scheduled_at: hoursFromNow(now, 5), status: 'scheduled' },
+    { id: 'appt_2', contact_name: 'Faiz Hakim', kind: 'Product demo', via: 'Zoom', scheduled_at: hoursFromNow(now, 26), status: 'scheduled' },
+    { id: 'appt_3', contact_name: 'Nurul Huda', kind: 'Follow-up', via: 'Call', scheduled_at: hoursFromNow(now, 72), status: 'completed' },
+  ];
+  return rows.map((a) => ({ ...a, created_at: daysAgo(now, 2) }));
 }
 
 /**

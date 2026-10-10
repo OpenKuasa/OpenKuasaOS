@@ -53,7 +53,7 @@ export function createSupabaseReachData(client: SupabaseClient, orgId: string): 
     listLeads: () =>
       rows<Lead>('leads', 'id,name,channel,stage,source,promoted_contact_id,created_at', { col: 'created_at', asc: false }),
     listAppointments: () =>
-      rows<Appointment>('appointments', 'id,contact_name,kind,scheduled_at,via,created_at', {
+      rows<Appointment>('appointments', 'id,contact_name,kind,scheduled_at,via,status,created_at', {
         col: 'scheduled_at', asc: true,
       }),
     listCreatives: () =>

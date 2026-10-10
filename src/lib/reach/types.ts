@@ -47,12 +47,18 @@ export type Lead = {
   promoted_contact_id: string | null;
 };
 
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show';
+export const APPOINTMENT_STATUSES: AppointmentStatus[] = [
+  'scheduled', 'completed', 'cancelled', 'no_show',
+];
+
 export type Appointment = {
   id: string;
   contact_name: string;
   kind: string;
   scheduled_at: string;
   via: string;
+  status: AppointmentStatus;
   created_at: string;
 };
 

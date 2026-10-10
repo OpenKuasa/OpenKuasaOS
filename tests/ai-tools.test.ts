@@ -118,6 +118,7 @@ describe('filterUpcomingAppointments', () => {
       contact_name: 'Ghani Omar',
       kind: 'Old call',
       via: 'Call',
+      status: 'scheduled',
       scheduled_at: new Date(NOW.getTime() - 3600_000).toISOString(),
       created_at: new Date(NOW.getTime() - 7200_000).toISOString(),
     };
