@@ -70,16 +70,26 @@ testWithSupabase('a different org cannot write to the owner’s campaigns', asyn
     .insert({ org_id: owner.orgId, name: 'mine', channel: 'facebook' })
     .select('id')
     .single();
+  expect(mine.error, mine.error?.message).toBeNull();
+  expect(mine.data?.id).toBeTruthy();
   const upd = await other.c.from('campaigns').update({ name: 'hacked' }).eq('id', mine.data!.id).select('id');
   expect(upd.error).toBeNull();
   expect(upd.data ?? []).toHaveLength(0);
+  const del = await other.c.from('campaigns').delete().eq('id', mine.data!.id).select('id');
+  expect(del.error).toBeNull();
+  expect(del.data ?? []).toHaveLength(0);
+  const still = await owner.c.from('campaigns').select('name').eq('id', mine.data!.id).single();
+  expect(still.error, still.error?.message).toBeNull();
+  expect(still.data!.name).toBe('mine'); // the intrusion changed nothing
   await owner.c.from('campaigns').delete().eq('id', mine.data!.id);
 });
 
 testWithSupabase('a viewer (demo member) cannot write', async () => {
   const v = client();
   await v.auth.signInAnonymously();
-  const { data: demoId } = await v.rpc('join_demo_org');
+  const { data: demoId, error: joinError } = await v.rpc('join_demo_org');
+  expect(joinError, joinError?.message).toBeNull();
+  expect(demoId).toBeTruthy();
   const { error } = await v.from('campaigns').insert({ org_id: demoId, name: 'nope', channel: 'whatsapp' });
   expect(error?.code).toBe('42501'); // is_org_writer false for a viewer
   await v.auth.signOut();
