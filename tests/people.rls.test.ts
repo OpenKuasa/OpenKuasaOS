@@ -137,7 +137,13 @@ testWithSupabase('one workspace cannot see or change another workspace\'s HR dat
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
-  await owner.c.from('employee_private').insert({ employee_id: emp.data!.id, org_id: owner.orgId, base_salary_cents: 500000 });
+  const priv = await owner.c
+    .from('employee_private')
+    .insert({ employee_id: emp.data!.id, org_id: owner.orgId, base_salary_cents: 500000 });
+  expect(priv.error, priv.error?.message).toBeNull();
+  // The rows are really there: the zeros below are not zeros of an empty table.
+  expect(await count(owner.c, 'employees', owner.orgId)).toBe(1);
+  expect(await count(owner.c, 'employee_private', owner.orgId)).toBe(1);
 
   expect(await count(other.c, 'employees', owner.orgId)).toBe(0);
   expect(await count(other.c, 'employee_private', owner.orgId)).toBe(0);
@@ -184,6 +190,7 @@ testWithSupabase('a demo guest reads the whole demo workspace, and it has the pr
   expect(await pending('leave_requests')).toBe(3);
   expect(await pending('claims')).toBe(2);
   expect(await pending('overtime_records')).toBe(1);
+  expect(await pending('time_off_requests')).toBe(0);
 
   const draft = await d.c.from('payroll_runs').select('period_month').eq('org_id', d.demoId).eq('status', 'draft');
   expect(draft.data ?? []).toHaveLength(1);
@@ -207,9 +214,9 @@ testWithSupabase('a demo guest cannot change anything', async () => {
 
 testWithSupabase('being in the demo opens the demo only', async () => {
   // Someone who is not in the demo sees none of it.
-  const demoIdRes = await demoGuest();
+  const guest = await demoGuest();
   for (const table of ['employees', 'payslips', 'payroll_runs']) {
-    expect(await count(owner.c, table, demoIdRes.demoId), table).toBe(0);
+    expect(await count(owner.c, table, guest.demoId), table).toBe(0);
   }
   // A demo guest sees nothing of a real workspace.
   const emp = await owner.c
@@ -218,7 +225,7 @@ testWithSupabase('being in the demo opens the demo only', async () => {
     .select('id')
     .single();
   expect(emp.error, emp.error?.message).toBeNull();
-  expect(await count(demoIdRes.c, 'employees', owner.orgId)).toBe(0);
+  expect(await count(guest.c, 'employees', owner.orgId)).toBe(0);
   await owner.c.from('employees').delete().eq('id', emp.data!.id);
-  await demoIdRes.c.auth.signOut();
+  await guest.c.auth.signOut();
 });
