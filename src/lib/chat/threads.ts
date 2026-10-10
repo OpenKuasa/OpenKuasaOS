@@ -3,6 +3,8 @@
  * the sidebar, plus the pure rules for titles and date groups.
  */
 
+import { attachmentNote } from '@/lib/chat/attachments';
+
 export type ChatThread = {
   id: string;
   title: string;
@@ -38,7 +40,8 @@ export function titleFromText(text: string): string {
 
 /**
  * Keeps only the words of a message. Attachments and tool traces are left
- * out: they are large, and the saved thread is for reading back.
+ * out: they are large, and the saved thread is for reading back. A question's
+ * files are remembered by name instead (see `questionParts`).
  */
 export function textParts(parts: unknown): StoredTextPart[] {
   if (!Array.isArray(parts)) return [];
@@ -51,6 +54,25 @@ export function textParts(parts: unknown): StoredTextPart[] {
     }
   }
   return kept;
+}
+
+/**
+ * What is saved of a question: its words, then a line naming any files sent
+ * with it. A question that was only files is saved as that line.
+ */
+export function questionParts(parts: unknown): StoredTextPart[] {
+  const words = textParts(parts);
+  const note = attachmentNote(parts);
+  if (!note) return words;
+  return [...words, { type: 'text', text: words.length > 0 ? `\n\n${note}` : note }];
+}
+
+/** What a question is called in the list: its words, or its files if it had none. */
+export function questionTitle(parts: unknown): string {
+  const words = textParts(parts)
+    .map((part) => part.text)
+    .join(' ');
+  return titleFromText(words.trim() ? words : (attachmentNote(parts) ?? ''));
 }
 
 export type ThreadGroup = { label: string; threads: ChatThread[] };

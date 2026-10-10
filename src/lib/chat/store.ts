@@ -7,8 +7,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import {
+  questionParts,
+  questionTitle,
   textParts,
-  titleFromText,
   type ChatThread,
   type StoredTextPart,
 } from '@/lib/chat/threads';
@@ -63,7 +64,7 @@ export async function saveQuestion(
   parts: unknown,
 ): Promise<boolean> {
   try {
-    const question = textParts(parts);
+    const question = questionParts(parts);
     if (question.length === 0) return false;
 
     const { data: existing, error: readErr } = await supabase
@@ -87,7 +88,7 @@ export async function saveQuestion(
         id: threadId,
         org_id: org.orgId,
         user_id: userId,
-        title: titleFromText(question.map((p) => p.text).join(' ')),
+        title: questionTitle(parts),
       });
       if (error) throw error;
     }

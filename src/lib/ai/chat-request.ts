@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { resolveChatAccess } from '@/lib/ai/gate';
+import { inlineTextFiles } from '@/lib/chat/attachments';
 import { screenFromPath, type Screen } from '@/lib/chat/screen';
 import { isThreadId } from '@/lib/chat/threads';
 
@@ -89,7 +90,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
     const recent = parsed.messages.slice(-MAX_MESSAGES);
     const validated = await safeValidateUIMessages({ messages: recent });
     if (!validated.success) return fail(400, { error: 'Invalid request.' });
-    messages = await convertToModelMessages(validated.data);
+    messages = await convertToModelMessages(inlineTextFiles(validated.data));
     threadId = isThreadId(parsed.id) ? parsed.id : null;
     screen = screenFromPath(parsed.pathname);
     lastMessage = validated.data[validated.data.length - 1];
