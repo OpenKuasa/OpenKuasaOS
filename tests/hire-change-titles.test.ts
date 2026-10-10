@@ -21,6 +21,13 @@ describe('approval titles for jobs', () => {
   it('warns that a delete cannot be undone', () => {
     expect(approvalDetail('deleteJob')).toBe('This cannot be undone.');
   });
+  it('has no changes line without a usable input, and leaves other tools alone', () => {
+    expect(approvalDetail('updateJob')).toBeNull();
+    expect(approvalDetail('updateJob', undefined)).toBeNull();
+    expect(approvalDetail('updateJob', null)).toBeNull();
+    expect(approvalDetail('updateJob', 'text')).toBeNull();
+    expect(approvalDetail('deleteCampaign')).toBe('This cannot be undone.');
+  });
   it('lists what an edit changes', () => {
     expect(approvalDetail('updateJob', { id: ID, title: 'x', salary_min_cents: 1, salary_max_cents: 2, closes_on: null }))
       .toBe('Changes: title, salary, closing date');

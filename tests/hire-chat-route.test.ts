@@ -192,6 +192,10 @@ describe('POST /api/hire/chat happy path', () => {
     expect(await data.listApplications()).toEqual([]);
     expect(await data.listInterviews()).toEqual([]);
     expect(ctl.tablesRead.filter((t) => t.startsWith('hire_'))).toEqual([]);
+    // Someone in no workspace may look things up but can change nothing.
+    const tools = ctl.calls[0].tools;
+    for (const name of HIRE_TOOL_NAMES) expect(tools).toContain(name);
+    for (const name of HIRE_WRITE_TOOL_NAMES) expect(tools).not.toContain(name);
   });
 
   it('runs on the workspace key without touching the free allowance', async () => {

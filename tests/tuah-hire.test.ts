@@ -72,6 +72,21 @@ describe('Tuah with hiring', () => {
   });
 });
 
+describe('Tuah as a single agent with hiring changes', () => {
+  it('a viewer (no write access) gets the lookups and no change tools', async () => {
+    seen.calls = [];
+    await runTuah(ask, reach(), undefined, undefined, null, null, null, hire()).consumeStream();
+    for (const name of HIRE_TOOL_NAMES) expect(seen.calls[0].tools).toContain(name);
+    for (const name of HIRE_WRITE_TOOL_NAMES) expect(seen.calls[0].tools).not.toContain(name);
+  });
+  it('a writer gets all four change tools', async () => {
+    seen.calls = [];
+    const writer = { ...hire(), write: { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true } };
+    await runTuah(ask, reach(), undefined, undefined, null, null, null, writer).consumeStream();
+    for (const name of HIRE_WRITE_TOOL_NAMES) expect(seen.calls[0].tools).toContain(name);
+  });
+});
+
 describe('Tuah with hiring changes', () => {
   it('on its team holds askLekir and applyChange, and no hiring change tool itself', async () => {
     seen.calls = [];

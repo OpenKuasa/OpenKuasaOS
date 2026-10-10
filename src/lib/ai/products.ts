@@ -93,7 +93,8 @@ export function crmProduct(crm: CrmAccess): ProductToolkit {
 
 /** Lekir: jobs, candidates, applications and interviews. */
 export function hireProduct(hire: HireAccess): ProductToolkit {
-  return { key: 'hire', name: 'Lekir', ...split(createHireTools(hire.data, () => new Date(), hire.write), HIRE_WRITE_TOOL_NAMES) };
+  const all = createHireTools(hire.data, () => new Date(), hire.write);
+  return { key: 'hire', name: 'Lekir', ...split(all, HIRE_WRITE_TOOL_NAMES) };
 }
 
 /**
