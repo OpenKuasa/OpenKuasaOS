@@ -38,7 +38,7 @@ begin
          case when j.closes_in is null then null
               else ((now() at time zone 'Asia/Kuala_Lumpur')::date + j.closes_in) end,
          case when j.status = 'draft' then null else
-           'Rimba Ventures is hiring a ' || j.title || ' for our ' || j.department || E' team.\n\n' ||
+           'Rimba Ventures is hiring for the role of ' || j.title || ' in our ' || j.department || E' team.\n\n' ||
            'You will own day-to-day ' || lower(j.department) || ' work, report to the head of ' || j.department ||
            E', and work closely with the rest of the company.\n\n' ||
            'We are looking for relevant experience, clear communication in Bahasa Malaysia and English, ' ||

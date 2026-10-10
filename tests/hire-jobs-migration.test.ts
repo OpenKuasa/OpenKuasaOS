@@ -69,6 +69,10 @@ describe('hire jobs demo seed migration', () => {
     }
     expect(seed.match(/, true,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
+  test('words the job description as the TypeScript seed does', () => {
+    expect(seed).toContain('is hiring for the role of ');
+    expect(seed).not.toContain('is hiring a ');
+  });
   test('keeps the application arithmetic unchanged', () => {
     for (const line of ['(i * 37) % 248', '(i * 91) % 248', '(i * 53) % 248', 'generate_series(1, 248)', 'generate_series(1, 342)', '28 + k * 2']) {
       expect(seed, line).toContain(line);

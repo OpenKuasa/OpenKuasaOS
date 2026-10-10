@@ -86,6 +86,18 @@ describe('hire seed', () => {
     }
   });
 
+  it('words each job description so it reads right whatever letter the title starts with', async () => {
+    const jobs = await data.listJobs();
+    const manager = jobs.find((j) => j.title === 'Account Manager');
+    expect(manager?.description?.startsWith('Rimba Ventures is hiring for the role of Account Manager in our Sales team.')).toBe(true);
+    const described = jobs.filter((j) => j.description !== null);
+    expect(described).toHaveLength(8);
+    for (const job of described) {
+      // "a Account Manager", "a Operations Executive", "a Engineering team".
+      for (const wrong of [' a A', ' a O', ' a E']) expect(job.description, job.title).not.toContain(wrong);
+    }
+  });
+
   it('schedules interviews in working hours in Kuala Lumpur, on the hour or half hour', async () => {
     for (const interview of await data.listInterviews()) {
       const kl = new Date(new Date(interview.scheduled_at).getTime() + 8 * 3_600_000);

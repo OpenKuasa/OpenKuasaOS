@@ -41,10 +41,10 @@ testWithSupabase('a fresh org sees no hiring rows, and none of the demo org', as
   }
 });
 
-testWithSupabase('even an owner cannot write this slice', async () => {
-  const { error } = await owner.c.from('hire_jobs').insert({ org_id: owner.orgId, title: 'Should not save' });
+testWithSupabase('an owner still cannot write candidates, applications or interviews', async () => {
+  const { error } = await owner.c.from('hire_candidates').insert({ org_id: owner.orgId, name: 'Should not save' });
   expect(error).not.toBeNull();
-  const { data } = await owner.c.from('hire_jobs').select('id');
+  const { data } = await owner.c.from('hire_candidates').select('id');
   expect(data ?? []).toHaveLength(0);
 });
 

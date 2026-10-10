@@ -124,7 +124,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const klDate = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
 
 const describeJob = (title: string, department: string) =>
-  `Rimba Ventures is hiring a ${title} for our ${department} team.\n\n` +
+  `Rimba Ventures is hiring for the role of ${title} in our ${department} team.\n\n` +
   `You will own day-to-day ${department.toLowerCase()} work, report to the head of ${department}, ` +
   `and work closely with the rest of the company.\n\n` +
   `We are looking for relevant experience, clear communication in Bahasa Malaysia and English, ` +
