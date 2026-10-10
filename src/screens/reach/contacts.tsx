@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   BarChart3,
   CalendarClock,
@@ -28,8 +28,6 @@ import {
 } from '@/components/charts';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Table,
   TableBody,
@@ -39,7 +37,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import type { CrmContact, CrmContactFormState } from '@/lib/crm/contacts';
+import type { CrmContact } from '@/lib/crm/contacts';
+import type { CrmFollowUp } from '@/lib/crm/follow-ups';
+import type { CrmContactActions } from '@/lib/crm/form-state';
+import {
+  ContactFollowUps,
+  ContactFormCard,
+  ContactRowMenu,
+  DeleteContactRow,
+} from '@/screens/crm/contact-parts';
 
 /* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
 
@@ -231,125 +237,17 @@ type ContactsScreenProps = {
   /** Live contacts. Omitted on Jebat and when no database is configured. */
   contacts?: Contact[];
   totalContacts?: number;
-  /** Present only when the signed-in person may add contacts. */
-  createContactAction?: CreateContactAction;
+  /** Open follow-ups by contact id. */
+  followUps?: Record<string, CrmFollowUp[]>;
+  /** Present only when the signed-in person may change contacts. */
+  actions?: CrmContactActions;
 };
-
-type CreateContactAction = (
-  prev: CrmContactFormState,
-  formData: FormData,
-) => Promise<CrmContactFormState>;
-
-function AddContactCard({ action }: { action: CreateContactAction }) {
-  const [state, formAction, pending] = useActionState<CrmContactFormState, FormData>(
-    action,
-    undefined,
-  );
-  const v = state?.values ?? {};
-
-  return (
-    <BentoCard
-      title="Add contact"
-      subtitle="Create a Kasturi contact for this workspace"
-      icon={Plus}
-      className="col-span-2 md:col-span-12"
-    >
-      <form action={formAction} className="grid gap-3 md:grid-cols-12">
-        <div className="space-y-1.5 md:col-span-2">
-          <Label htmlFor="firstName">First name</Label>
-          <Input
-            id="firstName"
-            name="firstName"
-            placeholder="Aisyah"
-            defaultValue={v.firstName}
-            required
-          />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label htmlFor="lastName">Last name</Label>
-          <Input id="lastName" name="lastName" placeholder="Rahim" defaultValue={v.lastName} />
-        </div>
-        <div className="space-y-1.5 md:col-span-3">
-          <Label htmlFor="email">Email</Label>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            placeholder="aisyah@example.com"
-            defaultValue={v.email}
-            required
-          />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label htmlFor="phone">Phone</Label>
-          <Input id="phone" name="phone" placeholder="+60123456789" defaultValue={v.phone} />
-        </div>
-        <div className="space-y-1.5 md:col-span-3">
-          <Label htmlFor="company">Company</Label>
-          <Input
-            id="company"
-            name="company"
-            placeholder="Rimba Ventures"
-            defaultValue={v.company}
-          />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label htmlFor="country">Country code</Label>
-          <Input
-            id="country"
-            name="country"
-            defaultValue={v.country ?? 'MY'}
-            maxLength={2}
-            pattern="[A-Za-z]{2}"
-            title="Two-letter country code, such as MY"
-            className="uppercase"
-          />
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label htmlFor="status">Status</Label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={v.status ?? 'lead'}
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            <option value="lead">New lead</option>
-            <option value="contacted">Contacted</option>
-            <option value="qualified">Qualified</option>
-            <option value="customer">Customer</option>
-          </select>
-        </div>
-        <div className="space-y-1.5 md:col-span-2">
-          <Label htmlFor="leadScore">Lead score</Label>
-          <Input
-            id="leadScore"
-            name="leadScore"
-            type="number"
-            min="0"
-            max="100"
-            defaultValue={v.leadScore ?? '0'}
-          />
-        </div>
-        <div className="flex items-end gap-3 md:col-span-6">
-          <Button type="submit" className="w-full md:w-auto" disabled={pending}>
-            <Plus className="size-4" />
-            {pending ? 'Saving…' : 'Save contact'}
-          </Button>
-          {state?.error && !pending ? (
-            <p role="alert" className="pb-2 text-sm text-destructive">
-              {state.error}
-            </p>
-          ) : null}
-        </div>
-      </form>
-    </BentoCard>
-  );
-}
 
 export default function ContactsScreen({
   contacts,
   totalContacts,
-  createContactAction,
+  followUps,
+  actions,
 }: ContactsScreenProps = {}) {
   // With live contacts, only what is backed by real data is shown: the total
   // and the table. The trend, score and pipeline cards are sample figures and
@@ -358,6 +256,32 @@ export default function ContactsScreen({
   const rows = contacts ?? CONTACTS;
   const total = totalContacts ?? TOTAL_CONTACTS;
   const [selected, setSelected] = useState<string[]>([]);
+  // One thing is open at a time: the edit card, a delete question, or a
+  // follow-up form.
+  const [editing, setEditing] = useState<Contact | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [followUpFor, setFollowUpFor] = useState<string | null>(null);
+  const firstFieldRef = useRef<HTMLInputElement>(null);
+  const columns = actions ? 10 : 9;
+
+  const focusForm = () => {
+    // After the card has re-rendered for the contact that was picked.
+    requestAnimationFrame(() => {
+      firstFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      firstFieldRef.current?.focus({ preventScroll: true });
+    });
+  };
+  const startAdd = () => {
+    setEditing(null);
+    setDeletingId(null);
+    focusForm();
+  };
+  const startEdit = (contact: Contact) => {
+    setEditing(contact);
+    setDeletingId(null);
+    setFollowUpFor(null);
+    focusForm();
+  };
   const allChecked = selected.length === rows.length && rows.length > 0;
 
   const toggleAll = () =>
@@ -379,7 +303,7 @@ export default function ContactsScreen({
               <Columns3 className="size-4" />
               Columns
             </Button>
-            <Button size="sm">
+            <Button size="sm" onClick={actions ? startAdd : undefined}>
               <Plus className="size-4" />
               Add Contact
             </Button>
@@ -388,7 +312,16 @@ export default function ContactsScreen({
       />
 
       <BentoGrid>
-        {createContactAction ? <AddContactCard action={createContactAction} /> : null}
+        {actions ? (
+          <ContactFormCard
+            // A fresh form for each contact, and for adding.
+            key={editing?.id ?? 'new'}
+            action={actions.save}
+            editing={editing}
+            onDone={() => setEditing(null)}
+            firstFieldRef={firstFieldRef}
+          />
+        ) : null}
 
         {/* KPI row */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
@@ -508,13 +441,29 @@ export default function ContactsScreen({
                   <TableHead>Status</TableHead>
                   <TableHead>PIC</TableHead>
                   <TableHead>Last interaction</TableHead>
+                  {actions ? (
+                    <TableHead className="w-10">
+                      <span className="sr-only">Actions</span>
+                    </TableHead>
+                  ) : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((c) => (
+                {rows.map((c) =>
+                  actions && deletingId === c.id ? (
+                    <DeleteContactRow
+                      key={c.id}
+                      contact={c}
+                      action={actions.remove}
+                      colSpan={columns}
+                      onClose={() => setDeletingId(null)}
+                    />
+                  ) : (
                   <TableRow
                     key={c.id}
-                    data-state={selected.includes(c.id) ? 'selected' : undefined}
+                    data-state={
+                      selected.includes(c.id) || editing?.id === c.id ? 'selected' : undefined
+                    }
                   >
                     <TableCell>
                       <Checkbox
@@ -528,12 +477,24 @@ export default function ContactsScreen({
                         <LeadScore value={c.score} />
                         <div className="min-w-0">
                           <p className="truncate font-medium">{c.email}</p>
-                          <button
-                            type="button"
-                            className="text-xs font-medium uppercase tracking-wide text-primary hover:underline"
-                          >
-                            + Add follow-up
-                          </button>
+                          {live ? (
+                            <ContactFollowUps
+                              contactId={c.id}
+                              items={followUps?.[c.id] ?? []}
+                              add={actions?.addFollowUp}
+                              complete={actions?.completeFollowUp}
+                              adding={followUpFor === c.id}
+                              onAdd={() => setFollowUpFor(c.id)}
+                              onClose={() => setFollowUpFor(null)}
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-xs font-medium uppercase tracking-wide text-primary hover:underline"
+                            >
+                              + Add follow-up
+                            </button>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -552,11 +513,24 @@ export default function ContactsScreen({
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {c.lastInteraction ?? '—'}
                     </TableCell>
+                    {actions ? (
+                      <TableCell>
+                        <ContactRowMenu
+                          label={c.email || c.first}
+                          onEdit={() => startEdit(c)}
+                          onDelete={() => {
+                            setDeletingId(c.id);
+                            setEditing((e) => (e?.id === c.id ? null : e));
+                          }}
+                        />
+                      </TableCell>
+                    ) : null}
                   </TableRow>
-                ))}
+                  ),
+                )}
                 {rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                    <TableCell colSpan={columns} className="py-10 text-center text-muted-foreground">
                       No contacts yet.
                     </TableCell>
                   </TableRow>

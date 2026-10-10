@@ -31,6 +31,7 @@ The columns follow what the screens already show.
 | Page | Backed by | Notes |
 |---|---|---|
 | Contacts | `crm_contacts` | `first_name`, `last_name`, `company`, `email`, `phone`, `country`, `status`, `lead_score`, `last_interaction_at`. The person in charge is `owner_user_id`; the display name comes from `profiles.full_name`. |
+| Contacts: follow-ups | `crm_activities` | A follow-up is an activity of `type = 'task'` on a contact, with a `title` and an optional `due_at`. Marking it done sets `completed_at`. The page lists the open ones under each contact. |
 | Deals | `crm_deals`, `crm_pipelines`, `crm_pipeline_stages` | A board column is a stage. A card shows the contact's `company`, `title`, `value_cents`, `tag`, the owner and `last_activity_at`. |
 | Overview, Reports | read from the tables above | No tables of their own. |
 | Appointments, Calendar | `appointments` (Jebat foundation) | Already on `main`; Kasturi should read the same table and not add a second one. |
