@@ -36,6 +36,7 @@ const STATUS_LABEL: Record<AgentRun['status'], string> = {
   running: 'Running',
   done: 'Done',
   failed: 'Failed',
+  skipped: 'Skipped',
 };
 
 type ActionResult = { ok: boolean; error?: string };
