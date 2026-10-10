@@ -114,8 +114,25 @@ describe('Tuah prompts and hiring', () => {
     }
     expect(TUAH_SYSTEM.toLowerCase()).toContain('create, edit, open, pause, close, reopen or delete jobs');
   });
+  it('does not contradict itself about jobs', () => {
+    expect(TUAH_SYSTEM).not.toContain('job posts');
+    expect(tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], true, null)).not.toContain('job posts');
+    expect(TUAH_SYSTEM).toContain('outside marketing, the CRM and jobs');
+    const sentence = TUAH_SYSTEM.toLowerCase().split('\n').find((l) => l.startsWith('- to change a specific campaign, creative'));
+    expect(sentence).toContain('job');
+  });
+  it('only says Lekir can change jobs when changes are allowed', () => {
+    const off = tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], false, null).toLowerCase();
+    expect(off).toContain('when changes are allowed, lekir can prepare changes to jobs');
+  });
+  it('tells a read-only specialist it cannot change anything', () => {
+    const lekir = subAgentSystem('hire', false).toLowerCase();
+    expect(lekir).toContain('you cannot change anything for this user');
+  });
   it('gives the hiring specialist the job rules in prepare mode', () => {
     const lekir = subAgentSystem('hire', true).toLowerCase();
+    expect(lekir).toContain('when you have change tools');
+    expect(lekir).toContain('an open or paused job must keep a description');
     expect(lekir).toContain('a new job is always a draft');
     expect(lekir).toContain('a job with applications cannot be deleted');
     expect(lekir).not.toContain('you can only look things up');

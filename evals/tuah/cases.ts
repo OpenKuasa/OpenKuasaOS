@@ -358,6 +358,7 @@ export const CASES: Case[] = [
       return [
         ...checks,
         check('the job exists once', rows.length === 1, `rows: ${rows.length}`),
+        check('in the Operations department', rows[0]?.department === 'Operations', String(rows[0]?.department)),
         check('it is a draft', rows[0]?.status === 'draft', String(rows[0]?.status)),
         check('says it is a draft', /draft/i.test(done.text), done.text),
       ];
