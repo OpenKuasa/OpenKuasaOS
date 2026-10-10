@@ -71,7 +71,7 @@ const STATUS_STYLES: Record<BillDisplayStatus, string> = {
 
 /** One thing open at a time: a form card, or a question in one row. */
 type Open =
-  | { kind: 'new'; today: string }
+  | { kind: 'new'; today: string; nonce: number }
   /** `detail` is null while the draft's lines are being read. */
   | { kind: 'edit'; bill: BillListRow; detail: BillDetail | null; today: string }
   | { kind: 'pay'; bill: BillListRow; today: string }
@@ -107,15 +107,18 @@ export function BillsView({
   const asking = open && (open.kind === 'void' || open.kind === 'delete') ? open : null;
   // A row that is gone after a refresh takes its question with it; the message still has to be seen.
   const askingInView = asking ? shown.some((b) => b.id === asking.bill.id) : false;
+  const busy = confirm.pending || rowAction.pending;
   const now = () => localIsoDate(new Date());
   /** Opens one thing, dropping whatever message the last question left behind. */
   const ask = (next: Exclude<Open, null>) => {
     confirm.clear();
+    rowAction.clear();
     setOpen(next);
   };
   /** Closes whatever is open, and the message that went with it. */
   const close = () => {
     confirm.clear();
+    rowAction.clear();
     setOpen(null);
   };
 
@@ -134,6 +137,8 @@ export function BillsView({
           icon: Pencil,
           opens: true,
           onSelect: () => {
+            // Already editing this draft: keep what has been typed.
+            if (open?.kind === 'edit' && open.bill.id === bill.id && open.detail) return;
             loader.clear();
             ask({ kind: 'edit', bill, detail: null, today: now() });
             loader.run(
@@ -147,6 +152,7 @@ export function BillsView({
           label: 'Post',
           icon: FileCheck,
           onSelect: () => {
+            if (rowAction.pending) return;
             close();
             rowAction.run(() => actions.post({ id: bill.id }));
           },
@@ -223,7 +229,7 @@ export function BillsView({
     if (open.kind === 'new') {
       return (
         <BillFormCard
-          key="new"
+          key={open.nonce}
           suppliers={writer.suppliers}
           products={writer.products}
           today={open.today}
@@ -293,8 +299,8 @@ export function BillsView({
             <Button
               size="sm"
               aria-expanded={open?.kind === 'new'}
-              disabled={confirm.pending}
-              onClick={() => ask({ kind: 'new', today: now() })}
+              disabled={busy}
+              onClick={() => ask({ kind: 'new', today: now(), nonce: Date.now() })}
             >
               <Plus className="size-4" />
               New Bill
@@ -325,7 +331,11 @@ export function BillsView({
           )}
         </BentoCard>
         <BentoCard title="Bills by status" subtitle="Current book" icon={PieChart} className="col-span-2 md:col-span-4">
-          <DonutStat data={view.byStatus} height={220} centerValue={String(billCount)} centerLabel="bills" />
+          {billCount === 0 ? (
+            <p className="grid h-55 place-items-center text-sm text-muted-foreground">No bills yet.</p>
+          ) : (
+            <DonutStat data={view.byStatus} height={220} centerValue={String(billCount)} centerLabel="bills" />
+          )}
         </BentoCard>
 
         <BentoCard
@@ -359,7 +369,7 @@ export function BillsView({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="open">All open</SelectItem>
+                <SelectItem value="open">All except void</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
@@ -445,7 +455,7 @@ export function BillsView({
                         <TableCell>
                           {items.length ? (
                             // RowMenu has no disabled prop; an inert wrapper keeps its button from being used while an action runs.
-                            <span inert={confirm.pending} className={cn(confirm.pending && 'opacity-50')}>
+                            <span inert={busy} className={cn(busy && 'opacity-50')}>
                               <RowMenu label={billName(b)} items={items} />
                             </span>
                           ) : null}

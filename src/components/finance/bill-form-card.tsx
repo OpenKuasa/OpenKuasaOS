@@ -84,6 +84,7 @@ export function BillFormCard({
       if (!result.ok && result.draftId) {
         const draftId = result.draftId;
         setForm((f) => ({ ...f, id: draftId }));
+        return { ...result, error: `${result.error} It has been saved as a draft.` };
       }
       return result;
     }, onClose);
