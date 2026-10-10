@@ -1931,15 +1931,15 @@ begin
 end $$;
 ```
 
-- [ ] **Step 3: Confirm the live test is collected and skips cleanly without credentials**
+- [ ] **Step 3: Confirm the live test is collected**
 
 Run: `pnpm vitest run --dir tests people.rls`
-Expected, if `.env.local` is absent in the worktree: 7 tests skipped, exit code 0. If `.env.local` is present: the tests fail with `relation "public.departments" does not exist` or similar, because nothing is applied yet. Either is correct at this point.
+Expected on this machine, where the Supabase variables are in the shell environment (the other `*.rls.test.ts` files run here): the 7 tests **fail** with an error naming a missing table such as `public.departments`, because nothing is applied yet. That failure is expected until Task 10. If the variables are absent instead, the 7 tests are skipped and the exit code is 0.
 
-- [ ] **Step 4: Run the whole suite**
+- [ ] **Step 4: Run the rest of the suite**
 
-Run: `pnpm vitest run --dir tests`
-Expected: every previously passing test still passes; `people-schema` (55) and `people-demo-seed` (5) pass.
+Run: `pnpm vitest run --dir tests --exclude '**/people.rls.test.ts'`
+Expected: everything passes, including `people-schema` (55) and `people-demo-seed` (5).
 
 - [ ] **Step 5: Commit**
 
@@ -1974,6 +1974,22 @@ If one fails, stop. Read the error, fix the SQL file, re-run `pnpm vitest run --
 
 - [ ] **Step 3: Run the member-tier check**
 
+Two probes first, both through `mcp__openkuasa-supabase__execute_sql`, because the local dry run could not cover them:
+
+```sql
+select proname, prosrc from pg_proc where proname in ('rls_auto_enable', 'sync_profile_from_auth_user');
+```
+
+Read both bodies. `rls_auto_enable` should only enable row level security on new tables; if it also creates a policy named `mfa_required`, Step 2 would already have failed on the first table. `sync_profile_from_auth_user` runs when the check inserts into `auth.users`; note any field of `raw_user_meta_data` it reads.
+
+```sql
+do $$ begin set local role authenticated; reset role; raise exception 'ROLE_SWITCH_OK'; end $$;
+```
+
+Expected: an error whose message is `ROLE_SWITCH_OK`. If it is a permission error instead, the MCP's database role cannot act as `authenticated` and the check cannot run this way: stop and tell the owner.
+
+If the check itself then fails on its first statement (the insert into `auth.users`), the cause is the script's user rows, not a migration: add whatever column or `raw_user_meta_data` field the error or the profile trigger names, and re-run.
+
 Call `mcp__openkuasa-supabase__execute_sql` with the full contents of `supabase/tests/people_rls_check.sql`.
 Expected: an error whose message is `PEOPLE_RLS_CHECK PASSED (everything rolled back)`.
 If the message starts `PEOPLE_RLS_CHECK FAILED:`, each item after it is a real access fault: fix the migration with a new corrective migration file (never by editing an applied one), apply it, and run the check again. If the error is anything else (for example a missing column on `auth.users`), the script itself is at fault: fix the script and re-run.
@@ -1990,10 +2006,10 @@ Expected: `orgs_left = 0`, `users_left = 0`.
 
 - [ ] **Step 4: Run the live tests**
 
-Run, from a checkout that has `.env.local` (copy it into the worktree if it is not there; it is gitignored):
+Run: `pnpm vitest run --dir tests people.rls`
+Expected: PASS, 7 tests. (If they were skipped in Task 9, the Supabase variables are missing: copy `.env.local` into the worktree, it is gitignored.)
 
-`pnpm vitest run --dir tests people.rls`
-Expected: PASS, 7 tests.
+If the first test fails on the `update … designation` step with `permission denied for column updated_at`, the touch trigger's write to `updated_at` is being checked against the caller's column grants. Fix it with a new migration, `20261013090900_people_updated_at_grant.sql`, containing `grant update (updated_at) on public.employees to authenticated;` and `grant update (updated_at) on public.employee_private to authenticated;` (the reach tables needed the same for `ad_settings`), apply it, and re-run.
 
 - [ ] **Step 5: Apply the schedule and check the advisors**
 
