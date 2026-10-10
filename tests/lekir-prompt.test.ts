@@ -1,6 +1,6 @@
 // tests/lekir-prompt.test.ts
 import { describe, expect, it } from 'vitest';
-import { LEKIR_SYSTEM } from '@/lib/ai/agents/prompts';
+import { LEKIR_SYSTEM, subAgentSystem } from '@/lib/ai/agents/prompts';
 import { HIRE_WRITE_TOOL_NAMES } from '@/lib/ai/products';
 
 const t = LEKIR_SYSTEM.toLowerCase();
@@ -37,6 +37,11 @@ describe('LEKIR_SYSTEM', () => {
   });
   it('gives contact details only when asked', () => {
     expect(t).toContain('only when the owner asks for them');
+    expect(t).toContain('includecontact');
+    expect(t).toContain('never say a candidate has no email or phone');
+  });
+  it('tells the specialist how contact details are fetched', () => {
+    expect(subAgentSystem('hire', false)).toContain('includeContact');
   });
   it('keeps to hiring and leaves staff matters to Lekiu', () => {
     expect(LEKIR_SYSTEM).toContain('Lekiu');

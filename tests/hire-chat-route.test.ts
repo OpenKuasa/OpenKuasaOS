@@ -12,7 +12,20 @@ const ctl = vi.hoisted(() => ({
   freeConsumed: 0,
   /** Tables the provider read, to prove which data the tools were given. */
   tablesRead: [] as string[],
+  /** The HireAccess the route handed to the runner. */
+  captured: null as null | { data: import('@/lib/hire/types').HireData },
 }));
+
+vi.mock('@/lib/ai/agents/orchestrator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/agents/orchestrator')>();
+  return {
+    ...actual,
+    runLekir: ((messages, hire, ...rest) => {
+      ctl.captured = hire;
+      return actual.runLekir(messages, hire, ...rest);
+    }) as typeof actual.runLekir,
+  };
+});
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -100,6 +113,7 @@ beforeEach(() => {
   ctl.calls = [];
   ctl.freeConsumed = 0;
   ctl.tablesRead = [];
+  ctl.captured = null;
   process.env.AI_KEYS_ENCRYPTION_SECRET = SECRET;
 });
 
@@ -150,6 +164,10 @@ describe('POST /api/hire/chat happy path', () => {
     expect(call.tools.sort()).toEqual([...HIRE_TOOL_NAMES].sort());
     expect(call.tools).not.toContain('getCampaigns');
     expect(call.tools).not.toContain('listDeals');
+
+    // A user in a workspace reads the hire_ tables.
+    await ctl.captured!.data.listJobs();
+    expect(ctl.tablesRead).toContain('hire_jobs');
   });
 
   it('gives a viewer the same lookups: there is nothing to withhold yet', async () => {
@@ -165,7 +183,12 @@ describe('POST /api/hire/chat happy path', () => {
     const res = await POST(post(validBody));
     expect(res.status).toBe(200);
     await res.text();
-    // The empty provider reads no table, and the seed provider is not used.
+    // What the route gave the runner is empty, not the sample data.
+    const data = ctl.captured!.data;
+    expect(await data.listJobs()).toEqual([]);
+    expect(await data.listCandidates()).toEqual([]);
+    expect(await data.listApplications()).toEqual([]);
+    expect(await data.listInterviews()).toEqual([]);
     expect(ctl.tablesRead.filter((t) => t.startsWith('hire_'))).toEqual([]);
   });
 
