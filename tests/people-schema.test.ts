@@ -8,6 +8,7 @@ const DIR = join(process.cwd(), 'supabase/migrations');
 const CORE = '20261013090000_people_core.sql';
 const LEAVE = '20261013090100_people_leave.sql';
 const CLAIMS = '20261013090200_people_claims_overtime.sql';
+const ATTENDANCE = '20261013090300_people_attendance.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
@@ -19,6 +20,10 @@ const TABLES: { file: string; table: string; kind: Kind }[] = [
   { file: LEAVE, table: 'time_off_requests', kind: 'personal' },
   { file: CLAIMS, table: 'claims', kind: 'personal' },
   { file: CLAIMS, table: 'overtime_records', kind: 'personal' },
+  { file: ATTENDANCE, table: 'attendance_days', kind: 'personal' },
+  { file: ATTENDANCE, table: 'timesheet_entries', kind: 'personal' },
+  { file: ATTENDANCE, table: 'shifts', kind: 'personal' },
+  { file: ATTENDANCE, table: 'public_holidays', kind: 'shared' },
 ];
 
 const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
