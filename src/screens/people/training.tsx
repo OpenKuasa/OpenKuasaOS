@@ -102,7 +102,9 @@ export default async function TrainingScreen() {
         <BentoCard
           title="All training"
           subtitle={
-            team ? 'Courses and enrolment · enrolling is available in a later update' : 'Your enrolments · enrolling is available in a later update'
+            team
+              ? 'Courses and enrolment · enrolling is available in a later update'
+              : 'All courses, with your own enrolment status in the You column · enrolling is available in a later update'
           }
           icon={BookOpen}
           flush

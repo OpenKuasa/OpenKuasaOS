@@ -30,7 +30,7 @@ export default async function OtClaimsScreen() {
       model={model}
       kpis={[
         { label: 'OT hours this month', value: month ? month.hours : dash, caption: 'hours' },
-        { label: 'OT pay this month', value: month ? rm(month.amount_cents) : dash },
+        { label: 'OT pay this month', value: month ? rm(month.amount_cents) : dash, caption: 'approved and pending' },
         { label: 'Pending', value: month ? month.pending_hours : dash, caption: 'hours' },
         { label: 'Approved', value: month ? month.approved_hours : dash, caption: 'hours this month' },
       ]}

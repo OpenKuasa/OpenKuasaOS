@@ -54,6 +54,7 @@ export function ApprovalsScreen({
     { key: 'approved', label: `Approved since (${config.trendUnit})`, color: 'var(--chart-2)' },
   ];
   const dash = '—';
+  const hasTrend = (model?.trend ?? []).some((b) => b.submitted > 0 || b.approved > 0);
 
   return (
     <ScreenContainer>
@@ -101,7 +102,13 @@ export function ApprovalsScreen({
           icon={TrendingUp}
           className={cn('col-span-2', config.breakdownTitle ? 'md:col-span-8' : 'md:col-span-12')}
         >
-          {!model ? LOAD_FAILED : <AreaTrend data={model.trend} series={series} height={220} showLegend />}
+          {!model ? (
+            LOAD_FAILED
+          ) : !hasTrend ? (
+            <Muted>Nothing submitted in the last 8 weeks</Muted>
+          ) : (
+            <AreaTrend data={model.trend} series={series} height={220} showLegend />
+          )}
         </BentoCard>
         {config.breakdownTitle ? (
           <BentoCard

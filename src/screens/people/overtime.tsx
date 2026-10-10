@@ -23,6 +23,7 @@ export default async function OvertimeScreen() {
   const dash = '—';
   const team = model?.team ?? true;
   const month = model?.model.month;
+  const hasHistory = (model?.model.by_month ?? []).some((b) => b.value > 0);
 
   return (
     <ScreenContainer>
@@ -41,7 +42,12 @@ export default async function OvertimeScreen() {
               />
             </BentoCard>
             <BentoCard className="col-span-1 md:col-span-3">
-              <BentoStat label="Cost this month" value={month ? rm(month.amount_cents) : dash} />
+              <BentoStat
+                label="Cost this month"
+                value={month ? rm(month.amount_cents) : dash}
+                delta="approved and pending"
+                deltaTone="flat"
+              />
             </BentoCard>
             <BentoCard className="col-span-1 md:col-span-3">
               <BentoStat
@@ -67,11 +73,18 @@ export default async function OvertimeScreen() {
             LOAD_FAILED
           ) : !model.team ? (
             HR_ONLY
+          ) : !hasHistory ? (
+            <Muted>No overtime in the last six months</Muted>
           ) : (
             <BarGroup data={model.model.by_month.map((b) => ({ label: b.label, hours: b.value }))} series={MONTH_SERIES} height={240} />
           )}
         </BentoCard>
-        <BentoCard title="Rates in use" subtitle="Multipliers on record" icon={Clock} className="col-span-2 md:col-span-4">
+        <BentoCard
+          title={team ? 'Rates in use' : 'Rates on your records'}
+          subtitle={team ? 'Multipliers on all records' : 'Multipliers on record'}
+          icon={Clock}
+          className="col-span-2 md:col-span-4"
+        >
           {!model ? (
             LOAD_FAILED
           ) : model.model.by_rate.length === 0 ? (
