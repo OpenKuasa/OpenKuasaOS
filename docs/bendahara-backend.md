@@ -37,8 +37,8 @@ policy.
 
 ## Document numbers
 
-`select public.finance_next_number(org, 'invoice')` returns the next number
-(`INV-0001`) and moves the counter on. It locks the workspace's row for that
+`select public.finance_next_number(target_org, doc)` with `doc` set to
+`'invoice'` returns the next number (`INV-0001`) and moves the counter on. It locks the workspace's row for that
 type, so simultaneous callers never get the same number. Types: `invoice`,
 `quotation`, `credit_note`, `bill`, `receipt`, `voucher`. Call it from inside
 the database function that posts a document, so a failed post does not use up a
@@ -62,11 +62,16 @@ Triggers enforce it, so no caller can get round it:
 
 - A draft bill can be edited and deleted. A posted bill can only be voided,
   and not while it has payments. Its lines are locked with it.
-- A scheduled payment can be edited and deleted. A paid one can only be
+- A bill is always created as a draft. It can only be posted once its lines
+  add up to more than zero, whichever way the status is changed.
+- A scheduled payment can be deleted or marked paid; the data layer has no
+  function to edit one yet. A paid one can only be
   voided, which frees the bills it paid. Its split is locked with it.
 - A payment cannot exceed what is still owed on a bill, counting scheduled
   payments. The bill row is locked while this is checked, so two payments at
   the same moment are checked one after the other.
+- Clearing a deleted user from a payment's `created_by` or `approved_by` is
+  allowed on a posted payment.
 - Each guard steps aside when the workspace itself is being deleted.
 
 ## Database functions
@@ -75,11 +80,11 @@ All run as the caller, so RLS decides who may write.
 
 | Function | Does |
 |---|---|
-| `finance_save_bill(org, bill, lines)` | Creates a draft bill or replaces a draft's header and lines. Returns the id. |
-| `finance_post_bill(org, bill_id)` | Posts a draft and returns its number. |
-| `finance_record_payment_out(org, payment, allocations)` | Records a payment, `posted` or `scheduled`. Returns the id. |
-| `finance_mark_payment_paid(org, txn_id, paid_on)` | Scheduled to paid. Returns the number. |
-| `finance_next_number(org, type)` | The next document number. |
+| `finance_save_bill(target_org, bill, lines)` | Creates a draft bill or replaces a draft's header and lines. Returns the id. |
+| `finance_post_bill(target_org, target_bill)` | Posts a draft and returns its number. |
+| `finance_record_payment_out(target_org, payment, allocations)` | Records a payment; `payment.status` is `posted` (the default) or `scheduled`. Returns the id. |
+| `finance_mark_payment_paid(target_org, target_txn, paid_on)` | Scheduled to paid. Returns the number. |
+| `finance_next_number(target_org, doc)` | The next document number. |
 
 Voiding a bill or a payment, and deleting a draft bill or a scheduled payment,
 are plain updates and deletes; the guards decide whether they are allowed.
@@ -91,15 +96,15 @@ The guards and functions raise these SQLSTATEs; `bills.ts`, `money.ts` and
 
 | Code | Meaning |
 |---|---|
-| `FIN01` | The bill is posted or void and cannot be changed or deleted |
-| `FIN02` | The bill has payments, so it cannot be voided |
+| `FIN01` | The bill is posted or void and cannot be changed or deleted. Also: a bill must be created as a draft, a draft cannot be voided (delete it), and only a draft can be posted. |
+| `FIN02` | The bill has payments (paid, scheduled or in progress), so it cannot be voided |
 | `FIN03` | The allocations add up to more than the payment |
-| `FIN04` | A payment can only go against a posted bill |
+| `FIN04` | A payment can only go against a posted bill, and only money out pays a bill |
 | `FIN05` | The amount is more than is still owed on the bill |
-| `FIN06` | The bills on one payment belong to different suppliers, or none was found |
+| `FIN06` | No bill was chosen or found, or the bills belong to different suppliers |
 | `FIN07` | The contact has bills, so Supplier cannot be unticked |
-| `FIN09` | The payment is posted or void and cannot be changed or deleted |
-| `FIN10` | The bill has no lines, or its lines total nothing |
+| `FIN09` | The payment is posted or void and cannot be changed or deleted, its split cannot be changed, or it is not scheduled and so cannot be marked paid |
+| `FIN10` | The bill has no lines, or its lines total nothing; it cannot be saved without a line or posted without an amount |
 | `FIN11` | The bill or payment no longer exists |
 
 ## Known limits
@@ -109,7 +114,9 @@ The guards and functions raise these SQLSTATEs; `bills.ts`, `money.ts` and
 - The Payments Out screen charts four payment methods; DuitNow, card and
   e-wallet are counted with bank transfers until its form is built.
 - Approval of money out is not enforced yet.
-
+- Posting goes through database functions that run as the caller, so an editor
+  writing to the tables directly could still give a payment a number of their
+  own choosing. The number is unique per workspace either way.
 - Contacts and products load the first 1,000 by name; search is in the browser.
   Only the contact list is capped this way: a contact's Payable is read by
   paging through every open bill, 1,000 at a time, so it is never cut short.
