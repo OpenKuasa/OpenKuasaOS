@@ -43,6 +43,8 @@ export type Lead = {
   stage: LeadStage;
   source: string;
   created_at: string;
+  /** Set when the lead was promoted to a CRM contact; no FK (module-decoupled). */
+  promoted_contact_id: string | null;
 };
 
 export type Appointment = {

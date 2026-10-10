@@ -150,6 +150,7 @@ export function seedLeads(now: Date): Lead[] {
         channel,
         stage,
         source: SOURCES[idx % SOURCES.length],
+        promoted_contact_id: null,
         created_at: daysAgo(now, dayOffset),
       });
       idx += 1;
