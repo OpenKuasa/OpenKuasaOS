@@ -21,6 +21,9 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   'crm/contacts',
   'crm/deals',
   'crm/lead-forms',
+  // Shared with Jebat's analytics (registry 'reach/reports'); /reach/reports
+  // is not a nav item, so the screen is served at /crm/reports.
+  'crm/reports',
 ]);
 
 /** Whether the app path is a screen that is not connected to live data yet. */

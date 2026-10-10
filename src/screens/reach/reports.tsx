@@ -1,19 +1,9 @@
-import {
-  Download,
-  Filter,
-  Gauge,
-  MapPin,
-  Percent,
-  PieChart,
-  TrendingUp,
-  Users,
-} from 'lucide-react';
+import { Filter, Gauge, MapPin, PieChart, TrendingUp, Users } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
 import {
   AreaTrend,
-  BarGroup,
   DonutStat,
   FunnelFlow,
   RadialGauge,
@@ -21,14 +11,7 @@ import {
   type Series,
   type Slice,
 } from '@/components/charts';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { ReportsControls } from '@/components/reach/reports-controls';
 import {
   Table,
   TableBody,
@@ -37,93 +20,107 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { createClient } from '@/lib/supabase/server';
+import { getReachData } from '@/lib/reach/supabase';
+import { deriveReportsModel, type ReportRange } from '@/lib/reach/reports';
+import { LEAD_STAGES, type Channel, type LeadStage } from '@/lib/reach/types';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
-
-const LEADS_TREND = [
-  { label: 'Wk1', leads: 34, qualified: 12 },
-  { label: 'Wk2', leads: 41, qualified: 16 },
-  { label: 'Wk3', leads: 38, qualified: 15 },
-  { label: 'Wk4', leads: 52, qualified: 22 },
-  { label: 'Wk5', leads: 48, qualified: 24 },
-  { label: 'Wk6', leads: 63, qualified: 29 },
-  { label: 'Wk7', leads: 59, qualified: 31 },
-  { label: 'Wk8', leads: 72, qualified: 38 },
-];
+const RANGES: readonly ReportRange[] = ['7d', '30d', '90d'];
+const RANGE_LABEL: Record<ReportRange, string> = {
+  '7d': 'Last 7 days',
+  '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
+};
+const CHANNEL_LABEL: Record<Channel, string> = {
+  whatsapp: 'WhatsApp',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+};
+const CHANNEL_COLOR: Record<Channel, string> = {
+  whatsapp: 'var(--chart-1)',
+  facebook: 'var(--chart-2)',
+  instagram: 'var(--chart-5)',
+  tiktok: 'var(--chart-3)',
+};
+const STAGE_LABEL: Record<LeadStage, string> = {
+  lead: 'Leads',
+  contacted: 'Contacted',
+  qualified: 'Qualified',
+  booked: 'Booked',
+  won: 'Won',
+};
+const STAGE_COLOR: Record<LeadStage, string> = {
+  lead: 'var(--chart-1)',
+  contacted: 'var(--chart-2)',
+  qualified: 'var(--chart-5)',
+  booked: 'var(--chart-3)',
+  won: 'var(--chart-4)',
+};
 const LEADS_SERIES: Series[] = [
   { key: 'leads', label: 'Leads', color: 'var(--chart-1)' },
   { key: 'qualified', label: 'Qualified', color: 'var(--chart-2)' },
 ];
 
-const LEADS_BY_SOURCE: Slice[] = [
-  { key: 'whatsapp', label: 'WhatsApp', value: 142, color: 'var(--chart-1)' },
-  { key: 'facebook', label: 'Facebook', value: 96, color: 'var(--chart-2)' },
-  { key: 'instagram', label: 'Instagram', value: 68, color: 'var(--chart-5)' },
-  { key: 'referral', label: 'Referral', value: 24, color: 'var(--chart-3)' },
-  { key: 'website', label: 'Website form', value: 12, color: 'var(--chart-4)' },
-];
+function parseRange(value: string | string[] | undefined): ReportRange {
+  const v = Array.isArray(value) ? value[0] : value;
+  return RANGES.find((r) => r === v) ?? '30d';
+}
 
-const FUNNEL: Slice[] = [
-  { key: 'leads', label: 'Leads', value: 342, color: 'var(--chart-1)' },
-  { key: 'contacted', label: 'Contacted', value: 264, color: 'var(--chart-2)' },
-  { key: 'qualified', label: 'Qualified', value: 158, color: 'var(--chart-5)' },
-  { key: 'booked', label: 'Booked', value: 96, color: 'var(--chart-3)' },
-  { key: 'won', label: 'Won', value: 48, color: 'var(--chart-4)' },
-];
+function EmptyPanel({ children }: { children: string }) {
+  return (
+    <div className="flex h-40 items-center justify-center text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
 
-const LEADS_BY_STATE = [
-  { label: 'Selangor', leads: 118 },
-  { label: 'Kuala Lumpur', leads: 86 },
-  { label: 'Johor', leads: 54 },
-  { label: 'Penang', leads: 48 },
-  { label: 'Sabah', leads: 36 },
-];
-const STATE_SERIES: Series[] = [
-  { key: 'leads', label: 'Leads', color: 'var(--chart-2)' },
-];
+const NO_DATA = 'No data for this range yet';
 
-type SourceRow = {
-  source: string;
-  leads: number;
-  qualified: number;
-  conv: string;
-  value: string;
-};
+export default async function ReportsScreen({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const range = parseRange(sp.range);
 
-const TOP_SOURCES: SourceRow[] = [
-  { source: 'WhatsApp', leads: 142, qualified: 74, conv: '5.6%', value: 'RM 48,200' },
-  { source: 'Facebook', leads: 96, qualified: 44, conv: '4.2%', value: 'RM 31,500' },
-  { source: 'Instagram', leads: 68, qualified: 28, conv: '3.8%', value: 'RM 22,100' },
-  { source: 'Referral', leads: 24, qualified: 8, conv: '6.1%', value: 'RM 18,900' },
-  { source: 'Website form', leads: 12, qualified: 4, conv: '7.0%', value: 'RM 9,400' },
-];
+  const data = await getReachData(await createClient());
+  const [campaigns, leads, appts] = await Promise.all([
+    data.listCampaigns(),
+    data.listLeads(),
+    data.listAppointments(),
+  ]);
+  const model = deriveReportsModel(leads, campaigns, appts, range, new Date());
 
-/* ------------------------------------------------------------------ */
+  const hasLeads = model.totalLeads > 0;
+  const funnel: Slice[] = LEAD_STAGES.map((stage) => ({
+    key: stage,
+    label: STAGE_LABEL[stage],
+    value: model.funnel[stage],
+    color: STAGE_COLOR[stage],
+  }));
+  const bySource: Slice[] = model.leadsByChannel.map((r) => ({
+    key: r.channel,
+    label: CHANNEL_LABEL[r.channel],
+    value: r.leads,
+    color: CHANNEL_COLOR[r.channel],
+  }));
+  const qualifiedCount = model.funnel.qualified;
+  const qualRate = hasLeads ? Math.round((qualifiedCount / model.totalLeads) * 100) : 0;
+  const winRate = hasLeads
+    ? `${Math.round((model.funnel.won / model.totalLeads) * 1000) / 10}%`
+    : '—';
+  const { appointmentStats: ap } = model;
+  const trendLeads = model.leadsTrend.map((p) => p.leads);
+  const trendQualified = model.leadsTrend.map((p) => p.qualified);
 
-export default function ReportsScreen() {
   return (
     <ScreenContainer>
       <PageHeader
         title="Reports"
         subtitle="Lead, conversion and pipeline analytics."
-        actions={
-          <>
-            <Select defaultValue="30d">
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">Last 7 days</SelectItem>
-                <SelectItem value="30d">Last 30 days</SelectItem>
-                <SelectItem value="90d">Last 90 days</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="sm">
-              <Download className="size-4" />
-              Export
-            </Button>
-          </>
-        }
+        actions={<ReportsControls range={range} />}
       />
 
       <BentoGrid>
@@ -131,60 +128,35 @@ export default function ReportsScreen() {
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Total leads"
-            value="342"
-            delta="+12%"
+            value={String(model.totalLeads)}
             onPrimary
             chart={
-              <Sparkline
-                data={[34, 41, 38, 52, 48, 63, 59, 72]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
+              hasLeads ? (
+                <Sparkline data={trendLeads} color="var(--primary-foreground)" height={36} />
+              ) : undefined
             }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
-            label="Conversion rate"
-            value="4.8%"
-            delta="+0.6pt"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[3.9, 4.0, 4.1, 4.3, 4.4, 4.5, 4.7, 4.8]}
-                color="var(--chart-2)"
-                height={36}
-              />
-            }
+            label="Win rate"
+            value={winRate}
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
-            label="Avg response time"
-            value="2.4h"
-            delta="−0.3h"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[3.4, 3.1, 3.0, 2.8, 2.7, 2.6, 2.5, 2.4]}
-                color="var(--chart-3)"
-                height={36}
-              />
-            }
+            label="Show rate"
+            value={ap.show_rate_pct === null ? '—' : `${ap.show_rate_pct}%`}
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
             label="Qualified"
-            value="158"
-            delta="+8%"
-            deltaTone="up"
+            value={String(qualifiedCount)}
             chart={
-              <Sparkline
-                data={[12, 16, 15, 22, 24, 29, 31, 38]}
-                color="var(--chart-5)"
-                height={36}
-              />
+              hasLeads ? (
+                <Sparkline data={trendQualified} color="var(--chart-5)" height={36} />
+              ) : undefined
             }
           />
         </BentoCard>
@@ -192,23 +164,27 @@ export default function ReportsScreen() {
         {/* Trend + source mix */}
         <BentoCard
           title="Leads vs qualified"
-          subtitle="Last 8 weeks"
+          subtitle={RANGE_LABEL[range]}
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <AreaTrend data={LEADS_TREND} series={LEADS_SERIES} height={240} showLegend />
+          {hasLeads ? (
+            <AreaTrend data={model.leadsTrend} series={LEADS_SERIES} height={240} showLegend />
+          ) : (
+            <EmptyPanel>{NO_DATA}</EmptyPanel>
+          )}
         </BentoCard>
-        <BentoCard
-          title="Leads by source"
-          icon={PieChart}
-          className="col-span-2 md:col-span-4"
-        >
-          <DonutStat
-            data={LEADS_BY_SOURCE}
-            height={240}
-            centerValue="342"
-            centerLabel="leads"
-          />
+        <BentoCard title="Leads by source" icon={PieChart} className="col-span-2 md:col-span-4">
+          {bySource.length > 0 ? (
+            <DonutStat
+              data={bySource}
+              height={240}
+              centerValue={String(model.totalLeads)}
+              centerLabel="leads"
+            />
+          ) : (
+            <EmptyPanel>{NO_DATA}</EmptyPanel>
+          )}
         </BentoCard>
 
         {/* Funnel + geography + qualification */}
@@ -218,20 +194,19 @@ export default function ReportsScreen() {
           icon={Filter}
           className="col-span-2 md:col-span-4"
         >
-          <FunnelFlow data={FUNNEL} height={200} />
+          {hasLeads ? (
+            <FunnelFlow data={funnel} height={200} />
+          ) : (
+            <EmptyPanel>{NO_DATA}</EmptyPanel>
+          )}
         </BentoCard>
         <BentoCard
           title="Leads by state"
-          subtitle="This period"
+          subtitle={RANGE_LABEL[range]}
           icon={MapPin}
           className="col-span-2 md:col-span-4"
         >
-          <BarGroup
-            data={LEADS_BY_STATE}
-            series={STATE_SERIES}
-            horizontal
-            height={200}
-          />
+          <EmptyPanel>Not available yet</EmptyPanel>
         </BentoCard>
         <BentoCard
           title="Qualification rate"
@@ -239,58 +214,54 @@ export default function ReportsScreen() {
           icon={Gauge}
           className="col-span-2 md:col-span-4"
         >
-          <RadialGauge
-            value={46}
-            valueLabel="46%"
-            label="qualified"
-            color="var(--chart-2)"
-            height={200}
-          />
+          {hasLeads ? (
+            <RadialGauge
+              value={qualRate}
+              valueLabel={`${qualRate}%`}
+              label="qualified"
+              color="var(--chart-2)"
+              height={200}
+            />
+          ) : (
+            <EmptyPanel>{NO_DATA}</EmptyPanel>
+          )}
         </BentoCard>
 
         {/* Top sources table */}
         <BentoCard
           title="Top sources"
-          subtitle="By leads this period"
+          subtitle={`By leads, ${RANGE_LABEL[range].toLowerCase()}`}
           icon={Users}
-          action={
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Percent className="size-3.5" />
-              conversion = won / leads
-            </span>
-          }
           className="col-span-2 md:col-span-12"
         >
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead>Source</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">Qualified</TableHead>
-                  <TableHead className="text-right">Conversion</TableHead>
-                  <TableHead className="text-right">Pipeline value</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {TOP_SOURCES.map((r) => (
-                  <TableRow key={r.source}>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {r.source}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{r.leads}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {r.qualified}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{r.conv}</TableCell>
-                    <TableCell className="whitespace-nowrap text-right tabular-nums">
-                      {r.value}
-                    </TableCell>
+          {model.topChannels.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40">
+                    <TableHead>Source</TableHead>
+                    <TableHead className="text-right">Leads</TableHead>
+                    <TableHead className="text-right">Qualified</TableHead>
+                    <TableHead className="text-right">Qualified %</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {model.topChannels.map((r) => (
+                    <TableRow key={r.channel}>
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {CHANNEL_LABEL[r.channel]}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.leads}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.qualified}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.conv_pct}%</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <EmptyPanel>{NO_DATA}</EmptyPanel>
+          )}
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>

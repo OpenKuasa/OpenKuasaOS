@@ -30,6 +30,12 @@ const SERVER_PAGES = {
   'crm/deals': '@/screens/crm/deals-page',
 };
 
+/**
+ * Routes whose screen reads the URL's query string (a range filter): the page
+ * hands its `searchParams` through to the screen.
+ */
+const SEARCH_PARAM_PAGES = new Set(['crm/reports']);
+
 /** `product/item` for every item in the nav. */
 function navRoutes() {
   const source = readFileSync(join(root, 'src/config/nav.ts'), 'utf8');
@@ -65,7 +71,24 @@ function registryScreens() {
   return screens;
 }
 
-function pageSource(modulePath) {
+function pageSource(modulePath, withSearchParams) {
+  if (withSearchParams) {
+    return `${MARKER} — do not edit.
+// To add or change a screen, edit src/screens/registry.ts and run \`pnpm gen:routes\`.
+import { connection } from 'next/server';
+import Screen from '${modulePath}';
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  // Rendered for each request, never frozen at build time.
+  await connection();
+  return <Screen searchParams={searchParams} />;
+}
+`;
+  }
   return `${MARKER} — do not edit.
 // To add or change a screen, edit src/screens/registry.ts and run \`pnpm gen:routes\`.
 import { connection } from 'next/server';
@@ -107,7 +130,7 @@ let removed = 0;
 
 for (const [key, modulePath] of wanted) {
   const file = join(appDir, key, 'page.tsx');
-  const next = pageSource(modulePath);
+  const next = pageSource(modulePath, SEARCH_PARAM_PAGES.has(key));
   const current = existsSync(file) ? readFileSync(file, 'utf8') : null;
   if (current === next) continue;
   if (current !== null && !current.startsWith(MARKER)) {
