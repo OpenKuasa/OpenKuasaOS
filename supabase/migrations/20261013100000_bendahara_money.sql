@@ -257,6 +257,10 @@ as $$
 declare
   s text;
 begin
+  -- The workspace is being deleted: its bills and their lines all go.
+  if tg_op = 'DELETE' and not exists (select 1 from public.orgs where id = old.org_id) then
+    return old;
+  end if;
   if tg_op <> 'INSERT' then
     select status into s from public.supplier_bills where org_id = old.org_id and id = old.bill_id;
     -- No parent row: the bill itself is being deleted, and its lines go with it.
@@ -316,6 +320,10 @@ declare
   bill_total numeric;
   taken numeric;
 begin
+  -- The workspace is being deleted: its payments and their splits all go.
+  if tg_op = 'DELETE' and not exists (select 1 from public.orgs where id = old.org_id) then
+    return old;
+  end if;
   if tg_op <> 'INSERT' then
     select status into t from public.finance_transactions where org_id = old.org_id and id = old.transaction_id;
     -- No parent row: the payment itself is being deleted.
