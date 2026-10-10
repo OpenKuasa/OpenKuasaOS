@@ -384,6 +384,8 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                     event.preventDefault();
                     if (!deleting) return;
                     const { id, title } = deleting;
+                    // A refusal leaves this dialog open: focus comes back to this button, not to the page behind.
+                    focusWhenIdle.current = event.currentTarget;
                     act(deleteJobAction({ id }), () => {
                       // The row is gone, and with it the Delete button that opened this.
                       opener.current = postButton.current;
@@ -536,6 +538,7 @@ function JobForm({
   const serverError = useRef<HTMLParagraphElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
   /** Set when a press starts on Cancel: some browsers do not focus a clicked button, so the blur names no target. */
   const cancelling = useRef(false);
   const base = useId();
@@ -550,6 +553,13 @@ function JobForm({
     if (field) inputs.current[field]?.focus();
     else serverError.current?.scrollIntoView({ block: 'nearest' });
   }, [error]);
+
+  // Save is disabled while the action runs, which drops focus out of the dialog. A refusal
+  // that is about no field puts it back on Save once the action has ended.
+  useEffect(() => {
+    if (pending || !error || fieldForServerError(error)) return;
+    if (!form.current?.contains(document.activeElement)) saveButton.current?.focus();
+  }, [pending, error]);
 
   function set<K extends Field>(field: K, value: JobFormValues[K]) {
     const next = { ...values, [field]: value };
@@ -838,10 +848,14 @@ function JobForm({
             cancelling.current = true;
           }}
           // A press that ends, or is dragged off, without a click must not skip the next field check.
-          onPointerUp={() => {
-            cancelling.current = false;
+          // Mouse only: on touch these fire before the field's blur, which clears the flag itself.
+          onPointerUp={(event) => {
+            if (event.pointerType === 'mouse') cancelling.current = false;
           }}
-          onPointerLeave={() => {
+          onPointerLeave={(event) => {
+            if (event.pointerType === 'mouse') cancelling.current = false;
+          }}
+          onPointerCancel={() => {
             cancelling.current = false;
           }}
           onClick={() => {
@@ -852,7 +866,7 @@ function JobForm({
         >
           Cancel
         </Button>
-        <Button type="submit" size="sm" className={TARGET} disabled={pending}>
+        <Button type="submit" size="sm" ref={saveButton} className={TARGET} disabled={pending}>
           {pending ? 'Saving…' : 'Save'}
         </Button>
       </div>
