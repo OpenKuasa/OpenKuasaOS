@@ -203,7 +203,29 @@ export function AgentsPanel({
                       .filter((a) => a.run_id === run.id)
                       .map((a) => {
                         const url = a.status === 'done' ? assetUrls[a.id] : undefined;
-                        const label = a.kind === 'poster' ? 'Poster' : 'Hero image';
+                        const label =
+                          a.kind === 'poster' ? 'Poster' : a.kind === 'video' ? 'Video' : 'Hero image';
+                        if (a.kind === 'video' && url) {
+                          return (
+                            <video
+                              key={a.id}
+                              src={url}
+                              controls
+                              preload="metadata"
+                              className="w-full rounded-md border"
+                            />
+                          );
+                        }
+                        if (a.kind === 'video' && a.status === 'pending') {
+                          return (
+                            <div
+                              key={a.id}
+                              className="grid min-h-24 place-items-center rounded-md border border-dashed text-xs text-muted-foreground"
+                            >
+                              Video rendering…
+                            </div>
+                          );
+                        }
                         return url ? (
                           // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
                           <img

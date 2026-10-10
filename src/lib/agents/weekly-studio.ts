@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { generateImage, webSearch, writeDigest } from '@/lib/agents/openrouter-media';
+import { generateImage, startVideo, webSearch, writeDigest } from '@/lib/agents/openrouter-media';
 import {
   WEEKLY_STUDIO,
   type AgentRunStatus,
@@ -12,6 +12,8 @@ import { deriveReportsModel, type ReportsModel } from '@/lib/reach/reports';
 const DEFAULT_MAX_COST_CENTS = 200;
 /** Conservative per-image estimate used to gate each paid step against the cap. */
 const IMAGE_ESTIMATE_CENTS = 5;
+/** Conservative per-clip estimate; video is the priciest step so it is gated last. */
+const VIDEO_ESTIMATE_CENTS = 50;
 
 const IMAGE_STEPS: { kind: 'poster' | 'image'; prompt: (context: string) => string }[] = [
   {
@@ -141,6 +143,26 @@ export async function runWeeklyStudio(
       } catch {
         // Deliberately drop the exception: it may carry request details or a key.
         await recordAsset(step.kind, 'failed', null);
+      }
+    }
+
+    // Video is async: only kick it off here and store a pending asset; pollVideos finalizes it.
+    if (cost + VIDEO_ESTIMATE_CENTS <= maxCost) {
+      try {
+        const video = await startVideo(
+          apiKey,
+          `A short, upbeat 6-second promotional clip for a small business's weekly marketing update, no text overlays. Business snapshot:\n${context}`,
+        );
+        cost += video.cost_cents;
+        await service.from('agent_run_assets').insert({
+          org_id: orgId,
+          run_id: runId,
+          kind: 'video',
+          status: 'pending',
+          provider_job_id: video.jobId,
+        });
+      } catch {
+        // Deliberately drop the exception: it may carry request details or a key.
       }
     }
 
