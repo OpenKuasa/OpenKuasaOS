@@ -233,6 +233,10 @@ export function approvalTitle(
     case 'markDealLost': return `Mark ${the('deal', 'deal')} as lost?`;
     case 'reopenDeal': return `Reopen ${the('deal', 'deal')}?`;
     case 'deleteDeal': return `Delete ${the('deal', 'deal')}?`;
+    case 'createLead': return `Create lead “${i.name ?? ''}”?`;
+    case 'updateLead': return 'Save changes to this lead?';
+    case 'setLeadStage': return `Move this lead to “${i.stage ?? ''}”?`;
+    case 'deleteLead': return 'Delete this lead?';
     default: return 'Approve this change?';
   }
 }
@@ -243,7 +247,8 @@ export function approvalDetail(toolName: string): string | null {
     toolName === 'deleteCampaign' ||
     toolName === 'deleteCreative' ||
     toolName === 'deleteForm' ||
-    toolName === 'deleteDeal'
+    toolName === 'deleteDeal' ||
+    toolName === 'deleteLead'
   ) {
     return 'This cannot be undone.';
   }

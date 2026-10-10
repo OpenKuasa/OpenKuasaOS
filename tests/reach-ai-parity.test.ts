@@ -6,15 +6,19 @@ import {
   createCampaignInput,
   createCreativeInput,
   createFormInput,
+  createLeadInput,
   deleteCampaignInput,
   deleteCreativeInput,
   deleteFormInput,
+  deleteLeadInput,
   setCampaignStatusInput,
   setFormStatusInput,
+  setLeadStageInput,
   updateAdSettingsInput,
   updateCampaignInput,
   updateCreativeInput,
   updateFormInput,
+  updateLeadInput,
 } from '@/lib/reach/capabilities';
 import { WRITE_TOOL_NAMES } from '@/lib/ai/agents/orchestrator';
 
@@ -39,6 +43,10 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect(tools.updateForm.inputSchema).toBe(updateFormInput);
     expect(tools.setFormStatus.inputSchema).toBe(setFormStatusInput);
     expect(tools.deleteForm.inputSchema).toBe(deleteFormInput);
+    expect(tools.createLead.inputSchema).toBe(createLeadInput);
+    expect(tools.updateLead.inputSchema).toBe(updateLeadInput);
+    expect(tools.setLeadStage.inputSchema).toBe(setLeadStageInput);
+    expect(tools.deleteLead.inputSchema).toBe(deleteLeadInput);
   });
 
   it('every write tool is approval-gated', () => {

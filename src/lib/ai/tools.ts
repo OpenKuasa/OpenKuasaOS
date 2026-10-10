@@ -20,16 +20,22 @@ import {
   createCreativeInput,
   createForm as capCreateForm,
   createFormInput,
+  createLead as capCreateLead,
+  createLeadInput,
   deleteCampaign as capDeleteCampaign,
   deleteCampaignInput,
   deleteCreative as capDeleteCreative,
   deleteCreativeInput,
   deleteForm as capDeleteForm,
   deleteFormInput,
+  deleteLead as capDeleteLead,
+  deleteLeadInput,
   setCampaignStatus as capSetCampaignStatus,
   setCampaignStatusInput,
   setFormStatus as capSetFormStatus,
   setFormStatusInput,
+  setLeadStage as capSetLeadStage,
+  setLeadStageInput,
   updateAdSettings as capUpdateAdSettings,
   updateAdSettingsInput,
   updateCampaign as capUpdateCampaign,
@@ -38,6 +44,8 @@ import {
   updateCreativeInput,
   updateForm as capUpdateForm,
   updateFormInput,
+  updateLead as capUpdateLead,
+  updateLeadInput,
 } from '@/lib/reach/capabilities';
 import {
   type Appointment,
@@ -226,10 +234,12 @@ export function deriveContacts(
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, limit)
     .map((l) => ({
+      id: l.id,
       name: l.name,
       channel: l.channel,
       stage: l.stage,
       source: l.source,
+      promoted_contact_id: l.promoted_contact_id,
       created_at: l.created_at,
     }));
 }
@@ -479,6 +489,27 @@ export function createReachTools(
       description: 'Delete a lead form by id. This cannot be undone and needs approval.',
       inputSchema: deleteFormInput,
       execute: async (input) => capDeleteForm(ctx, input),
+    }),
+    createLead: tool({
+      description: 'Create a new lead. Needs the owner’s approval before it is saved.',
+      inputSchema: createLeadInput,
+      execute: async (input) => capCreateLead(ctx, input),
+    }),
+    updateLead: tool({
+      description: 'Edit a lead by id (name, channel, stage, source). Needs approval.',
+      inputSchema: updateLeadInput,
+      execute: async (input) => capUpdateLead(ctx, input),
+    }),
+    setLeadStage: tool({
+      description:
+        'Move a lead to a funnel stage by id (lead→contacted→qualified→booked→won). Needs approval.',
+      inputSchema: setLeadStageInput,
+      execute: async (input) => capSetLeadStage(ctx, input),
+    }),
+    deleteLead: tool({
+      description: 'Delete a lead by id. Cannot be undone; needs approval.',
+      inputSchema: deleteLeadInput,
+      execute: async (input) => capDeleteLead(ctx, input),
     }),
   };
 }

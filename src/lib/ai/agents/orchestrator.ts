@@ -28,6 +28,10 @@ export const WRITE_TOOL_NAMES = [
   'updateForm',
   'setFormStatus',
   'deleteForm',
+  'createLead',
+  'updateLead',
+  'setLeadStage',
+  'deleteLead',
 ] as const;
 
 /** The marketing data an agent works on, and whether this caller may change it. */
