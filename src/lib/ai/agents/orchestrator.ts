@@ -6,7 +6,8 @@
  */
 
 import { type ModelMessage, stepCountIs, streamText } from 'ai';
-import { getModel } from '@/lib/ai/provider';
+import { logModelCall } from '@/lib/ai/call-log';
+import { getModel, pickModelId } from '@/lib/ai/provider';
 import type { CrmAccess } from '@/lib/ai/crm-tools';
 import {
   REACH_WRITE_TOOL_NAMES,
@@ -38,6 +39,7 @@ export function runJebat(
     messages,
     tools,
     toolApproval,
+    onLanguageModelCallEnd: logModelCall('jebat', pickModelId('orchestrator')),
     stopWhen: stepCountIs(8),
     maxOutputTokens: 1000,
     // Stop in-flight model/tool work if the client disconnects.
@@ -74,9 +76,8 @@ export function runTuah(
 ) {
   // Every product the user can reach: marketing always, the CRM in a workspace.
   const products = [reachProduct(reach), ...(crm ? [crmProduct(crm)] : [])];
-  const { tools, toolApproval } = team
-    ? createTeamTools(products, { ...team, apiKey })
-    : combineToolkits(products);
+  const teamTools = team ? createTeamTools(products, { ...team, apiKey }) : null;
+  const { tools, toolApproval } = teamTools ?? combineToolkits(products);
   const system = team
     ? tuahTeamSystem(
         products.map((p) => ({ name: p.name, area: TEAM_AREA[p.key] })),
@@ -90,6 +91,8 @@ export function runTuah(
     messages,
     tools,
     toolApproval,
+    prepareStep: teamTools?.prepareStep as never,
+    onLanguageModelCallEnd: logModelCall(team ? 'tuah-team' : 'tuah', pickModelId('orchestrator')),
     // A CRM change often needs two lookups first (the contact, then the stage).
     stopWhen: stepCountIs(10),
     maxOutputTokens: 1000,
