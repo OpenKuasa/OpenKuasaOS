@@ -45,6 +45,7 @@ export const REACH_WRITE_TOOL_NAMES = [
   'updateAppointment',
   'setAppointmentStatus',
   'deleteAppointment',
+  'scheduleWeeklyStudio',
 ] as const;
 
 /** The hiring data an agent reads. */

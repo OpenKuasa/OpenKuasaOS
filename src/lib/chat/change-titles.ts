@@ -39,7 +39,8 @@ export type ItemKind =
   | 'contact'
   | 'deal'
   | 'stage'
-  | 'follow-up';
+  | 'follow-up'
+  | 'schedule';
 const KIND_OF_TOOL: Record<string, ItemKind> = {
   getCampaigns: 'campaign',
   createCampaign: 'campaign',
@@ -61,6 +62,7 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   listCrmContacts: 'contact',
   createContact: 'contact',
   updateContact: 'contact',
+  scheduleWeeklyStudio: 'schedule',
   listDeals: 'deal',
   createDeal: 'deal',
   updateDeal: 'deal',
@@ -131,6 +133,17 @@ export function nameIn(results: ToolResult[]): NameFinder {
  * the change is about, or a way to look names up by id; without it the card
  * falls back to "this campaign".
  */
+function intervalLabel(secs: number): string {
+  const units: [number, string][] = [[604_800, 'week'], [86_400, 'day'], [3_600, 'hour'], [60, 'minute']];
+  for (const [size, name] of units) {
+    if (secs % size === 0) {
+      const n = secs / size;
+      return n === 1 ? name : `${n} ${name}s`;
+    }
+  }
+  return `${secs} seconds`;
+}
+
 export function approvalTitle(
   toolName: string,
   input: unknown,
@@ -195,6 +208,12 @@ export function approvalTitle(
       return `Mark this appointment as ${label}?`;
     }
     case 'deleteAppointment': return 'Delete this appointment?';
+    case 'scheduleWeeklyStudio': {
+      const secs = Number(i.interval_seconds);
+      const every = !Number.isFinite(secs) || secs <= 0 ? '' : ` every ${intervalLabel(secs)}`;
+      const runs = typeof i.max_runs === 'number' ? `, ${i.max_runs} ${i.max_runs === 1 ? 'run' : 'runs'} at most` : '';
+      return `Schedule Weekly Studio${every}${runs}?`;
+    }
     default: return 'Approve this change?';
   }
 }

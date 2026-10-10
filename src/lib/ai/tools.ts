@@ -13,6 +13,7 @@ import { tool } from 'ai';
 import { limitSchema, rowLimit } from '@/lib/ai/limits';
 import { rm } from '@/lib/reach/format';
 import { z } from 'zod';
+import { createSchedule as capCreateSchedule, createScheduleInput } from '@/lib/reach/schedule-capabilities';
 import {
   type ReachWriteContext,
   createAppointment as capCreateAppointment,
@@ -570,6 +571,12 @@ export function createReachTools(
       description: 'Delete an appointment by id. Cannot be undone; needs approval.',
       inputSchema: deleteAppointmentInput,
       execute: async (input) => capDeleteAppointment(ctx, input),
+    }),
+    scheduleWeeklyStudio: tool({
+      description:
+        'Schedule the Weekly Studio agent to run itself on a recurring interval. interval_seconds is the gap between runs (min 300 = 5 min); optional starts_at (UTC ISO), max_runs, end_at (UTC ISO), max_total_cents (per-schedule budget). Set nl_text to the user’s own phrasing. Needs the owner’s approval before it is saved.',
+      inputSchema: createScheduleInput,
+      execute: async (input) => capCreateSchedule(ctx, input),
     }),
   };
 }
