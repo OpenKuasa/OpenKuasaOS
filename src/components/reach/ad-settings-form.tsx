@@ -25,25 +25,24 @@ type ToggleRow = {
 
 const AUTOMATION: ToggleRow[] = [
   {
-    id: 'auto-budget',
-    label: 'Auto-optimise budget to top performers',
-    description: 'Shift spend toward the campaigns with the lowest cost per lead.',
-  },
-  {
-    id: 'auto-pause',
+    id: 'auto_pause_low_ctr',
     label: 'Pause ads below your CTR threshold',
     description: 'Stop underperforming ads automatically to save budget.',
   },
   {
-    id: 'auto-reply',
-    label: 'Auto-reply to new leads on WhatsApp',
-    description: 'Send an instant greeting the moment a new lead comes in.',
+    id: 'auto_boost_winners',
+    label: 'Auto-optimise budget to top performers',
+    description: 'Shift spend toward the campaigns with the lowest cost per lead.',
+  },
+  {
+    id: 'daily_budget_guard',
+    label: 'Stop spend at your daily budget cap',
   },
 ];
 
 const NOTIFICATIONS: ToggleRow[] = [
-  { id: 'notify-daily', label: 'Email me a daily performance summary' },
-  { id: 'notify-overspend', label: 'Alert me on budget overspend' },
+  { id: 'spend_alerts', label: 'Alert me on budget overspend' },
+  { id: 'weekly_summary', label: 'Email me a weekly performance summary' },
 ];
 
 const CURRENCIES = [
@@ -120,7 +119,7 @@ export function AdSettingsForm({
     return rows.map((row) => (
       <div key={row.id} className="flex items-start justify-between gap-4 py-2">
         <div className="space-y-0.5">
-          <Label htmlFor={row.id} className="font-medium">
+          <Label htmlFor={`setting-${row.id}`} className="font-medium">
             {row.label}
           </Label>
           {row.description ? (
@@ -128,7 +127,7 @@ export function AdSettingsForm({
           ) : null}
         </div>
         <Switch
-          id={row.id}
+          id={`setting-${row.id}`}
           checked={values[row.id] ?? false}
           disabled={disabled}
           onCheckedChange={(checked) => set({ ...values, [row.id]: checked })}
