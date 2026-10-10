@@ -25,6 +25,11 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   // Shared with Jebat's analytics (registry 'reach/reports'); /reach/reports
   // is not a nav item, so the screen is served at /crm/reports.
   'crm/reports',
+
+  // Bendahara: these two read the workspace's own bills and payments. There is
+  // no form to add them yet.
+  'finance/supplier-bills',
+  'finance/payments-out',
 ]);
 
 /** Whether the app path is a screen that is not connected to live data yet. */
