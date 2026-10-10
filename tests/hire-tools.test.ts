@@ -16,7 +16,8 @@ const data = createSeedHireData(NOW);
 const tools = createHireTools(data, NOW);
 // The tool results are untyped JSON; the tests read them loosely.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Run = (input: Record<string, unknown>) => Promise<any>;
+type Loose = any;
+type Run = (input: Record<string, unknown>) => Promise<Loose>;
 const run = (name: string): Run => (input) =>
   (tools[name] as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute(input, {
     toolCallId: 't', messages: [],
@@ -69,10 +70,50 @@ describe('hire tools', () => {
     expect(sales.total).toBe(42);
     expect(sales.applications.every((a: { job: string }) => a.job === 'Sales Executive')).toBe(true);
     expect((await run('listApplications')({ jobTitle: 'SALES EXECUTIVE' })).total).toBe(42);
-    const offers = await run('listApplications')({ stage: 'offer', outcome: 'active' });
+    const offers = await run('listApplications')({ stage: 'offer', outcome: 'active', includeContact: true });
     expect(offers.total).toBe(2);
     expect(offers.applications[0]).toMatchObject({ stage: 'offer', label: 'Shortlisted' });
     expect(offers.applications[0].email).toMatch(/@demo\.openkuasa\.com$/);
+  });
+
+  it('leaves contact details out unless asked, and does not even read candidates', async () => {
+    let candidateReads = 0;
+    const counting: HireData = { ...data, listCandidates: async () => { candidateReads += 1; return data.listCandidates(); } };
+    const t = createHireTools(counting, NOW);
+    const exec = (name: string, input: Record<string, unknown>) =>
+      (t[name] as unknown as { execute: (i: unknown, o: unknown) => Promise<Loose> }).execute(input, { toolCallId: 't', messages: [] });
+    const apps = await exec('listApplications', {});
+    expect(apps.applications.length).toBeGreaterThan(0);
+    expect(apps.applications.some((r: object) => 'email' in r || 'phone' in r)).toBe(false);
+    expect(candidateReads).toBe(0);
+    const pool = await exec('listTalentPool', {});
+    expect(pool.candidates.length).toBeGreaterThan(0);
+    expect(pool.candidates.some((r: object) => 'email' in r || 'phone' in r)).toBe(false);
+  });
+
+  it('includes email and phone when includeContact is true', async () => {
+    const apps = await run('listApplications')({ includeContact: true });
+    expect(apps.applications.every((r: object) => 'email' in r && 'phone' in r)).toBe(true);
+    const pool = await run('listTalentPool')({ includeContact: true });
+    expect(pool.candidates.every((r: object) => 'email' in r && 'phone' in r)).toBe(true);
+    expect(pool.candidates.some((r: { email: string | null }) => r.email)).toBe(true);
+  });
+
+  it('orders past interviews latest first whatever order the provider returns', async () => {
+    const all = await data.listInterviews();
+    const shuffled: HireData = { ...data, listInterviews: async () => [...all].reverse() };
+    const t = createHireTools(shuffled, NOW);
+    const result = await (t.listInterviews as unknown as { execute: (i: unknown, o: unknown) => Promise<Loose> }).execute({ when: 'past' }, { toolCallId: 't', messages: [] });
+    const times = result.interviews.map((i: { scheduled_at: string }) => Date.parse(i.scheduled_at));
+    expect(times.length).toBeGreaterThan(1);
+    expect(times).toEqual([...times].sort((a: number, b: number) => b - a));
+  });
+
+  it('never lets the model choose the workspace', () => {
+    for (const name of HIRE_TOOL_NAMES) {
+      const shape = (tools[name] as unknown as { inputSchema: { shape: Record<string, unknown> } }).inputSchema.shape;
+      expect(Object.keys(shape).some((k) => /org|tenant|workspace/i.test(k)), name).toBe(false);
+    }
   });
 
   it('answers a filter that matches nothing with nothing, not everything', async () => {

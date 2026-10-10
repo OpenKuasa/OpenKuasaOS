@@ -41,6 +41,10 @@ const jobTitle = z
   .string()
   .optional()
   .describe('Only this job, by title. Part of the title is enough, in any letter case.');
+const includeContact = z
+  .boolean()
+  .optional()
+  .describe('Set true only when the user asked for contact details (email or phone). Leave it out otherwise.');
 const limit = limitSchema(`How many rows to return, at most ${LOOKUP_MAX}.`);
 
 export function createHireTools(
@@ -98,19 +102,22 @@ export function createHireTools(
       description:
         'List job applications, newest first: the candidate, the job, the stage reached ' +
         '(applied, screening, interview, offer, hired), whether it is still live, the rating out of 5, ' +
-        'the source and the candidate\'s contact details. Filter by job, stage or outcome.',
+        'the source. Email and phone are returned only when includeContact is set. Filter by job, stage or outcome.',
       inputSchema: z.object({
         jobTitle,
         stage: z.enum(['applied', 'screening', 'interview', 'offer', 'hired']).optional()
           .describe('Only applications currently at this stage.'),
         outcome: z.enum(['active', 'rejected', 'withdrawn']).optional()
           .describe('Only live (active), rejected or withdrawn applications.'),
+        includeContact,
         limit,
       }),
-      execute: async ({ jobTitle: title, stage, outcome, limit: requested }) =>
+      execute: async ({ jobTitle: title, stage, outcome, includeContact: withContact, limit: requested }) =>
         safe('listApplications', async () => {
-          const [apps, candidates] = await Promise.all([data.listApplications(), data.listCandidates()]);
-          const people = new Map(candidates.map((c) => [c.id, c]));
+          const apps = await data.listApplications();
+          const people = withContact
+            ? new Map((await data.listCandidates()).map((c) => [c.id, c]))
+            : null;
           const rows = apps.filter(
             (a) => matchesText(a.job_title, title) && (!stage || a.stage === stage) && (!outcome || a.outcome === outcome),
           );
@@ -125,8 +132,10 @@ export function createHireTools(
               rating: a.rating,
               source: a.source,
               applied_at: a.applied_at,
-              email: people.get(a.candidate_id)?.email ?? null,
-              phone: people.get(a.candidate_id)?.phone ?? null,
+              ...(people && {
+                email: people.get(a.candidate_id)?.email ?? null,
+                phone: people.get(a.candidate_id)?.phone ?? null,
+              }),
             })),
           };
         }),
@@ -160,14 +169,15 @@ export function createHireTools(
     listTalentPool: tool({
       description:
         'List the saved candidates in the talent pool with their headline, skills, location, source ' +
-        'and contact details. Filter by a skill, a location or their pool status.',
+        'Email and phone are returned only when includeContact is set. Filter by a skill, a location or their pool status.',
       inputSchema: z.object({
         skill: z.string().optional().describe('Only candidates with this skill. Part of the skill is enough.'),
         location: z.string().optional().describe('Only candidates in this place.'),
         poolStatus: z.enum(['available', 'passive', 're_engaged']).optional().describe('Only this pool status.'),
+        includeContact,
         limit,
       }),
-      execute: async ({ skill, location, poolStatus, limit: requested }) =>
+      execute: async ({ skill, location, poolStatus, includeContact: withContact, limit: requested }) =>
         safe('listTalentPool', async () => {
           const rows = (await data.listCandidates()).filter(
             (c) =>
@@ -185,8 +195,7 @@ export function createHireTools(
               location: c.location,
               source: c.source,
               pool_status: c.pool_status,
-              email: c.email,
-              phone: c.phone,
+              ...(withContact && { email: c.email, phone: c.phone }),
             })),
           };
         }),
@@ -210,8 +219,12 @@ export function createHireTools(
             if (when === 'past' && ahead) return false;
             return !status || i.status === status;
           });
-          // Past interviews read better latest first.
-          const ordered = when === 'past' ? [...rows].reverse() : rows;
+          // Past interviews read better latest first; the rest soonest first. Not left to the provider's order.
+          const ordered = [...rows].sort((a, b) =>
+            when === 'past'
+              ? Date.parse(b.scheduled_at) - Date.parse(a.scheduled_at)
+              : Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at),
+          );
           return {
             total: rows.length,
             interviews: ordered.slice(0, rowLimit(requested, 20)).map((i) => ({
