@@ -7,7 +7,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { JOB_COLUMNS, type Job, type JobStatus } from './types';
+import { DEFAULT_HIRE_SETTINGS, JOB_COLUMNS, SETTINGS_COLUMNS, type HireSettings, type Job, type JobStatus } from './types';
 
 export type HireWriteContext = { client: SupabaseClient; orgId: string };
 export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -267,4 +267,68 @@ export async function deleteJob(
   const { error } = await ctx.client.from('hire_jobs').delete().eq('id', current.id).eq('org_id', ctx.orgId);
   if (error) return writeFailed('deleteJob', error);
   return { ok: true, data: { id: current.id, title: current.title } };
+}
+
+// ─── careers page (one settings row per workspace) ───────────────────────────
+
+export const CAREERS_DEMO = 'The demo workspace cannot have a public careers page.';
+const DEMO_SLUG = 'rimba-ventures-demo';
+
+export const updateCareersPageInput = z.object({
+  careers_enabled: z.boolean().optional()
+    .describe('true turns the public careers page on: open jobs become visible to anyone with the link. false turns it off.'),
+  careers_headline: z.string().trim().max(80, 'Keep the headline under 80 characters.').nullable().optional()
+    .describe('The headline at the top of the public careers page. Blank clears it.'),
+  careers_tagline: z.string().trim().max(160, 'Keep the tagline under 160 characters.').nullable().optional()
+    .describe('One line under the headline. Blank clears it.'),
+});
+
+const asSettings = (orgId: string, row: unknown): HireSettings =>
+  ({ org_id: orgId, ...DEFAULT_HIRE_SETTINGS, ...((row ?? {}) as Partial<HireSettings>) });
+
+export async function updateCareersPage(
+  ctx: HireWriteContext,
+  input: z.input<typeof updateCareersPageInput>,
+  now: Date = new Date(),
+): Promise<CapResult<HireSettings>> {
+  const parsed = updateCareersPageInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  const given = {
+    careers_enabled: parsed.data.careers_enabled,
+    careers_headline: blankToNull(parsed.data.careers_headline),
+    careers_tagline: blankToNull(parsed.data.careers_tagline),
+  };
+  const patch = Object.fromEntries(Object.entries(given).filter(([, v]) => v !== undefined));
+
+  if (Object.keys(patch).length === 0) {
+    const { data, error } = await ctx.client
+      .from('hire_settings').select(SETTINGS_COLUMNS).eq('org_id', ctx.orgId).maybeSingle();
+    if (error) return writeFailed('updateCareersPage', error);
+    return { ok: true, data: asSettings(ctx.orgId, data) };
+  }
+
+  if (patch.careers_enabled === true) {
+    const { data: org, error } = await ctx.client.from('orgs').select('slug').eq('id', ctx.orgId).maybeSingle();
+    if (error) return writeFailed('updateCareersPage', error);
+    if ((org as { slug?: string | null } | null)?.slug === DEMO_SLUG) return { ok: false, error: CAREERS_DEMO };
+  }
+
+  // Not an upsert: the update grant leaves out org_id, which an upsert's "do update" would set.
+  const update = () =>
+    ctx.client.from('hire_settings')
+      .update({ ...patch, updated_at: now.toISOString() })
+      .eq('org_id', ctx.orgId).select(SETTINGS_COLUMNS).maybeSingle();
+
+  const first = await update();
+  if (first.error) return writeFailed('updateCareersPage', first.error);
+  if (first.data) return { ok: true, data: asSettings(ctx.orgId, first.data) };
+
+  const inserted = await ctx.client.from('hire_settings')
+    .insert({ ...patch, org_id: ctx.orgId }).select(SETTINGS_COLUMNS).single();
+  if (!inserted.error && inserted.data) return { ok: true, data: asSettings(ctx.orgId, inserted.data) };
+  // Someone else made the row between the two calls: update it after all.
+  if ((inserted.error as { code?: string } | null)?.code !== '23505') return writeFailed('updateCareersPage', inserted.error);
+  const second = await update();
+  if (second.error || !second.data) return writeFailed('updateCareersPage', second.error);
+  return { ok: true, data: asSettings(ctx.orgId, second.data) };
 }

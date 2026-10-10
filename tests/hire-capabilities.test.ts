@@ -6,6 +6,9 @@ import {
   JOB_LIVE_NEEDS_DESCRIPTION,
   JOB_NEEDS_DESCRIPTION,
   JOB_NOT_FOUND,
+  CAREERS_DEMO,
+  updateCareersPage,
+  updateCareersPageInput,
   createJob,
   createJobInput,
   deleteJob,
@@ -269,9 +272,136 @@ describe('deleteJob lookup failure', () => {
   });
 });
 
+/** A stand-in for `orgs` (slug lookup) and `hire_settings` (update, then insert). */
+function fakeSettings(opts: {
+  slug?: string | null;
+  existing?: Record<string, unknown> | null;
+  insertError?: { code?: string; message: string } | null;
+  updateError?: { message: string } | null;
+  /** rows the update returns, per call, overriding `existing` (for the raced insert) */
+  updateResults?: (Record<string, unknown> | null)[];
+} = {}) {
+  const calls: { table: string; op: string; values?: Record<string, unknown>; filters: Record<string, unknown> }[] = [];
+  let updateCount = 0;
+  const client = {
+    from(table: string) {
+      const filters: Record<string, unknown> = {};
+      let op = 'select';
+      let values: Record<string, unknown> | undefined;
+      const record = () => calls.push({ table, op, values, filters: { ...filters } });
+      const chain = {
+        select: () => chain,
+        insert: (v: Record<string, unknown>) => { op = 'insert'; values = v; return chain; },
+        update: (v: Record<string, unknown>) => { op = 'update'; values = v; return chain; },
+        eq: (k: string, v: unknown) => { filters[k] = v; return chain; },
+        maybeSingle: async () => {
+          record();
+          if (table === 'orgs') return { data: opts.slug === undefined ? null : { slug: opts.slug }, error: null };
+          if (op === 'update') {
+            if (opts.updateError) return { data: null, error: opts.updateError };
+            // The real call selects only the settings columns, so updated_at is not returned.
+            const patch = { ...values };
+            delete patch.updated_at;
+            const next = opts.updateResults ? (opts.updateResults[updateCount++] ?? null) : opts.existing ? { ...opts.existing, ...patch } : null;
+            return { data: next, error: null };
+          }
+          return { data: opts.existing ?? null, error: null };
+        },
+        single: async () => {
+          record();
+          if (opts.insertError) return { data: null, error: opts.insertError };
+          return { data: { ...values }, error: null };
+        },
+      };
+      return chain;
+    },
+  };
+  const ctx = { client: client as never, orgId: ORG } satisfies HireWriteContext;
+  const writes = () => calls.filter((c) => c.table === 'hire_settings' && (c.op === 'update' || c.op === 'insert'));
+  return { ctx, calls, writes };
+}
+
+describe('updateCareersPage', () => {
+  it('1: updates the existing row with the sent fields and updated_at, filtered by the workspace', async () => {
+    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null } });
+    const result = await updateCareersPage(ctx, { careers_enabled: true, careers_headline: 'Hi' }, NOW);
+    expect(writes()).toEqual([{
+      table: 'hire_settings', op: 'update',
+      values: { careers_enabled: true, careers_headline: 'Hi', updated_at: NOW.toISOString() },
+      filters: { org_id: ORG },
+    }]);
+    expect(result).toEqual({ ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null } });
+  });
+  it('2: inserts when there is no row yet, always with the workspace from the session', async () => {
+    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: null });
+    const result = await updateCareersPage(ctx, { careers_enabled: true, org_id: 'evil' } as never, NOW);
+    const inserts = writes().filter((w) => w.op === 'insert');
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].values).toEqual({ careers_enabled: true, org_id: ORG });
+    expect(result).toMatchObject({ ok: true, data: { org_id: ORG, careers_enabled: true } });
+  });
+  it('3: when the insert loses a race (23505), updates the row that now exists', async () => {
+    const { ctx, writes } = fakeSettings({
+      slug: 'acme',
+      insertError: { code: '23505', message: 'duplicate key' },
+      updateResults: [null, { org_id: ORG, careers_enabled: true, careers_headline: null, careers_tagline: null }],
+    });
+    const result = await updateCareersPage(ctx, { careers_enabled: true }, NOW);
+    expect(writes().map((w) => w.op)).toEqual(['update', 'insert', 'update']);
+    expect(result).toEqual({ ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: null, careers_tagline: null } });
+  });
+  it('4: stores a blank headline or tagline as null, and leaves out a field that was not sent', async () => {
+    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: { org_id: ORG } });
+    await updateCareersPage(ctx, { careers_headline: '   ', careers_tagline: '' }, NOW);
+    expect(writes()[0].values).toEqual({ careers_headline: null, careers_tagline: null, updated_at: NOW.toISOString() });
+    expect(writes()[0].values).not.toHaveProperty('careers_enabled');
+  });
+  it('5: refuses a headline over 80 characters and a tagline over 160, and writes nothing', async () => {
+    const { ctx, writes } = fakeSettings({ slug: 'acme', existing: { org_id: ORG } });
+    expect(await updateCareersPage(ctx, { careers_headline: 'x'.repeat(81) }, NOW))
+      .toEqual({ ok: false, error: 'Keep the headline under 80 characters.' });
+    expect(await updateCareersPage(ctx, { careers_tagline: 'x'.repeat(161) }, NOW))
+      .toEqual({ ok: false, error: 'Keep the tagline under 160 characters.' });
+    expect(writes()).toHaveLength(0);
+    expect((await updateCareersPage(ctx, { careers_headline: 'x'.repeat(80), careers_tagline: 'y'.repeat(160) }, NOW)).ok).toBe(true);
+    expect(writes()).toHaveLength(1);
+  });
+  it('6: writes nothing when nothing is sent, and returns the current settings or the defaults', async () => {
+    const current = fakeSettings({ existing: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null } });
+    expect(await updateCareersPage(current.ctx, {}, NOW)).toEqual({
+      ok: true, data: { org_id: ORG, careers_enabled: true, careers_headline: 'Hi', careers_tagline: null },
+    });
+    expect(current.writes()).toHaveLength(0);
+    const none = fakeSettings({ existing: null });
+    expect(await updateCareersPage(none.ctx, {}, NOW)).toEqual({
+      ok: true, data: { org_id: ORG, careers_enabled: false, careers_headline: null, careers_tagline: null },
+    });
+    expect(none.writes()).toHaveLength(0);
+  });
+  it('7: refuses to switch the board on in the demo workspace, but not to switch it off or edit text', async () => {
+    const on = fakeSettings({ slug: 'rimba-ventures-demo', existing: { org_id: ORG } });
+    expect(await updateCareersPage(on.ctx, { careers_enabled: true }, NOW)).toEqual({ ok: false, error: CAREERS_DEMO });
+    expect(on.writes()).toHaveLength(0);
+    const off = fakeSettings({ slug: 'rimba-ventures-demo', existing: { org_id: ORG, careers_enabled: true } });
+    expect((await updateCareersPage(off.ctx, { careers_enabled: false }, NOW)).ok).toBe(true);
+    expect(off.writes()).toHaveLength(1);
+    const text = fakeSettings({ slug: 'rimba-ventures-demo', existing: { org_id: ORG } });
+    expect((await updateCareersPage(text.ctx, { careers_headline: 'Join us' }, NOW)).ok).toBe(true);
+    expect(text.writes()).toHaveLength(1);
+  });
+  it('8: a database error on the write gives the generic line and logs', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { ctx } = fakeSettings({ slug: 'acme', updateError: { message: 'permission denied for table hire_settings' } });
+    expect(await updateCareersPage(ctx, { careers_headline: 'Hi' }, NOW))
+      .toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
+  });
+});
+
 describe('input schemas', () => {
   it('convert to JSON Schema, so they can be tool input schemas', () => {
-    for (const schema of [createJobInput, updateJobInput, setJobStatusInput, deleteJobInput]) {
+    for (const schema of [createJobInput, updateJobInput, setJobStatusInput, deleteJobInput, updateCareersPageInput]) {
       expect(z.toJSONSchema(schema)).toMatchObject({ type: 'object' });
     }
   });

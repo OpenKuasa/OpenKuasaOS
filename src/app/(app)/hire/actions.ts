@@ -9,8 +9,10 @@ import {
   createJob,
   deleteJob,
   setJobStatus,
+  updateCareersPage,
   updateJob,
 } from '@/lib/hire/capabilities';
+import { careersPath } from '@/lib/hire/public-careers';
 import { createClient } from '@/lib/supabase/server';
 
 const FORBIDDEN: CapResult<never> = { ok: false, error: 'You do not have permission to make changes here.' };
@@ -52,4 +54,18 @@ export async function setJobStatusAction(input: unknown) {
 }
 export async function deleteJobAction(input: unknown) {
   return run((ctx) => deleteJob(ctx, input as never));
+}
+
+/** The careers page is its own thing: it does not change what the job screens show. */
+export async function updateCareersPageAction(input: unknown) {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const result = await updateCareersPage(ctx, input as never);
+  if (result.ok) {
+    revalidatePath('/hire/careers-page');
+    revalidatePath('/hire/assistant');
+    // 'layout' covers the board and every job page beneath it.
+    revalidatePath(careersPath(ctx.orgId), 'layout');
+  }
+  return result;
 }
