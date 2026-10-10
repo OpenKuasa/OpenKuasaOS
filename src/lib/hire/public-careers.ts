@@ -49,14 +49,26 @@ function summary(row: Row): PublicJobSummary | null {
   };
 }
 
+/**
+ * Calls one of the public functions. A read that fails, by an error in the
+ * answer or by throwing, is logged and comes back as null: a visitor is told
+ * the page is not there, never shown an error.
+ */
+async function read(client: SupabaseClient, fn: string, args: Record<string, string>): Promise<unknown> {
+  try {
+    const { data, error } = await client.rpc(fn, args);
+    if (!error) return data;
+    console.error(`[public-careers] ${fn} failed:`, error);
+  } catch (error) {
+    console.error(`[public-careers] ${fn} failed:`, error);
+  }
+  return null;
+}
+
 /** The board of a workspace, or null when it has none to show. A failed read is also null (and logged). */
 export async function getPublicCareers(client: SupabaseClient, orgId: string): Promise<PublicCareers | null> {
   if (!isUuid(orgId)) return null;
-  const { data, error } = await client.rpc('get_public_careers', { p_org_id: orgId });
-  if (error) {
-    console.error('[public-careers] get_public_careers failed:', error);
-    return null;
-  }
+  const data = await read(client, 'get_public_careers', { p_org_id: orgId });
   const rows = (Array.isArray(data) ? data : []) as Row[];
   const first = rows[0];
   if (!first?.org_name) return null;
@@ -69,11 +81,7 @@ export async function getPublicCareers(client: SupabaseClient, orgId: string): P
 /** One open job on a workspace's board, or null. */
 export async function getPublicJob(client: SupabaseClient, orgId: string, jobId: string): Promise<PublicJob | null> {
   if (!isUuid(orgId) || !isUuid(jobId)) return null;
-  const { data, error } = await client.rpc('get_public_job', { p_org_id: orgId, p_job_id: jobId });
-  if (error) {
-    console.error('[public-careers] get_public_job failed:', error);
-    return null;
-  }
+  const data = await read(client, 'get_public_job', { p_org_id: orgId, p_job_id: jobId });
   const row = (Array.isArray(data) ? data[0] : data) as Row | null | undefined;
   const base = row ? summary(row) : null;
   if (!row?.org_name || !base) return null;

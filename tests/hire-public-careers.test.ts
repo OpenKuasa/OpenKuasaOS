@@ -34,7 +34,12 @@ describe('getPublicCareers', () => {
   it('is null when nothing comes back, and when the call fails', async () => {
     expect(await getPublicCareers(client([]).asClient, ORG)).toBeNull();
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await getPublicCareers(client(null, { message: 'boom' }).asClient, ORG)).toBeNull();
+    // A row beside the error: reading the row anyway would not be null.
+    expect(await getPublicCareers(client([row], { message: 'boom' }).asClient, ORG)).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(1);
+    const thrown = { rpc: vi.fn().mockRejectedValue(new Error('network down')) } as never;
+    expect(await getPublicCareers(thrown, ORG)).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(2);
     spy.mockRestore();
   });
   it('makes no call for an id that is not a UUID', async () => {
@@ -55,6 +60,11 @@ describe('getPublicJob', () => {
   });
   it('is null for no row, a failed call, or a bad id (without calling)', async () => {
     expect(await getPublicJob(client([]).asClient, ORG, JOB)).toBeNull();
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await getPublicJob(client([jobRow], { message: 'boom' }).asClient, ORG, JOB)).toBeNull();
+    expect(await getPublicJob({ rpc: vi.fn().mockRejectedValue(new Error('network down')) } as never, ORG, JOB)).toBeNull();
+    expect(spy).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
     const c = client([jobRow]);
     expect(await getPublicJob(c.asClient, ORG, 'not-a-uuid')).toBeNull();
     expect(await getPublicJob(c.asClient, 'x', JOB)).toBeNull();
