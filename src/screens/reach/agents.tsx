@@ -26,6 +26,8 @@ function defaultConfig(orgId: string): AgentConfig {
     last_run_at: null,
     created_at: '',
     updated_at: '',
+    daily_cap_cents: 500,
+    weekly_cap_cents: 2000,
   };
 }
 

@@ -87,3 +87,10 @@ testWithSupabase('an authenticated session cannot update spent_cents or runs_use
     if (id) await owner.c.from('agent_schedules').delete().eq('id', id);
   }
 });
+
+testWithSupabase('an authenticated session cannot seed spent_cents or runs_used on insert (no column grant)', async () => {
+  const spent = await owner.c.from('agent_schedules').insert({ ...newSchedule(owner.orgId), spent_cents: -1 });
+  expect(spent.error?.code).toBe('42501');
+  const runs = await owner.c.from('agent_schedules').insert({ ...newSchedule(owner.orgId), runs_used: -1 });
+  expect(runs.error?.code).toBe('42501');
+});

@@ -10,9 +10,9 @@ create table public.agent_schedules (
   last_run_at timestamptz,
   end_at timestamptz,
   max_runs integer check (max_runs is null or max_runs between 1 and 1000),
-  runs_used integer not null default 0,
+  runs_used integer not null default 0 check (runs_used >= 0),
   max_total_cents integer check (max_total_cents is null or max_total_cents between 0 and 100000),
-  spent_cents integer not null default 0,
+  spent_cents integer not null default 0 check (spent_cents >= 0),
   status text not null default 'active' check (status in ('active','paused','completed')),
   paused_reason text,
   created_at timestamptz not null default now(),
@@ -20,7 +20,9 @@ create table public.agent_schedules (
 );
 alter table public.agent_schedules enable row level security;
 revoke all on public.agent_schedules from anon, authenticated;
-grant select, insert, delete on public.agent_schedules to authenticated;
+grant select, delete on public.agent_schedules to authenticated;
+grant insert (org_id, agent_key, created_by, nl_text, interval_seconds, next_run_at, end_at, max_runs, max_total_cents, status)
+  on public.agent_schedules to authenticated;
 grant update (nl_text, interval_seconds, next_run_at, end_at, max_runs, max_total_cents, status, updated_at)
   on public.agent_schedules to authenticated;
 

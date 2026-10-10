@@ -15,6 +15,8 @@ export type AgentConfig = {
   last_run_at: string | null;
   created_at: string;
   updated_at: string;
+  daily_cap_cents: number;
+  weekly_cap_cents: number;
 };
 
 export type AgentRun = {
