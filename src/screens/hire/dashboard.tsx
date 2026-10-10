@@ -94,7 +94,7 @@ export default async function DashboardScreen() {
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat label="Applications" value={model ? String(applications) : '—'} />
+          <BentoStat label="Applications" value={model ? String(model.totals.applications) : '—'} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat label="Offers out" value={model ? String(model.totals.offers_out) : '—'} />

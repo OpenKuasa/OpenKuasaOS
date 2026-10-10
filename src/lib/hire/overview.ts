@@ -13,6 +13,7 @@ import {
 const DAY = 86_400_000;
 
 export type OverviewTotals = {
+  applications: number;
   open_jobs: number;
   active_applications: number;
   interviews_next_7_days: number;
@@ -23,6 +24,7 @@ export type OverviewTotals = {
 export function overviewTotals(jobs: Job[], apps: Application[], interviews: Interview[], now: Date): OverviewTotals {
   const t = now.getTime();
   return {
+    applications: apps.length,
     open_jobs: jobs.filter((j) => j.status === 'open').length,
     active_applications: apps.filter((a) => a.outcome === 'active' && a.stage !== 'hired').length,
     interviews_next_7_days: interviews.filter((i) => {

@@ -8,6 +8,7 @@
 
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
+import { formatWhen } from '@/lib/reach/overview';
 import { LOOKUP_MAX, limitSchema, rowLimit } from '@/lib/ai/limits';
 import { applicationLabel, funnelCounts, matchesText } from '@/lib/hire/applications-view';
 import { timeToHire } from '@/lib/hire/dashboard';
@@ -56,7 +57,7 @@ export function createHireTools(
   return {
     getHiringOverview: tool({
       description:
-        'Hiring at a glance: open jobs, live applications, interviews scheduled in the next 7 days, ' +
+        'Hiring at a glance: open jobs, all applications received, live applications, interviews scheduled in the next 7 days, ' +
         'offers waiting on an answer, and hires in the last 30 days.',
       inputSchema: z.object({}),
       execute: async () =>
@@ -106,7 +107,7 @@ export function createHireTools(
       inputSchema: z.object({
         jobTitle,
         stage: z.enum(['applied', 'screening', 'interview', 'offer', 'hired']).optional()
-          .describe('Only applications currently at this stage.'),
+          .describe("Only applications whose furthest stage reached is this one, including rejected ones. Add outcome: 'active' for the ones still live."),
         outcome: z.enum(['active', 'rejected', 'withdrawn']).optional()
           .describe('Only live (active), rejected or withdrawn applications.'),
         includeContact,
@@ -168,7 +169,7 @@ export function createHireTools(
 
     listTalentPool: tool({
       description:
-        'List the saved candidates in the talent pool with their headline, skills, location, source ' +
+        'List the saved candidates in the talent pool with their headline, skills, location, source. ' +
         'Email and phone are returned only when includeContact is set. Filter by a skill, a location or their pool status.',
       inputSchema: z.object({
         skill: z.string().optional().describe('Only candidates with this skill. Part of the skill is enough.'),
@@ -204,7 +205,8 @@ export function createHireTools(
     listInterviews: tool({
       description:
         'List interviews with the candidate, the job, the time, how it is held (video, onsite, phone), ' +
-        'the interviewer and the status. Ask for upcoming or past ones, or filter by status.',
+        'the interviewer and the status. Ask for upcoming or past ones, or filter by status. ' +
+        '`when` is the time in Kuala Lumpur, relative to today; use it when telling the user the time.',
       inputSchema: z.object({
         when: z.enum(['upcoming', 'past']).optional().describe('Only interviews still ahead, or only ones already past.'),
         status: z.enum(['scheduled', 'completed', 'cancelled', 'no_show']).optional().describe('Only this status.'),
@@ -231,6 +233,7 @@ export function createHireTools(
               candidate: i.candidate_name,
               job: i.job_title,
               scheduled_at: i.scheduled_at,
+              when: formatWhen(i.scheduled_at, now()),
               kind: i.kind,
               interviewer: i.interviewer_name,
               status: i.status,

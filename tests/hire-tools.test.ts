@@ -5,6 +5,7 @@ import { CRM_WRITE_TOOL_NAMES } from '@/lib/ai/crm-tools';
 import { REACH_WRITE_TOOL_NAMES } from '@/lib/ai/products';
 import { createReachTools } from '@/lib/ai/tools';
 import { toolMeta } from '@/components/chat/tool-parts';
+import { formatWhen } from '@/lib/reach/overview';
 import { funnelCounts } from '@/lib/hire/applications-view';
 import { timeToHire } from '@/lib/hire/dashboard';
 import { createSeedHireData } from '@/lib/hire/seed';
@@ -45,7 +46,7 @@ describe('hire tools', () => {
 
   it('gives the overview totals', async () => {
     expect(await run('getHiringOverview')({})).toMatchObject({
-      open_jobs: 6, interviews_next_7_days: 6, offers_out: 2, hires_last_30_days: 2,
+      applications: 248, open_jobs: 6, interviews_next_7_days: 6, offers_out: 2, hires_last_30_days: 2,
     });
   });
 
@@ -143,6 +144,14 @@ describe('hire tools', () => {
     expect((await run('listInterviews')({ when: 'upcoming' })).total).toBe(6);
     expect((await run('listInterviews')({ when: 'past' })).total).toBe(4);
     expect((await run('listInterviews')({ status: 'no_show' })).total).toBe(1);
+  });
+
+  it('gives every interview a Kuala Lumpur `when`', async () => {
+    const result = await run('listInterviews')({});
+    expect(result.interviews.length).toBeGreaterThan(0);
+    for (const row of result.interviews) expect(typeof row.when).toBe('string');
+    const first = result.interviews[0];
+    expect(first.when).toBe(formatWhen(first.scheduled_at, NOW));
   });
 
   it('gives the same time to hire as the helper', async () => {

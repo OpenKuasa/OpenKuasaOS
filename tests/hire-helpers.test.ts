@@ -91,7 +91,7 @@ describe('overview numbers', () => {
   it('totals the seed', async () => {
     const [jobs, apps, interviews] = await Promise.all([data.listJobs(), data.listApplications(), data.listInterviews()]);
     expect(overviewTotals(jobs, apps, interviews, NOW)).toMatchObject({
-      open_jobs: 6, interviews_next_7_days: 6, offers_out: 2, hires_last_30_days: 2,
+      applications: 248, open_jobs: 6, interviews_next_7_days: 6, offers_out: 2, hires_last_30_days: 2,
     });
   });
   it('does not count a hire dated after now', () => {
@@ -174,7 +174,7 @@ describe('models', () => {
   it('builds empty models without NaN or a throw', async () => {
     const overview = await buildHireOverviewModel(EMPTY, NOW);
     expect(overview.isEmpty).toBe(true);
-    expect(overview.totals).toEqual({ open_jobs: 0, active_applications: 0, interviews_next_7_days: 0, offers_out: 0, hires_last_30_days: 0 });
+    expect(overview.totals).toEqual({ applications: 0, open_jobs: 0, active_applications: 0, interviews_next_7_days: 0, offers_out: 0, hires_last_30_days: 0 });
     expect(overview.funnel.map((f) => f.value)).toEqual([0, 0, 0, 0, 0]);
     const dashboard = await buildHireDashboardModel(EMPTY, NOW);
     expect(dashboard.isEmpty).toBe(true);
