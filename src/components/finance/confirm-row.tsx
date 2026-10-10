@@ -56,7 +56,17 @@ export function ConfirmRow({
               {error}
             </p>
           ) : null}
-          <Button type="button" variant={destructive ? 'destructive' : 'default'} size="sm" onClick={onConfirm} disabled={pending}>
+          {/* aria-disabled rather than disabled: a disabled button drops focus to the page, and Escape then no longer reaches this row. */}
+          <Button
+            type="button"
+            variant={destructive ? 'destructive' : 'default'}
+            size="sm"
+            aria-disabled={pending}
+            className="aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            onClick={() => {
+              if (!pending) onConfirm();
+            }}
+          >
             <Icon className="size-4" />
             {pending ? pendingLabel : confirmLabel}
           </Button>
