@@ -6,13 +6,13 @@
  * lookups, which read a request-scoped provider built from the one workspace
  * resolved here (`createSupabasePeopleData`; the sample data when no project is
  * configured) through the caller's own session, so the database decides which rows they see: all
- * of them for an owner or admin, only their own for anyone else. It holds no
- * change tools yet.
+ * of them for an owner or admin, only their own for anyone else. An owner or admin also gets the change tools for employees and departments; each change waits for their approval.
  */
 
 import { chatJson, prepareChat } from '@/lib/ai/chat-request';
 import { runLekiu } from '@/lib/ai/agents/orchestrator';
 import { getCurrentOrg } from '@/lib/auth/current-org';
+import { can } from '@/lib/auth/permissions';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
 import { createSupabasePeopleData, getPeopleData } from '@/lib/people/supabase';
 import type { PeopleData, PeopleViewer } from '@/lib/people/types';
@@ -51,7 +51,12 @@ export async function POST(request: Request) {
       code: 'data_unavailable',
     });
   }
-  const result = runLekiu(chat.messages, { data, viewer }, request.signal, chat.apiKey);
+  // Change tools for an owner or admin only: the same rule the database enforces. Each still needs approval.
+  // Nothing is revalidated here, as in the other chat routes: every /people page is rendered per request,
+  // and only a server action can refresh the page the person is already looking at.
+  const write =
+    org && can(org.role, 'approve') ? { ctx: { client: chat.supabase, orgId: org.orgId }, canWrite: true } : undefined;
+  const result = runLekiu(chat.messages, { data, viewer, write }, request.signal, chat.apiKey);
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {
