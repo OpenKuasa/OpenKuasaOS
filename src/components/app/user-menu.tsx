@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,10 +9,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { UserAvatar } from '@/components/account/user-avatar';
+import { SignOutButton } from '@/components/auth/sign-out-button';
+import { useViewer } from '@/components/app/viewer-context';
+import { canSee, type Capability } from '@/lib/auth/permissions';
 
-const ITEMS = [
-  { label: 'Pricing & Features', href: '/account/plan' },
-  { label: 'Account & Billing', href: '/account/subscriptions' },
+const ITEMS: { label: string; href: string; needs?: Capability }[] = [
+  { label: 'Pricing & Features', href: '/account/plan', needs: 'manage-billing' },
+  { label: 'Account & Billing', href: '/account/subscriptions', needs: 'manage-billing' },
   { label: 'Role Permission', href: '/account/team' },
   { label: 'Change Password', href: '/account/security' },
   { label: 'Product Changelog', href: '/account/changelog' },
@@ -22,16 +25,19 @@ const ITEMS = [
   { label: 'Features Request', href: '/account/feedback' },
 ];
 
-export function UserMenu({ name = 'Saudara' }: { name?: string }) {
+export function UserMenu() {
+  const viewer = useViewer();
+  const { name, initials, avatarUrl, email, orgName } = viewer;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-full border bg-background py-1 pl-1 pr-2.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <Avatar className="size-7">
-          <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
-            {name[0]}
-          </AvatarFallback>
-        </Avatar>
-        <span className="hidden sm:inline">{name}</span>
+        <UserAvatar
+          initials={initials[0]}
+          avatarUrl={avatarUrl}
+          className="size-7"
+          fallbackClassName="bg-primary text-xs text-primary-foreground"
+        />
+        <span className="hidden max-w-32 truncate sm:inline">{name}</span>
         <ChevronDown className="size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
 
@@ -41,13 +47,17 @@ export function UserMenu({ name = 'Saudara' }: { name?: string }) {
           href="/account/profile"
           className="flex items-center gap-3 px-3 py-3 transition-colors hover:bg-accent"
         >
-          <Avatar className="size-11">
-            <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
-              JD
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            initials={initials}
+            avatarUrl={avatarUrl}
+            className="size-11"
+            fallbackClassName="text-sm font-bold"
+          />
           <div className="min-w-0">
-            <p className="truncate font-bold leading-tight">Saudara</p>
+            <p className="truncate font-bold leading-tight">{name}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {email ? `${email} · ${orgName}` : orgName}
+            </p>
             <p className="text-sm font-medium text-primary">
               Profile &amp; Preferences
             </p>
@@ -57,7 +67,7 @@ export function UserMenu({ name = 'Saudara' }: { name?: string }) {
         <DropdownMenuSeparator className="my-0" />
 
         <div className="py-1">
-          {ITEMS.map((item) => (
+          {ITEMS.filter((item) => canSee(viewer, item.needs)).map((item) => (
             <DropdownMenuItem key={item.label} asChild className="px-3 py-2">
               <Link href={item.href}>{item.label}</Link>
             </DropdownMenuItem>
@@ -67,9 +77,9 @@ export function UserMenu({ name = 'Saudara' }: { name?: string }) {
         <DropdownMenuSeparator className="my-0" />
 
         <div className="flex items-center justify-between px-3 py-2.5 text-sm font-medium">
-          <Link href="/login" className="text-primary hover:underline">
+          <SignOutButton className="text-primary hover:underline">
             Sign out
-          </Link>
+          </SignOutButton>
           <Link
             href="/privacy"
             className="text-muted-foreground hover:text-foreground hover:underline"

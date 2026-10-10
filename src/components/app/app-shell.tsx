@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { getProduct } from '@/config/nav';
 import { ProductRail } from './product-rail';
@@ -24,9 +24,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setMobileNavOpen(false);
   }
 
+  // Menus and dialogs render outside the shell, so the active product's colour
+  // scope is mirrored onto <html> for them.
+  const productKey = product?.key;
+  useEffect(() => {
+    if (!productKey) return;
+    document.documentElement.dataset.product = productKey;
+    return () => {
+      delete document.documentElement.dataset.product;
+    };
+  }, [productKey]);
+
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="flex h-dvh w-full overflow-hidden">
+      <div
+        data-product={productKey}
+        className="flex h-dvh w-full overflow-hidden"
+      >
         <ProductRail activeKey={key} />
 
         {/* Secondary nav — inline from md up (unless collapsed) */}

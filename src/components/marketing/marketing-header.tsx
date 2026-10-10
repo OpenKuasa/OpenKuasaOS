@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronDown, Menu, X, ArrowRight } from 'lucide-react';
 import { Logo } from '@/components/brand/logo';
 import { GitHubIcon } from '@/components/brand/github-icon';
+import { ThemeToggle } from '@/components/theme/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { MEGA_MENU, NAV_LINKS, REPO_URL } from '@/config/marketing';
 import { cn } from '@/lib/utils';
@@ -14,15 +15,15 @@ export function MarketingHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-mk-border bg-mk-bg/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <div className="flex items-center gap-8">
           <Link href="/" aria-label="OpenKuasa home">
-            <Logo wordmarkClassName="text-white text-xl" />
+            <Logo wordmarkClassName="text-mk-fg text-xl" />
           </Link>
 
-          <nav className="hidden items-center gap-6 text-sm text-white/75 lg:flex">
-            <Link href="/" className="transition-colors hover:text-white">
+          <nav className="hidden items-center gap-6 text-sm text-mk-fg/75 lg:flex">
+            <Link href="/" className="transition-colors hover:text-mk-fg">
               Home
             </Link>
 
@@ -35,7 +36,7 @@ export function MarketingHeader() {
               <button
                 type="button"
                 onClick={() => setMegaOpen((v) => !v)}
-                className="flex items-center gap-1 transition-colors hover:text-white"
+                className="flex items-center gap-1 transition-colors hover:text-mk-fg"
                 aria-expanded={megaOpen}
               >
                 Products
@@ -52,7 +53,7 @@ export function MarketingHeader() {
               <Link
                 key={l.label}
                 href={l.href}
-                className="transition-colors hover:text-white"
+                className="transition-colors hover:text-mk-fg"
               >
                 {l.label}
               </Link>
@@ -61,18 +62,19 @@ export function MarketingHeader() {
         </div>
 
         <div className="hidden items-center gap-4 lg:flex">
+          <ThemeToggle className="text-mk-fg/75 hover:bg-mk-fg/10 hover:text-mk-fg dark:hover:bg-mk-fg/10" />
           <a
             href={REPO_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-medium text-white/75 transition-colors hover:text-white"
+            className="inline-flex items-center gap-2 text-sm font-medium text-mk-fg/75 transition-colors hover:text-mk-fg"
           >
             <GitHubIcon />
             GitHub
           </a>
           <Link
             href="/login"
-            className="text-sm font-medium text-white/75 transition-colors hover:text-white"
+            className="text-sm font-medium text-mk-fg/75 transition-colors hover:text-mk-fg"
           >
             Login
           </Link>
@@ -84,7 +86,7 @@ export function MarketingHeader() {
         {/* mobile toggle */}
         <button
           type="button"
-          className="text-white lg:hidden"
+          className="text-mk-fg lg:hidden"
           aria-label="Toggle menu"
           onClick={() => setMobileOpen((v) => !v)}
         >
@@ -149,12 +151,12 @@ export function MarketingHeader() {
 
       {/* Mobile menu */}
       {mobileOpen ? (
-        <div className="border-t border-white/10 bg-[#0a0a0a] px-6 py-4 lg:hidden">
-          <nav className="flex flex-col gap-1 text-sm text-white/80">
+        <div className="border-t border-mk-border bg-mk-bg px-6 py-4 lg:hidden">
+          <nav className="flex flex-col gap-1 text-sm text-mk-fg/80">
             <Link href="/" className="py-2" onClick={() => setMobileOpen(false)}>
               Home
             </Link>
-            <p className="pt-3 text-xs font-semibold uppercase tracking-widest text-white/40">
+            <p className="pt-3 text-xs font-semibold uppercase tracking-widest text-mk-subtle">
               Products
             </p>
             {MEGA_MENU.map((col) => (
@@ -165,10 +167,10 @@ export function MarketingHeader() {
                 onClick={() => setMobileOpen(false)}
               >
                 {col.name}{' '}
-                <span className="text-white/40">· {col.tagline}</span>
+                <span className="text-mk-subtle">· {col.tagline}</span>
               </Link>
             ))}
-            <div className="my-2 h-px bg-white/10" />
+            <div className="my-2 h-px bg-mk-border" />
             {NAV_LINKS.filter((l) => l.label !== 'Home').map((l) => (
               <Link
                 key={l.label}
@@ -190,10 +192,11 @@ export function MarketingHeader() {
               GitHub
             </a>
             <div className="mt-3 flex items-center gap-3">
+              <ThemeToggle className="shrink-0 text-mk-fg/80 hover:bg-mk-fg/10 hover:text-mk-fg dark:hover:bg-mk-fg/10" />
               <Button
                 asChild
                 variant="outline"
-                className="flex-1 rounded-full border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                className="flex-1 rounded-full border-mk-fg/20 bg-transparent text-mk-fg hover:bg-mk-fg/10 hover:text-mk-fg"
               >
                 <Link href="/login" onClick={() => setMobileOpen(false)}>
                   Login

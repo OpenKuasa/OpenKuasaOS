@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 const NOTICES: Record<string, string> = {
   reset_expired: 'Your reset link has expired. Request a new one below.',
   link_invalid: 'That link is invalid or has already been used.',
+  session_expired: 'Your session expired. Please sign in again.',
 };
 
 export default async function LoginPage({

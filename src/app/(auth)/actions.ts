@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { REMEMBER_COOKIE } from '@/lib/supabase/remember';
+import { recordEvent } from '@/lib/events';
+import { MFA_VERIFY_PATH, getMfaStatus } from '@/lib/auth/mfa';
 
 // Persist the "remember me" choice so token refreshes (in the proxy) keep the
 // same cookie lifetime. A session cookie itself clears on browser close.
@@ -80,6 +82,13 @@ export async function signInAction(
     password: parsed.data.password,
   });
   if (error) return { error: 'Incorrect email or password.', values };
+
+  // With an authenticator enrolled the password is only half of signing in;
+  // 'Signed in' is recorded once the code is verified (see mfa/actions.ts).
+  const { challengeRequired } = await getMfaStatus(supabase);
+  if (challengeRequired) redirect(MFA_VERIFY_PATH);
+
+  await recordEvent(supabase, { action: 'Signed in', category: 'auth' });
   redirect('/command');
 }
 
@@ -125,6 +134,11 @@ export async function signUpAction(
   if (orgErr) {
     return { error: 'Could not create your workspace. Please try again.', values };
   }
+  await recordEvent(supabase, {
+    action: 'Created the workspace',
+    category: 'team',
+    target: parsed.data.orgName,
+  });
 
   redirect('/command');
 }
@@ -145,7 +159,13 @@ export async function demoSignInAction(): Promise<AuthState> {
   redirect('/command');
 }
 
-const resetRequestSchema = z.object({ email: emailSchema });
+export async function signOutAction(): Promise<void> {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect('/login');
+}
+
+const resetRequestSchema =z.object({ email: emailSchema });
 const newPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters.'),
 });
@@ -201,5 +221,15 @@ export async function updatePasswordAction(
   if (error) {
     return { error: 'Could not update your password. Please try again.' };
   }
+  await recordEvent(supabase, {
+    action: 'Reset password by email',
+    category: 'security',
+    notify: {
+      to: 'self',
+      event: 'security',
+      title: 'Your password was reset',
+      href: '/account/security',
+    },
+  });
   redirect('/command');
 }

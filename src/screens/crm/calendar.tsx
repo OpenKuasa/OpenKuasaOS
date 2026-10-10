@@ -23,7 +23,7 @@ const TODAY = 9; // Friday, 09 October 2026
 
 const EVENTS: Record<number, { label: string; className: string }> = {
   7: { label: 'Team sync', className: 'bg-primary/10 text-primary' },
-  9: { label: 'Townhall · 3pm', className: 'bg-violet-500/10 text-violet-600' },
+  9: { label: 'Townhall · 3pm', className: 'bg-slate-500/10 text-slate-600' },
   14: { label: 'Project review', className: 'bg-blue-500/10 text-blue-600' },
   16: { label: '1:1 check-ins', className: 'bg-primary/10 text-primary' },
   21: { label: 'Planning session', className: 'bg-amber-500/10 text-amber-600' },
@@ -32,7 +32,7 @@ const EVENTS: Record<number, { label: string; className: string }> = {
 
 type AgendaItem = { title: string; when: string; dot: string };
 const AGENDA: AgendaItem[] = [
-  { title: 'Townhall', when: 'Today · 3:00pm', dot: 'bg-violet-500' },
+  { title: 'Townhall', when: 'Today · 3:00pm', dot: 'bg-slate-500' },
   { title: 'Project review', when: 'Wed 14 Oct · 10:00am', dot: 'bg-blue-500' },
   { title: '1:1 check-ins', when: 'Fri 16 Oct · 2:00pm', dot: 'bg-primary' },
   { title: 'Planning session', when: 'Wed 21 Oct · 11:00am', dot: 'bg-amber-500' },

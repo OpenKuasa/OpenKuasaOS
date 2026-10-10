@@ -5,6 +5,15 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --color-brand: var(--brand);
+  --color-mk-bg: var(--mk-bg);
+  --color-mk-surface: var(--mk-surface);
+  --color-mk-surface-2: var(--mk-surface-2);
+  --color-mk-fg: var(--mk-fg);
+  --color-mk-muted: var(--mk-muted);
+  --color-mk-subtle: var(--mk-subtle);
+  --color-mk-border: var(--mk-border);
+  --color-mk-accent: var(--mk-accent);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -54,6 +63,52 @@
  * Neutrals kept near-grayscale for the clean dashboard surfaces.
  */
 :root {
+  /* Brand emerald: the logo and Taming Sari stay this colour everywhere. */
+  --brand: oklch(0.52 0.125 164);
+
+  /*
+   * One accent per product. The plain value is for light surfaces (white text
+   * sits on it); the -bright value is for dark surfaces such as the landing page.
+   */
+  --product-command: oklch(0.52 0.125 164);
+  --product-command-bright: oklch(0.77 0.15 163);
+  --product-reach: oklch(0.56 0.2 8);
+  --product-reach-bright: oklch(0.76 0.15 8);
+  --product-crm: oklch(0.53 0.095 210);
+  --product-crm-bright: oklch(0.79 0.12 205);
+  --product-people: oklch(0.52 0.16 257);
+  --product-people-bright: oklch(0.75 0.13 250);
+  --product-hire: oklch(0.57 0.17 48);
+  --product-hire-bright: oklch(0.78 0.15 55);
+  --product-finance: oklch(0.54 0.115 78);
+  --product-finance-bright: oklch(0.83 0.14 85);
+
+  /*
+   * Marketing surfaces (landing, pricing): page, cards, text and accent. Light
+   * values here, dark values under .dark. Use the mk-* Tailwind colours
+   * (bg-mk-bg, text-mk-fg, text-mk-muted, border-mk-border, …).
+   */
+  --mk-bg: oklch(0.985 0.004 165);
+  --mk-surface: oklch(1 0 0);
+  --mk-surface-2: oklch(0.96 0.006 165);
+  --mk-fg: oklch(0.17 0.01 240);
+  --mk-muted: oklch(0.42 0.015 200);
+  --mk-subtle: oklch(0.55 0.015 200);
+  --mk-border: oklch(0.9 0.006 165);
+  --mk-accent: oklch(0.5 0.125 164);
+  /* Product accents as text or line colour on a marketing surface. */
+  --mk-product-command: var(--product-command);
+  --mk-product-reach: var(--product-reach);
+  --mk-product-crm: var(--product-crm);
+  --mk-product-people: var(--product-people);
+  --mk-product-hire: var(--product-hire);
+  --mk-product-finance: var(--product-finance);
+
+  /* Active accent; a product scope (below) swaps these three. */
+  --pc: var(--brand);
+  --pc-soft: oklch(0.96 0.02 164);
+  --pc-ink: oklch(0.42 0.12 164);
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.17 0.01 240);
   --card: oklch(1 0 0);
@@ -76,7 +131,7 @@
   --chart-2: oklch(0.62 0.12 200);
   --chart-3: oklch(0.65 0.14 85);
   --chart-4: oklch(0.6 0.16 25);
-  --chart-5: oklch(0.55 0.15 300);
+  --chart-5: oklch(0.55 0.14 250);
   --radius: 0.75rem;
   --sidebar: oklch(0.985 0.003 240);
   --sidebar-foreground: oklch(0.3 0.01 245);
@@ -111,7 +166,7 @@
   --chart-2: oklch(0.67 0.12 200);
   --chart-3: oklch(0.7 0.14 85);
   --chart-4: oklch(0.65 0.16 25);
-  --chart-5: oklch(0.62 0.15 300);
+  --chart-5: oklch(0.67 0.13 250);
   --sidebar: oklch(0.21 0.017 250);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.64 0.13 164);
@@ -120,6 +175,141 @@
   --sidebar-accent-foreground: oklch(0.9 0.05 164);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.64 0.13 164);
+}
+
+/*
+ * Product scopes. Inside the app, [data-product] re-points the accent tokens at
+ * the active product's colour, so buttons, active nav, focus rings and the first
+ * chart series follow it. .brand-scope pins an element back to brand emerald.
+ */
+[data-product='command'] {
+  --pc: var(--product-command);
+  --pc-soft: oklch(0.96 0.02 164);
+  --pc-ink: oklch(0.42 0.12 164);
+}
+[data-product='reach'] {
+  --pc: var(--product-reach);
+  --pc-soft: oklch(0.96 0.02 8);
+  --pc-ink: oklch(0.45 0.17 8);
+}
+[data-product='crm'] {
+  --pc: var(--product-crm);
+  --pc-soft: oklch(0.96 0.02 210);
+  --pc-ink: oklch(0.42 0.085 210);
+  /* The default second series is teal too; hand it the freed-up emerald. */
+  --chart-2: var(--brand);
+}
+[data-product='people'] {
+  --pc: var(--product-people);
+  --pc-soft: oklch(0.96 0.02 257);
+  --pc-ink: oklch(0.42 0.15 257);
+  /* The default fifth series is blue too; hand it the freed-up emerald. */
+  --chart-5: var(--brand);
+}
+[data-product='hire'] {
+  --pc: var(--product-hire);
+  --pc-soft: oklch(0.96 0.025 55);
+  --pc-ink: oklch(0.45 0.14 45);
+}
+[data-product='finance'] {
+  --pc: var(--product-finance);
+  --pc-soft: oklch(0.96 0.03 85);
+  --pc-ink: oklch(0.43 0.095 75);
+  --chart-3: var(--brand);
+}
+.brand-scope {
+  --pc: var(--brand);
+  --pc-soft: oklch(0.96 0.02 164);
+  --pc-ink: oklch(0.42 0.12 164);
+}
+[data-product],
+.brand-scope {
+  --primary: var(--pc);
+  --ring: var(--pc);
+  --accent: var(--pc-soft);
+  --accent-foreground: var(--pc-ink);
+  --chart-1: var(--pc);
+  --sidebar-primary: var(--pc);
+  --sidebar-accent: var(--pc-soft);
+  --sidebar-accent-foreground: var(--pc-ink);
+  --sidebar-ring: var(--pc);
+}
+
+/* Dark theme: products use their brighter accent, with dark text on it. */
+.dark {
+  color-scheme: dark;
+  --mk-bg: #050807;
+  --mk-surface: #0d1412;
+  --mk-surface-2: #0b1210;
+  --mk-fg: oklch(1 0 0);
+  --mk-muted: oklch(1 0 0 / 62%);
+  --mk-subtle: oklch(1 0 0 / 42%);
+  --mk-border: oklch(1 0 0 / 10%);
+  --mk-accent: oklch(0.77 0.15 163);
+  --mk-product-command: var(--product-command-bright);
+  --mk-product-reach: var(--product-reach-bright);
+  --mk-product-crm: var(--product-crm-bright);
+  --mk-product-people: var(--product-people-bright);
+  --mk-product-hire: var(--product-hire-bright);
+  --mk-product-finance: var(--product-finance-bright);
+}
+.dark[data-product='command'],
+.dark [data-product='command'],
+.dark .brand-scope {
+  --pc: oklch(0.64 0.13 164);
+  --pc-soft: oklch(0.3 0.03 164);
+  --pc-ink: oklch(0.9 0.05 164);
+}
+.dark[data-product='reach'],
+.dark [data-product='reach'] {
+  --pc: oklch(0.68 0.17 8);
+  --pc-soft: oklch(0.3 0.04 8);
+  --pc-ink: oklch(0.9 0.05 8);
+}
+.dark[data-product='crm'],
+.dark [data-product='crm'] {
+  --pc: oklch(0.7 0.11 207);
+  --pc-soft: oklch(0.3 0.03 210);
+  --pc-ink: oklch(0.9 0.05 210);
+  --chart-2: oklch(0.64 0.13 164);
+}
+.dark[data-product='people'],
+.dark [data-product='people'] {
+  --pc: oklch(0.68 0.14 255);
+  --pc-soft: oklch(0.3 0.04 257);
+  --pc-ink: oklch(0.9 0.05 257);
+  --chart-5: oklch(0.64 0.13 164);
+}
+.dark[data-product='hire'],
+.dark [data-product='hire'] {
+  --pc: oklch(0.7 0.15 52);
+  --pc-soft: oklch(0.3 0.04 55);
+  --pc-ink: oklch(0.9 0.05 55);
+}
+.dark[data-product='finance'],
+.dark [data-product='finance'] {
+  --pc: oklch(0.74 0.13 85);
+  --pc-soft: oklch(0.3 0.04 85);
+  --pc-ink: oklch(0.9 0.06 85);
+  --chart-3: oklch(0.64 0.13 164);
+}
+
+/*
+ * Theme switch: a keris cuts the screen (see components/theme/keris-slice.ts).
+ * The script drives the snapshots, so the default cross-fade is switched off.
+ */
+.theme-slicing::view-transition-old(root),
+.theme-slicing::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+.theme-slicing::view-transition-group(keris-slice) {
+  animation: none;
+  /* The blade's tip in the keris image; the script pivots on it. */
+  transform-origin: 5% 94.8%;
+}
+.theme-slicing::view-transition-new(keris-slice) {
+  animation: none;
 }
 
 @layer base {

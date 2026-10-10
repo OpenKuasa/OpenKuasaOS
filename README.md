@@ -108,6 +108,13 @@ OpenKuasa is built by its contributors, and anyone can join in — code, design,
 docs, translations, bug reports and ideas are all welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
 
+- Report a bug or suggest a feature:
+  [open an issue](https://github.com/OpenKuasa/OpenKuasaOS/issues/new/choose)
+- Looking for something to pick up:
+  [good first issues](https://github.com/OpenKuasa/OpenKuasaOS/labels/good%20first%20issue)
+- Found a security problem: follow the [security policy](SECURITY.md)
+- Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md)
+
 One rule matters above all: **contribute only your own original work.** Never
 copy code, text, designs, screenshots or assets from any proprietary product.
 

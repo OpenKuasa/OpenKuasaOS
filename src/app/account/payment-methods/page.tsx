@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { requireAccess } from '@/lib/auth/viewer';
 
 type Method = {
   id: string;
@@ -57,7 +58,9 @@ const STATES = [
   { value: 'penang', label: 'Penang' },
 ];
 
-export default function PaymentMethodsPage() {
+export default async function PaymentMethodsPage() {
+  await requireAccess('manage-billing');
+
   return (
     <div className="mx-auto w-full max-w-3xl px-6 py-8">
       <div className="mb-6 flex items-start justify-between gap-4">

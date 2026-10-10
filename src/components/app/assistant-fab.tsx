@@ -27,7 +27,7 @@ export function AssistantFab() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="brand-scope fixed bottom-5 right-5 z-30 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           aria-label={`Ask ${ASSISTANT.name}`}
         >
           <Sparkles className="size-4" />
@@ -36,7 +36,7 @@ export function AssistantFab() {
       ) : null}
 
       {open ? (
-        <div className="fixed inset-0 z-50">
+        <div className="brand-scope fixed inset-0 z-50">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => setOpen(false)}

@@ -1,9 +1,17 @@
 import { AppShell } from '@/components/app/app-shell';
+import { ViewerProvider } from '@/components/app/viewer-context';
+import { getViewer } from '@/lib/auth/viewer';
 
-export default function AppLayout({
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const viewer = await getViewer();
+
+  return (
+    <ViewerProvider viewer={viewer}>
+      <AppShell>{children}</AppShell>
+    </ViewerProvider>
+  );
 }
