@@ -11,10 +11,12 @@
 import type { ToolSet } from 'ai';
 import { CRM_WRITE_TOOL_NAMES, createCrmTools, type CrmAccess } from '@/lib/ai/crm-tools';
 import { createHireTools } from '@/lib/ai/hire-tools';
+import { createPeopleTools } from '@/lib/ai/people-tools';
 import { createReachTools } from '@/lib/ai/tools';
 import type { HireWriteContext } from '@/lib/hire/capabilities';
 import type { ReachWriteContext } from '@/lib/reach/capabilities';
 import type { HireData } from '@/lib/hire/types';
+import type { PeopleData, PeopleViewer } from '@/lib/people/types';
 import type { ReachData } from '@/lib/reach/types';
 
 /** The marketing data an agent works on, and whether this caller may change it. */
@@ -58,7 +60,13 @@ export type HireAccess = {
 /** Hiring tools that change data. */
 export const HIRE_WRITE_TOOL_NAMES = ['createJob', 'updateJob', 'setJobStatus', 'deleteJob'] as const;
 
-export type ProductKey = 'reach' | 'crm' | 'hire';
+/** The HR data an agent reads, and who is asking. */
+export type PeopleAccess = { data: PeopleData; viewer: PeopleViewer };
+
+/** HR tools that change data. None yet: Lekiu can only look things up. */
+export const PEOPLE_WRITE_TOOL_NAMES: readonly string[] = [];
+
+export type ProductKey = 'reach' | 'crm' | 'hire' | 'people';
 
 export type ProductToolkit = {
   /** The product's route segment, as in the navigation. */
@@ -95,6 +103,15 @@ export function crmProduct(crm: CrmAccess): ProductToolkit {
 export function hireProduct(hire: HireAccess): ProductToolkit {
   const all = createHireTools(hire.data, () => new Date(), hire.write);
   return { key: 'hire', name: 'Lekir', ...split(all, HIRE_WRITE_TOOL_NAMES) };
+}
+
+/** Lekiu: staff, leave, claims, overtime, attendance, payroll and performance. */
+export function peopleProduct(people: PeopleAccess): ProductToolkit {
+  return {
+    key: 'people',
+    name: 'Lekiu',
+    ...split(createPeopleTools(people.data, people.viewer), PEOPLE_WRITE_TOOL_NAMES),
+  };
 }
 
 /**

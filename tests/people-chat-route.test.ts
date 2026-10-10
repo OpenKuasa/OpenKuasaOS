@@ -1,0 +1,229 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const ctl = vi.hoisted(() => ({
+  user: null as { id: string; is_anonymous: boolean } | null,
+  org: null as { orgId: string; role: string } | null,
+  slug: 'acme' as string,
+  linkedEmployee: null as { id: string } | null,
+  freeRemaining: 2 as number,
+  sealedKey: null as string | null,
+  providerKey: true,
+  usedKeys: [] as (string | undefined)[],
+  calls: [] as { system: string; tools: string[] }[],
+  freeConsumed: 0,
+  /** Tables the provider read, to prove which data the tools were given. */
+  tablesRead: [] as string[],
+  /** What the route handed to the runner. */
+  captured: null as null | import('@/lib/ai/products').PeopleAccess,
+}));
+
+vi.mock('@/lib/ai/agents/orchestrator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/agents/orchestrator')>();
+  return {
+    ...actual,
+    runLekiu: ((messages, people, ...rest) => {
+      ctl.captured = people;
+      return actual.runLekiu(messages, people, ...rest);
+    }) as typeof actual.runLekiu,
+  };
+});
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: { getUser: async () => ({ data: { user: ctl.user }, error: null }) },
+    rpc: async (name: string) => {
+      if (name === 'org_ai_key_ciphertext') return { data: ctl.sealedKey, error: null };
+      if (name === 'consume_free_question') {
+        ctl.freeConsumed += 1;
+        return { data: ctl.freeRemaining, error: null };
+      }
+      return { data: null, error: { message: `unexpected rpc ${name}` } };
+    },
+    from: (table: string) => {
+      ctl.tablesRead.push(table);
+      const query = {
+        select: () => query,
+        eq: () => query,
+        gte: () => query,
+        lte: () => query,
+        order: () => query,
+        range: async () => ({ data: [], error: null }),
+        maybeSingle: async () => ({
+          data: table === 'orgs' ? { slug: ctl.slug } : table === 'hr_employees' ? ctl.linkedEmployee : null,
+          error: null,
+        }),
+      };
+      return query;
+    },
+  }),
+}));
+
+vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => ctl.org }));
+vi.mock('@/lib/auth/viewer', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth/viewer')>()),
+  hasSupabaseEnv: () => true,
+}));
+
+vi.mock('@/lib/ai/provider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/ai/provider')>();
+  const { MockLanguageModelV4, simulateReadableStream } = await import('ai/test');
+  return {
+    ...actual,
+    hasProviderKey: () => ctl.providerKey,
+    getModel: (_layer: string, apiKey?: string) => {
+      ctl.usedKeys.push(apiKey);
+      return new MockLanguageModelV4({
+        doStream: async (options: {
+          prompt: { role: string; content: unknown }[];
+          tools?: { name: string }[];
+        }) => {
+          ctl.calls.push({
+            system: String(options.prompt.find((m) => m.role === 'system')?.content ?? ''),
+            tools: (options.tools ?? []).map((tool) => tool.name),
+          });
+          return {
+            stream: simulateReadableStream({
+              initialDelayInMs: 0,
+              chunkDelayInMs: 0,
+              chunks: [
+                { type: 'text-start', id: '0' },
+                { type: 'text-delta', id: '0', delta: 'Ada 3 orang cuti hari ini.' },
+                { type: 'text-end', id: '0' },
+                { type: 'finish', finishReason: 'stop', usage: { inputTokens: 10, outputTokens: 12, totalTokens: 22 } },
+              ],
+            }),
+          };
+        },
+      } as unknown as ConstructorParameters<typeof MockLanguageModelV4>[0]);
+    },
+  };
+});
+
+const SECRET = 'test-secret-for-sealing-workspace-keys-0123456789';
+const { encryptApiKey } = await import('@/lib/ai/key-crypto');
+const { PEOPLE_TOOL_NAMES } = await import('@/lib/ai/people-tools');
+const { POST } = await import('@/app/api/people/chat/route');
+
+function post(body: unknown): Request {
+  return new Request('http://localhost/api/people/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+const validBody = {
+  messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'siapa cuti hari ini?' }] }],
+};
+
+beforeEach(() => {
+  ctl.user = { id: 'u1', is_anonymous: false };
+  ctl.org = { orgId: 'org1', role: 'owner' };
+  ctl.slug = 'acme';
+  ctl.linkedEmployee = null;
+  ctl.freeRemaining = 2;
+  ctl.sealedKey = null;
+  ctl.providerKey = true;
+  ctl.usedKeys = [];
+  ctl.calls = [];
+  ctl.freeConsumed = 0;
+  ctl.tablesRead = [];
+  ctl.captured = null;
+  process.env.AI_KEYS_ENCRYPTION_SECRET = SECRET;
+});
+
+describe('POST /api/people/chat gating', () => {
+  it('401 when not signed in', async () => {
+    ctl.user = null;
+    expect((await POST(post(validBody))).status).toBe(401);
+  });
+
+  it('403 for a demo / anonymous viewer, without calling a model', async () => {
+    ctl.user = { id: 'u2', is_anonymous: true };
+    expect((await POST(post(validBody))).status).toBe(403);
+    expect(ctl.usedKeys).toEqual([]);
+  });
+
+  it('402 key_required when the free questions are used up', async () => {
+    ctl.freeRemaining = -1;
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(402);
+    expect(await res.json()).toMatchObject({ code: 'key_required' });
+    expect(ctl.usedKeys).toEqual([]);
+  });
+
+  it('does not spend a free question on a malformed request', async () => {
+    expect((await POST(post({ messages: [] }))).status).toBe(400);
+    expect(ctl.freeConsumed).toBe(0);
+  });
+
+  it('fails closed when the workspace key cannot be opened on this server', async () => {
+    ctl.sealedKey = encryptApiKey('sk-or-v1-workspace-key-aaaaaaaaaaaa');
+    process.env.AI_KEYS_ENCRYPTION_SECRET = 'a-different-secret-than-the-one-used-to-seal-it';
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ code: 'key_unavailable' });
+    expect(ctl.usedKeys).toEqual([]);
+  });
+
+  it('409 for someone in no workspace, without calling a model or reading HR data', async () => {
+    ctl.org = null;
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'no_workspace' });
+    expect(ctl.usedKeys).toEqual([]);
+    expect(ctl.tablesRead.filter((table) => table.startsWith('hr_'))).toEqual([]);
+  });
+});
+
+describe('POST /api/people/chat happy path', () => {
+  it('answers as Lekiu, with the HR lookups and nothing else', async () => {
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('3 orang cuti');
+    expect(ctl.freeConsumed).toBe(1);
+
+    const [call] = ctl.calls;
+    expect(call.system).toMatch(/^You are Lekiu/);
+    expect(call.tools.sort()).toEqual([...PEOPLE_TOOL_NAMES].sort());
+    expect(call.tools).not.toContain('getCampaigns');
+    expect(call.tools).not.toContain('listDeals');
+    expect(call.tools).not.toContain('listJobs');
+
+    // A user in a workspace reads the hr_ tables.
+    await ctl.captured!.data.listEmployees();
+    expect(ctl.tablesRead).toContain('hr_employees');
+  });
+
+  it('tells the tools an owner is HR', async () => {
+    await (await POST(post(validBody))).text();
+    expect(ctl.captured!.viewer).toEqual({ employeeId: null, isHr: true, isDemo: false });
+  });
+
+  it('tells the tools a member is not HR, and which employee they are', async () => {
+    ctl.org = { orgId: 'org1', role: 'member' };
+    ctl.linkedEmployee = { id: 'emp-7' };
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(ctl.captured!.viewer).toEqual({ employeeId: 'emp-7', isHr: false, isDemo: false });
+    // Same lookups for everyone: the database, not the tool list, limits what a member reads.
+    expect(ctl.calls[0].tools.sort()).toEqual([...PEOPLE_TOOL_NAMES].sort());
+  });
+
+  it('holds no change tools for anyone', async () => {
+    await (await POST(post(validBody))).text();
+    for (const name of ctl.calls[0].tools) expect(name).toMatch(/^(get|list)/);
+  });
+
+  it('runs on the workspace key without touching the free allowance', async () => {
+    ctl.sealedKey = encryptApiKey('sk-or-v1-workspace-key-aaaaaaaaaaaa');
+    ctl.freeRemaining = -1;
+    ctl.providerKey = false;
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(ctl.freeConsumed).toBe(0);
+    expect(ctl.usedKeys).toEqual(['sk-or-v1-workspace-key-aaaaaaaaaaaa']);
+  });
+});
