@@ -97,10 +97,12 @@ export function ContactsView({ view, actions }: { view: ContactsViewData; action
         title="Customers & Suppliers"
         subtitle="Your contacts for billing & procurement, Saudara."
         actions={
-          <Button size="sm" onClick={actions ? openAdd : undefined} aria-expanded={actions ? adding : undefined}>
-            <Plus className="size-4" />
-            Add Contact
-          </Button>
+          actions ? (
+            <Button size="sm" onClick={openAdd} aria-expanded={adding}>
+              <Plus className="size-4" />
+              Add Contact
+            </Button>
+          ) : undefined
         }
       />
 
