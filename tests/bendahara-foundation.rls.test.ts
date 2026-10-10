@@ -67,7 +67,7 @@ testWithSupabase('the same category name twice in one workspace is refused, what
 testWithSupabase('accounts, categories and sequences are invisible and unwritable across workspaces', async () => {
   const { data: account, error } = await a.c
     .from('finance_accounts')
-    .insert({ org_id: a.orgId, name: 'Main Bank', kind: 'bank', bank_name: 'Maybank' })
+    .insert({ org_id: a.orgId, name: 'Operations Account', kind: 'bank', bank_name: 'Maybank' })
     .select('id')
     .single();
   expect(error, error?.message).toBeNull();
