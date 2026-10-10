@@ -4,9 +4,10 @@
  * Same gate as Ask-Jebat (see `prepareChat`): a workspace key if one is set,
  * otherwise one of the user's free weekly questions on the platform key.
  *
- * Tuah reads and changes marketing data through the same tools as Ask-Jebat,
- * and CRM contacts and deals through Kasturi's: lookups run on their own,
- * changes wait for the user's approval.
+ * Tuah works through a team: it asks a specialist per product (Jebat for
+ * marketing, Kasturi for the CRM) and carries out the changes they prepare.
+ * Lookups run on their own; changes wait for the user's approval. A chat can
+ * ask for the single agent that holds every tool itself with `team: false`.
  *
  * A turn that gets past the gate is saved to the user's chat history; a
  * refused one leaves no trace.
@@ -17,7 +18,7 @@ import { prepareChat } from '@/lib/ai/chat-request';
 import { runTuah } from '@/lib/ai/agents/orchestrator';
 import { getCurrentOrg } from '@/lib/auth/current-org';
 import { hasSupabaseEnv } from '@/lib/auth/viewer';
-import { namesIn, proposalsIn, transcriptOf, usesSpecialists } from '@/lib/chat/delegation';
+import { answersWithTeam, namesIn, proposalsIn, transcriptOf } from '@/lib/chat/delegation';
 import { saveAnswer, saveQuestion } from '@/lib/chat/store';
 import { getReachData } from '@/lib/reach/supabase';
 
@@ -56,10 +57,9 @@ export async function POST(request: Request) {
       }
     : null;
 
-  // Tuah answers with its team when the chat asks for it, and always when
-  // the turn resumes one the team started (an approval being answered).
-  const withTeam =
-    chat.team || (lastMessage.role === 'assistant' && usesSpecialists(lastMessage));
+  // Tuah answers with its team unless the chat asked for the single agent.
+  // A turn resuming after an approval stays with whichever one started it.
+  const withTeam = answersWithTeam(chat.team, lastMessage);
   const team = withTeam
     ? {
         transcript: transcriptOf(chat.uiMessages.slice(-8)),

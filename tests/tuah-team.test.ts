@@ -287,6 +287,23 @@ describe('reading a team conversation back', () => {
     expect(approvalTitle('deleteDeal', { id: 'c9' }, find)).toBe('Delete this deal?');
   });
 
+  it('answers with the team by default, and finishes a turn with whoever started it', async () => {
+    const { answersWithTeam } = await import('@/lib/chat/delegation');
+    const question = { role: 'user', parts: [{ type: 'text', text: 'hi' }] };
+    expect(answersWithTeam(undefined, question)).toBe(true);
+    expect(answersWithTeam(true, question)).toBe(true);
+    expect(answersWithTeam(false, question)).toBe(false);
+    // Resuming after an approval: the team's own turn stays with the team...
+    expect(answersWithTeam(false, messages[1])).toBe(true);
+    // ...and a single-agent turn stays with the single agent, whatever is asked.
+    const solo = {
+      role: 'assistant',
+      parts: [{ type: 'tool-deleteCampaign', state: 'approval-responded', input: { id: 'x' } }],
+    };
+    expect(answersWithTeam(undefined, solo)).toBe(false);
+    expect(answersWithTeam(true, solo)).toBe(false);
+  });
+
   it('tells Tuah the answer and the ids of what was prepared', () => {
     const view = delegationForModel(delegation);
     expect(view).toContain('Prepared the contact.');

@@ -58,7 +58,7 @@ export type PreparedChat =
       screen: Screen | null;
       /** The conversation as the chat UI holds it, already validated. */
       uiMessages: UIMessage[];
-      /** The client asked for Tuah to answer with its team of specialists. */
+      /** False only when the chat asked for the single agent (`team: false`). */
       team: boolean;
     };
 
@@ -92,7 +92,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
   let lastMessage: UIMessage;
   let screen: Screen | null = null;
   let uiMessages: UIMessage[];
-  let team = false;
+  let team = true;
   try {
     const parsed = bodySchema.parse(JSON.parse(raw));
     const recent = parsed.messages.slice(-MAX_MESSAGES);
@@ -104,7 +104,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
     threadId = isThreadId(parsed.id) ? parsed.id : null;
     screen = screenFromPath(parsed.pathname);
     uiMessages = validated.data;
-    team = parsed.team === true;
+    team = parsed.team !== false;
     lastMessage = validated.data[validated.data.length - 1];
   } catch {
     return fail(400, { error: 'Invalid request.' });

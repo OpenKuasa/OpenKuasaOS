@@ -116,6 +116,23 @@ export function usesSpecialists(message: { parts: unknown[] } | undefined): bool
   );
 }
 
+/**
+ * Whether a turn is answered by Tuah with its team (the default) or by the
+ * single agent that holds every tool itself.
+ *
+ * A turn that resumes an answer (the user tapped Approve or Reject) has no
+ * say in the matter: it must be finished by whichever one started it, since
+ * the change it is waiting on only exists there. A new question goes to the
+ * team unless the chat asked not to (`team: false`).
+ */
+export function answersWithTeam(
+  asked: unknown,
+  last: { role: string; parts: unknown[] },
+): boolean {
+  if (last.role === 'assistant') return usesSpecialists(last);
+  return asked !== false;
+}
+
 /** The words of a conversation, for a specialist that only sees its own task. */
 export function transcriptOf(
   messages: { role: string; parts: unknown[] }[],
