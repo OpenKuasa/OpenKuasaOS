@@ -16,4 +16,9 @@ describe('JEBAT_SYSTEM', () => {
     expect(t).toContain('get its id');
     expect(t).toContain('never ask the owner for an id');
   });
+  it('tells the model to report an executed change as done, not still waiting', () => {
+    const t = JEBAT_SYSTEM.toLowerCase();
+    expect(t).toContain('already approved it');
+    expect(t).toContain('past tense');
+  });
 });
