@@ -267,7 +267,7 @@ async function fetchBills({ supabase, orgId }: Live) {
 async function fetchPayments({ supabase, orgId }: Live) {
   const { data, error } = await supabase
     .from('payments_out')
-    .select('payment_no, paid_on, method, amount, status, supplier_bills(bill_no, contacts(name))')
+    .select('payment_no, paid_on, method, amount, status, supplier_bills(bill_no, contacts:finance_contacts(name))')
     .eq('org_id', orgId)
     .order('paid_on', { ascending: false })
     .order('payment_no', { ascending: false });

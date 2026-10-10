@@ -47,7 +47,7 @@ beforeAll(async () => {
   if (!hasSupabaseEnv) return;
   a = await anonUserWithOrg('Purchases A Sdn Bhd');
   b = await anonUserWithOrg('Purchases B Sdn Bhd');
-  supplierA = await insertOne(a.c, 'contacts', {
+  supplierA = await insertOne(a.c, 'finance_contacts', {
     org_id: a.orgId,
     type: 'supplier',
     name: 'Supplier of A',
@@ -134,7 +134,7 @@ testWithSupabase('an unpaid posted bill past its due date is overdue; a draft ne
 });
 
 testWithSupabase('another org cannot see bills, lines or payments', async () => {
-  for (const table of ['contacts', 'supplier_bills', 'supplier_bill_lines', 'payments_out', 'supplier_bill_totals']) {
+  for (const table of ['finance_contacts', 'supplier_bills', 'supplier_bill_lines', 'payments_out', 'supplier_bill_totals']) {
     const { data, error } = await b.c.from(table).select('id').eq('org_id', a.orgId);
     expect(error, error?.message).toBeNull();
     expect(data ?? [], table).toHaveLength(0);
@@ -172,7 +172,7 @@ testWithSupabase("another org cannot attach its rows to A's supplier or bill", a
 });
 
 testWithSupabase('a supplier with bills cannot be deleted', async () => {
-  const { error } = await a.c.from('contacts').delete().eq('id', supplierA.id);
+  const { error } = await a.c.from('finance_contacts').delete().eq('id', supplierA.id);
   expect(error?.code).toBe('23503');
 });
 
@@ -187,7 +187,7 @@ testWithSupabase('a demo viewer reads the seeded bills but cannot write', async 
   expect((bills ?? []).length).toBeGreaterThan(0);
 
   const { data: supplier } = await c
-    .from('contacts')
+    .from('finance_contacts')
     .select('id')
     .eq('org_id', demoId)
     .eq('type', 'supplier')
