@@ -54,6 +54,11 @@ export function PaymentFormCard({
   const id = useId();
   const [typed, setForm] = useState(() => newPaymentForm(payable, accounts, today, preselect));
   const save = useFinanceAction();
+  // A change by the person answers the last refusal, so its sentence goes.
+  const edit: typeof setForm = (next) => {
+    save.clear();
+    setForm(next);
+  };
 
   const suppliers = paymentSuppliers(payable);
   // A ticked bill that was paid off since a refresh is dropped from everything below.
@@ -102,7 +107,7 @@ export function PaymentFormCard({
       <form onSubmit={submit} noValidate className="grid gap-3 md:grid-cols-12">
         <div className="space-y-1.5 md:col-span-5">
           <Label htmlFor={`${id}-supplier`}>Supplier</Label>
-          <Select value={form.supplierId} onValueChange={(v) => setForm((f) => chooseSupplier(f, v))}>
+          <Select value={form.supplierId} onValueChange={(v) => edit((f) => chooseSupplier(f, v))}>
             <SelectTrigger id={`${id}-supplier`} className="w-full" autoFocus data-finance-focus>
               <SelectValue placeholder="Choose a supplier" />
             </SelectTrigger>
@@ -134,7 +139,7 @@ export function PaymentFormCard({
                         type="checkbox"
                         className="mt-0.5 size-4 shrink-0 accent-primary"
                         checked={ticked}
-                        onChange={(e) => setForm((f) => toggleBill(f, b, e.target.checked))}
+                        onChange={(e) => edit((f) => toggleBill(f, b, e.target.checked))}
                       />
                       <span className="min-w-0">
                         <span className="font-medium">{b.bill_no}</span>
@@ -165,7 +170,7 @@ export function PaymentFormCard({
                             if (e.key === 'Enter') e.preventDefault();
                           }}
                           value={form.amounts[b.id]}
-                          onChange={(e) => setForm((f) => ({ ...f, amounts: { ...f.amounts, [b.id]: e.target.value } }))}
+                          onChange={(e) => edit((f) => ({ ...f, amounts: { ...f.amounts, [b.id]: e.target.value } }))}
                         />
                       </div>
                     ) : null}
@@ -189,7 +194,7 @@ export function PaymentFormCard({
                 type="button"
                 variant="ghost"
                 size="xs"
-                onClick={() => setForm((f) => toggleAll(f, bills, tickedCount < bills.length))}
+                onClick={() => edit((f) => toggleAll(f, bills, tickedCount < bills.length))}
               >
                 {tickedCount < bills.length ? 'Tick all' : 'Clear all'}
               </Button>
@@ -199,7 +204,7 @@ export function PaymentFormCard({
 
         <div className="space-y-1.5 md:col-span-3">
           <Label htmlFor={`${id}-account`}>Paid from</Label>
-          <Select value={form.accountId} onValueChange={(v) => setForm((f) => ({ ...f, accountId: v }))}>
+          <Select value={form.accountId} onValueChange={(v) => edit((f) => ({ ...f, accountId: v }))}>
             <SelectTrigger id={`${id}-account`} className="w-full">
               <SelectValue placeholder="Choose an account" />
             </SelectTrigger>
@@ -220,12 +225,12 @@ export function PaymentFormCard({
             type="date"
             value={form.date}
             required
-            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+            onChange={(e) => edit((f) => ({ ...f, date: e.target.value }))}
           />
         </div>
         <div className="space-y-1.5 md:col-span-3">
           <Label htmlFor={`${id}-method`}>Method</Label>
-          <Select value={form.method} onValueChange={(v) => setForm((f) => ({ ...f, method: v as PaymentMethod }))}>
+          <Select value={form.method} onValueChange={(v) => edit((f) => ({ ...f, method: v as PaymentMethod }))}>
             <SelectTrigger id={`${id}-method`} className="w-full">
               <SelectValue />
             </SelectTrigger>
@@ -246,7 +251,7 @@ export function PaymentFormCard({
             maxLength={200}
             placeholder="Bank reference or cheque no."
             autoComplete="off"
-            onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))}
+            onChange={(e) => edit((f) => ({ ...f, reference: e.target.value }))}
           />
         </div>
         <div className="space-y-1.5 md:col-span-7">
@@ -256,7 +261,7 @@ export function PaymentFormCard({
             value={form.notes}
             maxLength={200}
             autoComplete="off"
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onChange={(e) => edit((f) => ({ ...f, notes: e.target.value }))}
           />
         </div>
         <fieldset className="space-y-1.5 md:col-span-5">
@@ -268,7 +273,7 @@ export function PaymentFormCard({
                 name={`${id}-when`}
                 className="size-4 accent-primary"
                 checked={!form.scheduled}
-                onChange={() => setForm((f) => ({ ...f, scheduled: false }))}
+                onChange={() => edit((f) => ({ ...f, scheduled: false }))}
               />
               Pay now
             </label>
@@ -278,7 +283,7 @@ export function PaymentFormCard({
                 name={`${id}-when`}
                 className="size-4 accent-primary"
                 checked={form.scheduled}
-                onChange={() => setForm((f) => ({ ...f, scheduled: true }))}
+                onChange={() => edit((f) => ({ ...f, scheduled: true }))}
               />
               Schedule for later
             </label>

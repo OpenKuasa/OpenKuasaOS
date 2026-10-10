@@ -59,6 +59,11 @@ export function BillFormCard({
   const [form, setForm] = useState(() => (editing ? billFormFromDetail(editing) : newBillForm(today, 'new-0')));
   const [posting, setPosting] = useState(false);
   const save = useFinanceAction();
+  // A change by the person answers the last refusal, so its sentence goes.
+  const edit: typeof setForm = (next) => {
+    save.clear();
+    setForm(next);
+  };
 
   // A supplier archived since the draft was saved is still this bill's supplier.
   const options: SupplierOption[] =
@@ -128,7 +133,7 @@ export function BillFormCard({
             value={form.supplier_id}
             onValueChange={(v) => {
               const supplier = options.find((s) => s.id === v);
-              if (supplier) setForm((f) => withSupplier(f, supplier));
+              if (supplier) edit((f) => withSupplier(f, supplier));
             }}
           >
             <SelectTrigger id={`${id}-supplier`} className="w-full" autoFocus data-finance-focus>
@@ -151,7 +156,7 @@ export function BillFormCard({
             maxLength={200}
             placeholder="Their invoice no."
             autoComplete="off"
-            onChange={(e) => setForm((f) => ({ ...f, supplier_ref: e.target.value }))}
+            onChange={(e) => edit((f) => ({ ...f, supplier_ref: e.target.value }))}
           />
         </div>
         <div className="space-y-1.5 md:col-span-3">
@@ -161,7 +166,7 @@ export function BillFormCard({
             type="date"
             value={form.bill_date}
             required
-            onChange={(e) => setForm((f) => withBillDate(f, e.target.value, terms))}
+            onChange={(e) => edit((f) => withBillDate(f, e.target.value, terms))}
           />
         </div>
         <div className="space-y-1.5 md:col-span-3">
@@ -172,7 +177,7 @@ export function BillFormCard({
             value={form.due_date}
             min={form.bill_date || undefined}
             required
-            onChange={(e) => setForm((f) => withDueDate(f, e.target.value))}
+            onChange={(e) => edit((f) => withDueDate(f, e.target.value))}
           />
         </div>
 
@@ -184,7 +189,7 @@ export function BillFormCard({
           }}
         >
           <legend className="text-sm font-medium leading-none">Lines</legend>
-          <LineItemsEditor lines={form.lines} products={products} onChange={(lines) => setForm((f) => ({ ...f, lines }))} />
+          <LineItemsEditor lines={form.lines} products={products} onChange={(lines) => edit((f) => ({ ...f, lines }))} />
         </fieldset>
 
         <div className="space-y-1.5 md:col-span-12">
@@ -194,7 +199,7 @@ export function BillFormCard({
             value={form.notes}
             maxLength={200}
             autoComplete="off"
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            onChange={(e) => edit((f) => ({ ...f, notes: e.target.value }))}
           />
         </div>
 
