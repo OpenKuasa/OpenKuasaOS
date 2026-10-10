@@ -28,13 +28,20 @@ const PIPELINE_ID = '22222222-2222-4222-8222-222222222222';
 
 type Result = { data: unknown; error: unknown };
 
-/** Two reads: pipelines and stages, each ending in `.order()`. */
+/** Two reads: pipelines and stages, each ending in `.order()`, optionally `.abortSignal()`. */
 function createListClient(pipelines: Result, stages: Result) {
   const chain = (result: Result) => {
+    // Awaitable like a real query, and still chainable after `.order()`.
+    const ordered = {
+      abortSignal: vi.fn(() => ordered),
+      then: (resolve: (value: Result) => unknown, reject?: (reason: unknown) => unknown) =>
+        Promise.resolve(result).then(resolve, reject),
+    };
     const query = {
       select: vi.fn(() => query),
       eq: vi.fn(() => query),
-      order: vi.fn(async () => result),
+      order: vi.fn(() => ordered),
+      ordered,
     };
     return query;
   };
@@ -122,6 +129,35 @@ describe('stageDot', () => {
 });
 
 describe('listCrmPipelines', () => {
+  test('a plain read can be answered from an earlier identical read', async () => {
+    const { client, pipelinesQuery, stagesQuery } = createListClient(
+      { data: [], error: null },
+      { data: [], error: null },
+    );
+
+    await listCrmPipelines(client, ORG_ID);
+
+    expect(pipelinesQuery.ordered.abortSignal).not.toHaveBeenCalled();
+    expect(stagesQuery.ordered.abortSignal).not.toHaveBeenCalled();
+  });
+
+  test('a fresh read opts out of that, so a read after a write sees the write', async () => {
+    const { client, pipelinesQuery, stagesQuery } = createListClient(
+      { data: [{ id: 'p-1', name: 'Sales pipeline', is_default: true }], error: null },
+      {
+        data: [{ id: 's-1', pipeline_id: 'p-1', name: 'Lead', position: 1, probability_percent: 10 }],
+        error: null,
+      },
+    );
+
+    const pipelines = await listCrmPipelines(client, ORG_ID, { fresh: true });
+
+    expect(pipelinesQuery.ordered.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(stagesQuery.ordered.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
+    expect(pipelines).toHaveLength(1);
+    expect(pipelines[0].stages.map((stage) => stage.name)).toEqual(['Lead']);
+  });
+
   test('reads the org pipelines with their stages in order, default first', async () => {
     const { client, from, pipelinesQuery, stagesQuery } = createListClient(
       {

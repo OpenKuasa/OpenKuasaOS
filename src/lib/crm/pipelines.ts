@@ -96,20 +96,31 @@ function errorCode(error: unknown) {
 export async function listCrmPipelines(
   client: SupabaseClient,
   orgId: string,
+  { fresh = false }: { fresh?: boolean } = {},
 ): Promise<CrmPipeline[]> {
+  let pipelinesQuery = client
+    .from('crm_pipelines')
+    .select('id,name,is_default')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: true });
+  let stagesQuery = client
+    .from('crm_pipeline_stages')
+    .select('id,pipeline_id,name,position,probability_percent')
+    .eq('org_id', orgId)
+    .order('position', { ascending: true });
+
+  // While a page renders, the framework answers a repeated identical read
+  // from the first one's result. A read made after a write in that same
+  // render must opt out, or it gets the answer from before the write. Passing
+  // an abort signal is the documented way to opt out.
+  if (fresh) {
+    const { signal } = new AbortController();
+    pipelinesQuery = pipelinesQuery.abortSignal(signal);
+    stagesQuery = stagesQuery.abortSignal(signal);
+  }
+
   // Fetched together: each trip to the database costs about the same.
-  const [pipelines, stages] = await Promise.all([
-    client
-      .from('crm_pipelines')
-      .select('id,name,is_default')
-      .eq('org_id', orgId)
-      .order('created_at', { ascending: true }),
-    client
-      .from('crm_pipeline_stages')
-      .select('id,pipeline_id,name,position,probability_percent')
-      .eq('org_id', orgId)
-      .order('position', { ascending: true }),
-  ]);
+  const [pipelines, stages] = await Promise.all([pipelinesQuery, stagesQuery]);
 
   if (pipelines.error) throw pipelines.error;
   if (stages.error) throw stages.error;

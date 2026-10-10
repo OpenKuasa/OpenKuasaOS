@@ -203,7 +203,8 @@ export default async function CrmDealsPage() {
   if (canWrite && needsDefaultPipeline(live.pipelines)) {
     try {
       await ensureDefaultPipeline(supabase, orgId);
-      live.pipelines = await listCrmPipelines(supabase, orgId);
+      // `fresh`: this is the same read as above, repeated after a write.
+      live.pipelines = await listCrmPipelines(supabase, orgId, { fresh: true });
     } catch (error) {
       // The page says the pipeline could not be set up; it does not fail.
       console.error('[crm/deals] could not set up the default pipeline', error);
