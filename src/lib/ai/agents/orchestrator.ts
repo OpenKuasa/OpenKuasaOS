@@ -7,51 +7,21 @@
 
 import { type ModelMessage, stepCountIs, streamText } from 'ai';
 import { getModel } from '@/lib/ai/provider';
-import { CRM_WRITE_TOOL_NAMES, createCrmTools, type CrmAccess } from '@/lib/ai/crm-tools';
-import { createReachTools } from '@/lib/ai/tools';
-import type { ReachWriteContext } from '@/lib/reach/capabilities';
-import type { ReachData } from '@/lib/reach/types';
+import type { CrmAccess } from '@/lib/ai/crm-tools';
+import {
+  REACH_WRITE_TOOL_NAMES,
+  combineToolkits,
+  crmProduct,
+  reachProduct,
+  type ReachAccess,
+} from '@/lib/ai/products';
 import { JEBAT_SYSTEM, tuahSystem } from '@/lib/ai/agents/prompts';
 import type { Screen } from '@/lib/chat/screen';
 
 /** Tools that change data: each one pauses for the owner's approval before running. */
-export const WRITE_TOOL_NAMES = [
-  'createCampaign',
-  'updateCampaign',
-  'setCampaignStatus',
-  'deleteCampaign',
-  'createCreative',
-  'updateCreative',
-  'deleteCreative',
-  'updateAdSettings',
-  'createForm',
-  'updateForm',
-  'setFormStatus',
-  'deleteForm',
-  'createLead',
-  'updateLead',
-  'setLeadStage',
-  'deleteLead',
-  'promoteLeadToContact',
-] as const;
+export const WRITE_TOOL_NAMES = REACH_WRITE_TOOL_NAMES;
 
-/** The marketing data an agent works on, and whether this caller may change it. */
-export type ReachAccess = {
-  data: ReachData;
-  write?: { ctx: ReachWriteContext; canWrite: boolean };
-};
-
-/** The marketing tools for one request, shared by Jebat and Tuah. */
-function reachToolkit(reach: ReachAccess) {
-  const tools = createReachTools(reach.data, () => new Date(), reach.write);
-  // Read tools auto-run; every write tool actually present requires approval.
-  const toolApproval = reach.write?.canWrite
-    ? Object.fromEntries(
-        WRITE_TOOL_NAMES.filter((n) => n in tools).map((n) => [n, 'user-approval' as const]),
-      )
-    : undefined;
-  return { tools, toolApproval };
-}
+export type { ReachAccess };
 
 export function runJebat(
   messages: ModelMessage[],
@@ -60,7 +30,7 @@ export function runJebat(
   /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
   apiKey?: string,
 ) {
-  const { tools, toolApproval } = reachToolkit(reach);
+  const { tools, toolApproval } = combineToolkits([reachProduct(reach)]);
   return streamText({
     model: getModel('orchestrator', apiKey),
     system: JEBAT_SYSTEM,
@@ -72,26 +42,6 @@ export function runJebat(
     // Stop in-flight model/tool work if the client disconnects.
     abortSignal,
   });
-}
-
-/**
- * Tuah's tools for one request: Jebat's marketing toolkit, plus Kasturi's CRM
- * tools when the user is in a workspace. Every change tool that is present is
- * mapped to an approval, whichever product it belongs to.
- */
-function tuahToolkit(reach: ReachAccess, crm?: CrmAccess | null) {
-  const marketing = reachToolkit(reach);
-  if (!crm) return marketing;
-
-  const crmTools = createCrmTools(crm);
-  const crmApproval = Object.fromEntries(
-    CRM_WRITE_TOOL_NAMES.filter((n) => n in crmTools).map((n) => [n, 'user-approval' as const]),
-  );
-  const toolApproval = { ...marketing.toolApproval, ...crmApproval };
-  return {
-    tools: { ...marketing.tools, ...crmTools },
-    toolApproval: Object.keys(toolApproval).length > 0 ? toolApproval : undefined,
-  };
 }
 
 /**
@@ -110,7 +60,11 @@ export function runTuah(
   /** The workspace's CRM, when the user is in one. */
   crm?: CrmAccess | null,
 ) {
-  const { tools, toolApproval } = tuahToolkit(reach, crm);
+  // Every product the user can reach: marketing always, the CRM in a workspace.
+  const { tools, toolApproval } = combineToolkits([
+    reachProduct(reach),
+    ...(crm ? [crmProduct(crm)] : []),
+  ]);
   return streamText({
     model: getModel('orchestrator', apiKey),
     system: tuahSystem(screen),
