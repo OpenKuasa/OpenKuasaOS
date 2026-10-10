@@ -23,6 +23,8 @@ import {
   deleteFormInput,
   deleteLead,
   deleteLeadInput,
+  promoteLeadToContact,
+  promoteLeadToContactInput,
   setCampaignStatus,
   setCampaignStatusInput,
   setFormStatus,
@@ -169,4 +171,9 @@ export async function setLeadStageAction(input: unknown) {
 }
 export async function deleteLeadAction(input: unknown) {
   return runLeads(deleteLeadInput, input, deleteLead);
+}
+export async function promoteLeadToContactAction(input: unknown) {
+  const r = await runLeads(promoteLeadToContactInput, input, promoteLeadToContact);
+  if (r.ok) revalidatePath('/crm/contacts');
+  return r;
 }

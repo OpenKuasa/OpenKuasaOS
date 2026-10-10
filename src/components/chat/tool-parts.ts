@@ -237,6 +237,7 @@ export function approvalTitle(
     case 'updateLead': return 'Save changes to this lead?';
     case 'setLeadStage': return `Move this lead to “${i.stage ?? ''}”?`;
     case 'deleteLead': return 'Delete this lead?';
+    case 'promoteLeadToContact': return 'Promote this lead to a CRM contact?';
     default: return 'Approve this change?';
   }
 }

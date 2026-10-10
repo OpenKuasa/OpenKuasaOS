@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createCampaignInput, updateAdSettingsInput, updateCampaignInput } from '@/lib/reach/capabilities';
+import {
+  createCampaignInput,
+  leadStageToCrmStatus,
+  leadStageToScore,
+  splitLeadName,
+  updateAdSettingsInput,
+  updateCampaignInput,
+} from '@/lib/reach/capabilities';
 
 describe('campaign capability schemas', () => {
   it('rejects an empty name', () => {
@@ -134,4 +141,20 @@ itSb('createLead writes to the caller org, ignores an input org_id, and round-tr
     }
     await c.auth.signOut();
   }
+});
+
+describe('lead → contact mapping helpers', () => {
+  it('maps lead stages to CRM statuses', () => {
+    expect(leadStageToCrmStatus('won')).toBe('customer');
+    expect(leadStageToCrmStatus('booked')).toBe('qualified');
+    expect(leadStageToCrmStatus('lead')).toBe('lead');
+  });
+  it('maps lead stages to a lead score', () => {
+    expect(leadStageToScore('qualified')).toBe(60);
+    expect(leadStageToScore('won')).toBe(100);
+  });
+  it('splits a name into first and last', () => {
+    expect(splitLeadName('Aisyah Rahim')).toEqual({ first_name: 'Aisyah', last_name: 'Rahim' });
+    expect(splitLeadName('Cher')).toEqual({ first_name: 'Cher', last_name: null });
+  });
 });

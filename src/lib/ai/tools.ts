@@ -30,6 +30,8 @@ import {
   deleteFormInput,
   deleteLead as capDeleteLead,
   deleteLeadInput,
+  promoteLeadToContact as capPromoteLeadToContact,
+  promoteLeadToContactInput,
   setCampaignStatus as capSetCampaignStatus,
   setCampaignStatusInput,
   setFormStatus as capSetFormStatus,
@@ -510,6 +512,11 @@ export function createReachTools(
       description: 'Delete a lead by id. Cannot be undone; needs approval.',
       inputSchema: deleteLeadInput,
       execute: async (input) => capDeleteLead(ctx, input),
+    }),
+    promoteLeadToContact: tool({
+      description: 'Promote a lead to a CRM contact by id. Creates a Kasturi contact. Needs approval.',
+      inputSchema: promoteLeadToContactInput,
+      execute: async (input) => capPromoteLeadToContact(ctx, input),
     }),
   };
 }

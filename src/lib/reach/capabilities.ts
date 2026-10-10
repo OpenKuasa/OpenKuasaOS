@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { createCrmContact, type CrmContactInsert } from '@/lib/crm/contacts';
 import type { AdSettings, Campaign, Creative, Form, Lead } from './types';
 import {
   FORM_CATEGORY_MAX,
@@ -185,6 +186,73 @@ export async function deleteLead(
   if (error) return writeFailed('deleteLead', error);
   if (!data) return { ok: false, error: 'That lead was not found.' };
   return { ok: true, data: { id: data.id } };
+}
+
+// ---- Promote lead → CRM contact -------------------------------------------
+export function leadStageToCrmStatus(stage: Lead['stage']): string {
+  return (
+    { lead: 'lead', contacted: 'contacted', qualified: 'qualified', booked: 'qualified', won: 'customer' } as const
+  )[stage];
+}
+export function leadStageToScore(stage: Lead['stage']): number {
+  return ({ lead: 20, contacted: 40, qualified: 60, booked: 80, won: 100 } as const)[stage];
+}
+export function splitLeadName(name: string): { first_name: string; last_name: string | null } {
+  const t = name.trim();
+  const i = t.indexOf(' ');
+  return i === -1 ? { first_name: t, last_name: null } : { first_name: t.slice(0, i), last_name: t.slice(i + 1) };
+}
+
+export const promoteLeadToContactInput = z.object({ id: z.string().uuid() });
+
+/** One-way bridge: reuses createCrmContact, then stamps the lead so it cannot be promoted twice. */
+export async function promoteLeadToContact(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof promoteLeadToContactInput>,
+): Promise<CapResult<{ contact_id: string }>> {
+  const { id } = promoteLeadToContactInput.parse(input);
+  const { data: lead, error: readErr } = await ctx.client
+    .from('leads')
+    .select('id,name,channel,stage,source,promoted_contact_id')
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .maybeSingle();
+  if (readErr) return writeFailed('promoteLeadToContact.read', readErr);
+  if (!lead) return { ok: false, error: 'That lead was not found.' };
+  if ((lead as { promoted_contact_id: string | null }).promoted_contact_id) {
+    return { ok: false, error: 'Already promoted to a contact.' };
+  }
+  const l = lead as unknown as Lead;
+  const name = splitLeadName(l.name);
+  const payload: CrmContactInsert = {
+    first_name: name.first_name,
+    last_name: name.last_name,
+    email: '',
+    phone: null,
+    company: null,
+    // NOT '': crm_contacts CHECK is (country IS NULL OR country ~ '^[A-Z]{2}$') and
+    // CrmContactInsert.country is non-null. 'MY' matches parseCrmContactFields's default.
+    country: 'MY',
+    status: leadStageToCrmStatus(l.stage),
+    lead_score: leadStageToScore(l.stage),
+    tags: [l.channel, ...(l.source ? [l.source] : [])],
+    org_id: ctx.orgId,
+  };
+  let contactId: string;
+  try {
+    const contact = await createCrmContact(ctx.client, payload);
+    contactId = contact.id;
+  } catch (error) {
+    return writeFailed('promoteLeadToContact.createContact', error);
+  }
+  const { error: stampErr } = await ctx.client
+    .from('leads')
+    .update({ promoted_contact_id: contactId })
+    .eq('id', id)
+    .eq('org_id', ctx.orgId);
+  // The contact exists; a re-promote would duplicate it (rare, low-harm), so log and succeed.
+  if (stampErr) console.error('[reach-capability] promoteLeadToContact.stamp failed:', stampErr);
+  return { ok: true, data: { contact_id: contactId } };
 }
 
 const creativeType = z.enum(['image', 'video', 'copy']);

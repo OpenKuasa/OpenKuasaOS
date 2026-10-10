@@ -32,6 +32,7 @@ export const WRITE_TOOL_NAMES = [
   'updateLead',
   'setLeadStage',
   'deleteLead',
+  'promoteLeadToContact',
 ] as const;
 
 /** The marketing data an agent works on, and whether this caller may change it. */

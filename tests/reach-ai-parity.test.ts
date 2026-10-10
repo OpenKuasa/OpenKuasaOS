@@ -11,6 +11,7 @@ import {
   deleteCreativeInput,
   deleteFormInput,
   deleteLeadInput,
+  promoteLeadToContactInput,
   setCampaignStatusInput,
   setFormStatusInput,
   setLeadStageInput,
@@ -47,6 +48,7 @@ describe('AI write tools reuse the capability schemas (parity)', () => {
     expect(tools.updateLead.inputSchema).toBe(updateLeadInput);
     expect(tools.setLeadStage.inputSchema).toBe(setLeadStageInput);
     expect(tools.deleteLead.inputSchema).toBe(deleteLeadInput);
+    expect(tools.promoteLeadToContact.inputSchema).toBe(promoteLeadToContactInput);
   });
 
   it('every write tool is approval-gated', () => {
