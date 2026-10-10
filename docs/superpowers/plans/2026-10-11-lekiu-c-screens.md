@@ -285,3 +285,16 @@ Every task ends the same way: run its own test file and `pnpm eslint` on its own
 - Week navigation and date-range filters (the pages take no parameters yet).
 - Lekiu inside Tuah.
 - `/people/calendar`, which is Kasturi's shared screen.
+
+## Execution Notes (2026-10-11)
+
+The plan above is as written. The branch is the reference. What changed or was decided along the way:
+
+- **Task 1.** `LaterButton` has a `compact` form for table rows (the note is then for hover and screen readers; the card says it once). The date helpers return "—" or "" for a bad timestamp instead of throwing. Undated documents sort last on the live database.
+- **Screens kept beyond the lists.** Public Holidays keeps "By type" and "Coming up"; Review Scores and Training keep four chart cards the sample had. All are built from real rows and show "Shown to HR admins" to a member.
+- **Members on team screens.** Tiles are omitted (Timesheet, Shift Calendar, Overtime, Letters), retitled "Your …" (Scorecard, Review Scores) or shown as "—" (Dashboard). Charts titled as the team's show "Shown to HR admins"; tables say "Your records".
+- **Definitions settled in code.** "Pending" everywhere is every pending request, whatever its date. "This month" is the calendar month of the row's own date. "Claimed this month" counts every claim not cancelled, including rejected ones. Overtime cost and pay include pending and say so. Payroll and the Dashboard both skip a payroll run that has no payslips yet. Letters "Issued" is this year. "Expiring" on My Documents is by date, within 90 days.
+- **Final review.** Payroll and the Dashboard disagreed on the latest run when the newest had no payslips; fixed. Personal screens now read nothing for an account with no employee record.
+- **Must be settled before letters can be written:** the database lets an employee read letters addressed to them at any status, so a member would see a draft (a warning, say) before it is issued. The fix is a policy change (own rows only when issued), not a screen filter. The same question applies to a member's payslips in a draft payroll run.
+- **Left for later:** captions render as small grey chips; Settings shows four fixed notification switches whatever is stored; approvals, vouchers, letters, scorecards and reviews tables are not capped; an owner whose data fails to load on an HR-only page is told the page is for owners and admins; radar and bar charts have no fixed 0 to 5 scale; an unlinked member on a team screen sees "no records" rather than "not linked"; provider-side filters and a marker at the 5,000-row stop.
+- **Not done, needs the owner:** the browser pass as a signed-in owner of a real workspace and as a plain member.
