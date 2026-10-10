@@ -4,7 +4,7 @@ import { HIRE_TOOL_NAMES, createHireTools } from '@/lib/ai/hire-tools';
 import { CRM_WRITE_TOOL_NAMES } from '@/lib/ai/crm-tools';
 import { HIRE_WRITE_TOOL_NAMES, REACH_WRITE_TOOL_NAMES } from '@/lib/ai/products';
 import {
-  createJobInput, deleteJobInput, setJobStatusInput, updateCareersPageInput, updateJobInput,
+  createJobInput, deleteJobInput, setJobStatusInput, updateApplicationFormInput, updateCareersPageInput, updateJobInput,
 } from '@/lib/hire/capabilities';
 import { createReachTools } from '@/lib/ai/tools';
 import { toolMeta } from '@/components/chat/tool-parts';
@@ -171,7 +171,7 @@ describe('hire tools', () => {
     const empty: HireData = {
       listJobs: async () => [], listCandidates: async () => [],
       listApplications: async () => [], listInterviews: async () => [],
-      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
+      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false }),
     };
     const t = createHireTools(empty, NOW);
     for (const name of HIRE_TOOL_NAMES) {
@@ -192,7 +192,7 @@ describe('hire tools', () => {
     const broken: HireData = {
       listJobs: async () => { throw new Error('relation "hire_jobs" does not exist'); },
       listCandidates: async () => [], listApplications: async () => [], listInterviews: async () => [],
-      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
+      getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false }),
     };
     const t = createHireTools(broken, NOW);
     const result = await (t.listJobs as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute({}, { toolCallId: 't', messages: [] });
@@ -213,7 +213,7 @@ describe('hire change tools', () => {
       expect(viewer).not.toContain(name);
       expect(member).toContain(name);
     }
-    expect(HIRE_WRITE_TOOL_NAMES).toEqual(['createJob', 'updateJob', 'setJobStatus', 'deleteJob', 'updateCareersPage']);
+    expect(HIRE_WRITE_TOOL_NAMES).toEqual(['createJob', 'updateJob', 'setJobStatus', 'deleteJob', 'updateCareersPage', 'updateApplicationForm']);
   });
   it('gives a writer nothing beyond the lookups except the listed change tools, so each one needs approval', () => {
     const writerTools = createHireTools(data, NOW, { ctx, canWrite: true });
@@ -240,6 +240,7 @@ describe('hire change tools', () => {
     expect(t.setJobStatus.inputSchema).toBe(setJobStatusInput);
     expect(t.deleteJob.inputSchema).toBe(deleteJobInput);
     expect(t.updateCareersPage.inputSchema).toBe(updateCareersPageInput);
+    expect(t.updateApplicationForm.inputSchema).toBe(updateApplicationFormInput);
   });
   it('lets listJobs hand the model an id and the new fields', async () => {
     const { jobs } = await run('listJobs')({ status: 'open' });
@@ -252,7 +253,7 @@ describe('hire change tools', () => {
 });
 
 describe('getCareersPage', () => {
-  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Join us', careers_tagline: null };
+  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Join us', careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false };
   const withSettings = (over: Record<string, unknown> = {}): HireData => ({
     ...createSeedHireData(NOW),
     getSettings: async () => ({ ...settings, ...over }),
@@ -272,6 +273,15 @@ describe('getCareersPage', () => {
     const open = (await data.listJobs()).filter((j) => j.status === 'open' && j.description?.trim()).length;
     expect(open).toBeGreaterThan(0);
     expect(out).toMatchObject({ jobs_showing: open });
+  });
+  it('reports what the application form asks for, whether the page is on or off', async () => {
+    const switches = { require_cv: true, require_cover_letter: false, ask_portfolio: true, ask_expected_salary: false };
+    for (const careers_enabled of [true, false]) {
+      const out = await call(createHireTools(withSettings({ ...switches, careers_enabled }), NOW), {});
+      expect(out.application_form).toEqual(switches);
+    }
+    const sample = await call(createHireTools(createSeedHireData(NOW), NOW), {});
+    expect(sample.application_form).toEqual({ require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false });
   });
   it('shows nothing public while the page is off', async () => {
     const t = createHireTools(withSettings({ careers_enabled: false }), NOW, undefined, { origin: 'https://openkuasa.com' });

@@ -134,6 +134,7 @@ describe('hire seed', () => {
   it('has the careers page off, with no workspace id', async () => {
     expect(await createSeedHireData(new Date()).getSettings()).toEqual({
       org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null,
+      require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false,
     });
   });
 });

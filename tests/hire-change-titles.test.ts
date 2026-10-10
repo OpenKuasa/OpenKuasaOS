@@ -77,3 +77,22 @@ describe('the careers page change', () => {
     expect(approvalDetail('updateCareersPage', 'text')).toBeNull();
   });
 });
+
+describe('the application form change', () => {
+  it('is named by what it does', () => {
+    expect(approvalTitle('updateApplicationForm', { require_cv: true })).toBe('Require a CV on applications?');
+    expect(approvalTitle('updateApplicationForm', { require_cv: false })).toBe('Stop requiring a CV on applications?');
+    expect(approvalTitle('updateApplicationForm', { ask_expected_salary: false })).toBe('Stop asking for expected salary on applications?');
+    expect(approvalTitle('updateApplicationForm', { ask_portfolio: true })).toBe('Ask for a portfolio link on applications?');
+    // Several at once: one question, and the detail line lists them.
+    expect(approvalTitle('updateApplicationForm', { require_cv: true, ask_portfolio: false })).toBe('Change what the application form asks for?');
+    expect(approvalTitle('updateApplicationForm', {})).toBe('Change what the application form asks for?');
+  });
+  it('lists each switch being changed when there is more than one', () => {
+    expect(approvalDetail('updateApplicationForm', { require_cv: true, ask_portfolio: false }))
+      .toBe('Require a CV · Stop asking for a portfolio link');
+    // One change is already the title.
+    expect(approvalDetail('updateApplicationForm', { require_cv: true })).toBeNull();
+    expect(approvalDetail('updateApplicationForm', null)).toBeNull();
+  });
+});

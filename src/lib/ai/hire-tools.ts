@@ -18,6 +18,8 @@ import {
   deleteJobInput,
   setJobStatus,
   setJobStatusInput,
+  updateApplicationForm,
+  updateApplicationFormInput,
   updateCareersPage,
   updateCareersPageInput,
   updateJob,
@@ -25,6 +27,7 @@ import {
 } from '@/lib/hire/capabilities';
 import { formatWhen } from '@/lib/reach/overview';
 import { LOOKUP_MAX, limitSchema, rowLimit } from '@/lib/ai/limits';
+import { applicationFormOf } from '@/lib/hire/application-form';
 import { applicationLabel, funnelCounts, matchesText } from '@/lib/hire/applications-view';
 import { timeToHire } from '@/lib/hire/dashboard';
 import { careersPath, careersUrl } from '@/lib/hire/public-careers';
@@ -309,7 +312,8 @@ export function createHireTools(
     getCareersPage: tool({
       description:
         'The public careers page: whether it is on, its address, its headline and tagline, and how many jobs it is showing. ' +
-        'When it is off nothing is public.',
+        'When it is off nothing is public. ' +
+        'Also what the application form asks for: whether a CV and a cover letter are required, and whether a portfolio link and expected salary are asked for.',
       inputSchema: z.object({}),
       execute: async () =>
         safe('getCareersPage', async () => {
@@ -320,6 +324,7 @@ export function createHireTools(
             enabled: settings.careers_enabled,
             headline: settings.careers_headline,
             tagline: settings.careers_tagline,
+            application_form: applicationFormOf(settings),
             path,
             url: settings.careers_enabled && origin && settings.org_id ? careersUrl(origin, settings.org_id) : null,
             // Only open jobs with a description are listed publicly.
@@ -371,6 +376,14 @@ export function createHireTools(
         'Turning it on makes every open job visible to anyone with the link.',
       inputSchema: updateCareersPageInput,
       execute: async (input) => updateCareersPage(ctx, input, now()),
+    }),
+    updateApplicationForm: tool({
+      description:
+        'Change what the public application form asks for. Send only the switches that change. ' +
+        'A CV and a cover letter are required when on; a portfolio link and expected salary are asked for, and optional, when on. ' +
+        'Use getCareersPage to see the current switches.',
+      inputSchema: updateApplicationFormInput,
+      execute: async (input) => updateApplicationForm(ctx, input, now()),
     }),
   };
 }

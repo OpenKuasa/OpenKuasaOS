@@ -123,7 +123,7 @@ describe('Tuah with hiring changes', () => {
 
 describe('the site origin reaches the hiring tools', () => {
   it('a hire access carrying an origin gives getCareersPage an address', async () => {
-    const settings = { org_id: 'org1', careers_enabled: true, careers_headline: null, careers_tagline: null };
+    const settings = { org_id: 'org1', careers_enabled: true, careers_headline: null, careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false };
     const access = {
       data: { ...createSeedHireData(new Date('2026-10-10T04:00:00Z')), getSettings: async () => settings },
       origin: 'https://openkuasa.com',

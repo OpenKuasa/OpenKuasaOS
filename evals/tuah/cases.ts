@@ -386,6 +386,27 @@ export const CASES: Case[] = [
     },
   },
   {
+    id: 'application-form-cv',
+    about: 'Makes a CV required on applications through Lekir, after approval, without switching the careers page on',
+    run: async (ws) => {
+      const chat = new Conversation(ws);
+      const asked = await chat.ask('Make a CV required when people apply.');
+      const checks = [
+        check('asked Lekir', asked.asked.includes('Lekir'), `asked: ${asked.asked.join(', ') || 'nobody'}`),
+        check('put one change up for approval', asked.pending.length === 1, `${asked.pending.length} waiting; said: ${asked.text}`),
+      ];
+      if (asked.pending.length !== 1) return checks;
+      await chat.decide(true);
+      // What was saved, not what was proposed.
+      const { data } = await ws.client.from('hire_settings').select('require_cv,careers_enabled').eq('org_id', ws.orgId).maybeSingle();
+      return [
+        ...checks,
+        check('a CV is now required', data?.require_cv === true, JSON.stringify(data)),
+        check('the careers page was not switched on', data?.careers_enabled !== true, JSON.stringify(data)),
+      ];
+    },
+  },
+  {
     id: 'hiring-lookup-empty',
     about: 'Asks Lekir about hiring, and says there is nothing yet instead of inventing jobs',
     run: async (ws) => {

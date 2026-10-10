@@ -115,9 +115,19 @@ export type HireSettings = {
   careers_enabled: boolean;
   careers_headline: string | null;
   careers_tagline: string | null;
+  /** The apply form requires a CV (a link or a file). */
+  require_cv: boolean;
+  /** The apply form requires a cover letter. */
+  require_cover_letter: boolean;
+  /** The apply form asks for a portfolio link; optional for the applicant. */
+  ask_portfolio: boolean;
+  /** The apply form asks for the expected monthly salary; optional for the applicant. */
+  ask_expected_salary: boolean;
 };
-export const SETTINGS_COLUMNS = 'careers_enabled,careers_headline,careers_tagline';
+export const SETTINGS_COLUMNS =
+  'careers_enabled,careers_headline,careers_tagline,require_cv,require_cover_letter,ask_portfolio,ask_expected_salary';
 /** What a workspace with no settings row has. */
 export const DEFAULT_HIRE_SETTINGS: Omit<HireSettings, 'org_id'> = {
   careers_enabled: false, careers_headline: null, careers_tagline: null,
+  require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false,
 };

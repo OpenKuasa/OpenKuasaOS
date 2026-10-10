@@ -18,7 +18,7 @@ const EMPTY: HireData = {
   listCandidates: async () => [],
   listApplications: async () => [],
   listInterviews: async () => [],
-  getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null }),
+  getSettings: async () => ({ org_id: null, careers_enabled: false, careers_headline: null, careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false }),
 };
 
 describe('jobs', () => {
@@ -85,7 +85,7 @@ describe('careers page: what the public board lists', () => {
     opened_at: '2026-09-01T00:00:00Z', closed_at: null, created_at: '2026-09-01T00:00:00Z',
     ...over,
   });
-  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Work with us', careers_tagline: null };
+  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Work with us', careers_tagline: null, require_cv: false, require_cover_letter: false, ask_portfolio: false, ask_expected_salary: false };
 
   it('carries the settings from the provider', async () => {
     const model = await buildCareersModel({ ...EMPTY, getSettings: async () => settings });

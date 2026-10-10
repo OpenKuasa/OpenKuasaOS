@@ -16,6 +16,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { can } from '@/lib/auth/permissions';
+import { getViewer } from '@/lib/auth/viewer';
+import { applicationFormOf } from '@/lib/hire/application-form';
+import { ApplicationFormCard, type ApplicationFormMode } from '@/screens/hire/application-form-card';
+import { LOAD_FAILED, loadHire } from '@/screens/hire/parts';
 
 type ToggleRow = { id: string; label: string; checked: boolean };
 
@@ -88,13 +93,6 @@ const TEMPLATES: Template[] = [
   },
 ];
 
-const FORM_FIELDS: ToggleRow[] = [
-  { id: 'req-resume', label: 'Require resume/CV', checked: true },
-  { id: 'req-cover', label: 'Require cover letter', checked: false },
-  { id: 'ask-portfolio', label: 'Ask for portfolio URL', checked: true },
-  { id: 'ask-salary', label: 'Ask for expected salary (RM)', checked: true },
-];
-
 const NOTIFICATIONS: ToggleRow[] = [
   { id: 'notify-new', label: 'Email me on new applications', checked: true },
   { id: 'notify-digest', label: 'Daily applicant digest', checked: true },
@@ -119,7 +117,16 @@ function ToggleItem({ row }: { row: ToggleRow }) {
   );
 }
 
-export default function SettingsScreen() {
+export default async function SettingsScreen() {
+  // Only the Application form card is real: it reads and saves the workspace's settings.
+  // The other cards on this screen are still sample content.
+  const [{ model: settings, isDemo }, viewer] = await Promise.all([
+    loadHire('settings', (data) => data.getSettings()),
+    getViewer(),
+  ]);
+  const formMode: ApplicationFormMode =
+    isDemo || viewer.isDemo ? 'demo' : can(viewer.role, 'edit-data') ? 'edit' : 'view';
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -273,9 +280,7 @@ export default function SettingsScreen() {
           icon={ClipboardList}
           className="col-span-2 md:col-span-6"
         >
-          {FORM_FIELDS.map((row) => (
-            <ToggleItem key={row.id} row={row} />
-          ))}
+          {settings ? <ApplicationFormCard saved={applicationFormOf(settings)} mode={formMode} /> : LOAD_FAILED}
         </BentoCard>
 
         {/* Notifications */}
@@ -292,7 +297,8 @@ export default function SettingsScreen() {
       </BentoGrid>
 
       <div className="mt-4 flex justify-end">
-        <Button>Save changes</Button>
+        {/* Nothing on this screen saves through this button yet: the Application form card has its own Save. */}
+        <Button disabled>Save changes</Button>
       </div>
     </ScreenContainer>
   );

@@ -22,7 +22,7 @@ describe('LEKIR_SYSTEM', () => {
   it('says what it can change, in step with the change tools it holds', () => {
     expect(t).toContain('create, edit, open, pause, close, reopen or delete jobs');
     // A change tool for something else means this line has to grow with it.
-    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$|^updateCareersPage$/.test(name))).toBe(true);
+    expect([...HIRE_WRITE_TOOL_NAMES].every((name) => /Job(Status)?$|^updateCareersPage$|^updateApplicationForm$/.test(name))).toBe(true);
     expect(HIRE_WRITE_TOOL_NAMES.length).toBeGreaterThan(0);
   });
   it('can switch the careers page on or off, and says what switching it on exposes', () => {
@@ -98,6 +98,9 @@ describe('the careers page in the other prompts', () => {
     const p = prompt.toLowerCase();
     expect(p).toContain('public careers page');
     expect(p).toContain('turning it on makes every open job visible to anyone with the link');
+  });
+  it.each([...prompts, ['LEKIR_SYSTEM', LEKIR_SYSTEM] as [string, string]])('%s says what the application form asks for can be changed', (_name, prompt) => {
+    expect(prompt.toLowerCase()).toContain('what the application form asks for');
   });
   it('tells the specialist to use getCareersPage for the address', () => {
     expect(subAgentSystem('hire', true)).toContain('getCareersPage');

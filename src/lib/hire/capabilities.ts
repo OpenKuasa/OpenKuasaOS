@@ -286,6 +286,42 @@ export const updateCareersPageInput = z.object({
 const asSettings = (orgId: string, row: unknown): HireSettings =>
   ({ org_id: orgId, ...DEFAULT_HIRE_SETTINGS, ...((row ?? {}) as Partial<HireSettings>) });
 
+/** The settings row as it stands, or the defaults when there is none. */
+async function readSettings(ctx: HireWriteContext, fnName: string): Promise<CapResult<HireSettings>> {
+  const { data, error } = await ctx.client
+    .from('hire_settings').select(SETTINGS_COLUMNS).eq('org_id', ctx.orgId).maybeSingle();
+  if (error) return writeFailed(fnName, error);
+  return { ok: true, data: asSettings(ctx.orgId, data) };
+}
+
+/**
+ * Writes some columns of the workspace's settings row, making the row if
+ * there is none. Not an upsert: the update grant leaves out org_id, which an
+ * upsert's "do update" would set. A new row takes the column defaults for
+ * everything not in the patch, so the board stays off.
+ */
+async function saveSettings(
+  ctx: HireWriteContext, patch: Record<string, unknown>, now: Date, fnName: string,
+): Promise<CapResult<HireSettings>> {
+  const update = () =>
+    ctx.client.from('hire_settings')
+      .update({ ...patch, updated_at: now.toISOString() })
+      .eq('org_id', ctx.orgId).select(SETTINGS_COLUMNS).maybeSingle();
+
+  const first = await update();
+  if (first.error) return writeFailed(fnName, first.error);
+  if (first.data) return { ok: true, data: asSettings(ctx.orgId, first.data) };
+
+  const inserted = await ctx.client.from('hire_settings')
+    .insert({ ...patch, org_id: ctx.orgId }).select(SETTINGS_COLUMNS).single();
+  if (!inserted.error && inserted.data) return { ok: true, data: asSettings(ctx.orgId, inserted.data) };
+  // Someone else made the row between the two calls: update it after all.
+  if ((inserted.error as { code?: string } | null)?.code !== '23505') return writeFailed(fnName, inserted.error);
+  const second = await update();
+  if (second.error || !second.data) return writeFailed(fnName, second.error);
+  return { ok: true, data: asSettings(ctx.orgId, second.data) };
+}
+
 export async function updateCareersPage(
   ctx: HireWriteContext,
   input: z.input<typeof updateCareersPageInput>,
@@ -300,12 +336,7 @@ export async function updateCareersPage(
   };
   const patch = Object.fromEntries(Object.entries(given).filter(([, v]) => v !== undefined));
 
-  if (Object.keys(patch).length === 0) {
-    const { data, error } = await ctx.client
-      .from('hire_settings').select(SETTINGS_COLUMNS).eq('org_id', ctx.orgId).maybeSingle();
-    if (error) return writeFailed('updateCareersPage', error);
-    return { ok: true, data: asSettings(ctx.orgId, data) };
-  }
+  if (Object.keys(patch).length === 0) return readSettings(ctx, 'updateCareersPage');
 
   if (patch.careers_enabled === true) {
     const { data: org, error } = await ctx.client.from('orgs').select('slug').eq('id', ctx.orgId).maybeSingle();
@@ -314,22 +345,29 @@ export async function updateCareersPage(
     if ((org as { slug?: string | null }).slug === DEMO_SLUG) return { ok: false, error: CAREERS_DEMO };
   }
 
-  // Not an upsert: the update grant leaves out org_id, which an upsert's "do update" would set.
-  const update = () =>
-    ctx.client.from('hire_settings')
-      .update({ ...patch, updated_at: now.toISOString() })
-      .eq('org_id', ctx.orgId).select(SETTINGS_COLUMNS).maybeSingle();
+  return saveSettings(ctx, patch, now, 'updateCareersPage');
+}
 
-  const first = await update();
-  if (first.error) return writeFailed('updateCareersPage', first.error);
-  if (first.data) return { ok: true, data: asSettings(ctx.orgId, first.data) };
+// ─── application form (four switches on the same settings row) ───────────────
 
-  const inserted = await ctx.client.from('hire_settings')
-    .insert({ ...patch, org_id: ctx.orgId }).select(SETTINGS_COLUMNS).single();
-  if (!inserted.error && inserted.data) return { ok: true, data: asSettings(ctx.orgId, inserted.data) };
-  // Someone else made the row between the two calls: update it after all.
-  if ((inserted.error as { code?: string } | null)?.code !== '23505') return writeFailed('updateCareersPage', inserted.error);
-  const second = await update();
-  if (second.error || !second.data) return writeFailed('updateCareersPage', second.error);
-  return { ok: true, data: asSettings(ctx.orgId, second.data) };
+const formSwitch = (what: string) => z.boolean().optional().describe(what);
+
+export const updateApplicationFormInput = z.object({
+  require_cv: formSwitch('true makes a CV (a link or a file) required on applications; false makes it optional.'),
+  require_cover_letter: formSwitch('true makes a cover letter required on applications; false removes that.'),
+  ask_portfolio: formSwitch('true adds an optional portfolio link to the application form; false removes it.'),
+  ask_expected_salary: formSwitch('true adds an optional expected monthly salary (RM) to the application form; false removes it.'),
+});
+
+export async function updateApplicationForm(
+  ctx: HireWriteContext,
+  input: z.input<typeof updateApplicationFormInput>,
+  now: Date = new Date(),
+): Promise<CapResult<HireSettings>> {
+  const parsed = updateApplicationFormInput.safeParse(input);
+  if (!parsed.success) return invalid(parsed.error);
+  // Only the switches the caller sent; undefined means "leave as it is".
+  const patch = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined));
+  if (Object.keys(patch).length === 0) return readSettings(ctx, 'updateApplicationForm');
+  return saveSettings(ctx, patch, now, 'updateApplicationForm');
 }
