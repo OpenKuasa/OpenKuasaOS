@@ -43,8 +43,8 @@
 
 | File | Responsibility |
 |---|---|
-| `supabase/migrations/20261014090000_hire_jobs_writes.sql` | New columns, checks, write policy, grants, delete guard |
-| `supabase/migrations/20261014090100_hire_jobs_demo_seed.sql` | Demo seed with the new fields and working-hours interviews |
+| `supabase/migrations/20261015090000_hire_jobs_writes.sql` | New columns, checks, write policy, grants, delete guard |
+| `supabase/migrations/20261015090100_hire_jobs_demo_seed.sql` | Demo seed with the new fields and working-hours interviews |
 | `src/lib/hire/types.ts`, `supabase.ts`, `seed.ts` | Job gains seven fields |
 | `src/lib/hire/capabilities.ts` | The single write path |
 | `src/app/(app)/hire/actions.ts` | Server actions over the capabilities |
@@ -59,7 +59,7 @@
 ### Task 1: Migration — writable jobs
 
 **Files:**
-- Create: `supabase/migrations/20261014090000_hire_jobs_writes.sql`
+- Create: `supabase/migrations/20261015090000_hire_jobs_writes.sql`
 - Test: `tests/hire-jobs-migration.test.ts`
 
 **Interfaces:**
@@ -74,7 +74,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const read = (name: string) => readFileSync(join(process.cwd(), 'supabase/migrations', name), 'utf8');
-const sql = read('20261014090000_hire_jobs_writes.sql');
+const sql = read('20261015090000_hire_jobs_writes.sql');
 
 describe('hire jobs writes migration', () => {
   test('adds the seven job fields with their checks', () => {
@@ -127,7 +127,7 @@ Expected: FAIL with `ENOENT`.
 - [ ] **Step 3: Write the migration**
 
 ```sql
--- supabase/migrations/20261014090000_hire_jobs_writes.sql
+-- supabase/migrations/20261015090000_hire_jobs_writes.sql
 -- Lekir slice 2a: jobs become writable. Two layers, added together: the grants
 -- cap the verbs and columns, the policy scopes the rows to writers.
 
@@ -182,7 +182,7 @@ Expected: PASS, 5 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261014090000_hire_jobs_writes.sql tests/hire-jobs-migration.test.ts
+git add supabase/migrations/20261015090000_hire_jobs_writes.sql tests/hire-jobs-migration.test.ts
 git commit -m "feat(hire): jobs become writable (new fields, write policy, grants, delete guard)"
 ```
 
@@ -878,7 +878,7 @@ git commit -m "feat(hire): job capabilities — create, update, set status, dele
 ### Task 4: Demo seed migration
 
 **Files:**
-- Create: `supabase/migrations/20261014090100_hire_jobs_demo_seed.sql`
+- Create: `supabase/migrations/20261015090100_hire_jobs_demo_seed.sql`
 - Modify: `tests/hire-jobs-migration.test.ts`
 
 **Interfaces:**
@@ -890,7 +890,7 @@ git commit -m "feat(hire): job capabilities — create, update, set status, dele
 Append to `tests/hire-jobs-migration.test.ts`:
 
 ```ts
-const seed = read('20261014090100_hire_jobs_demo_seed.sql');
+const seed = read('20261015090100_hire_jobs_demo_seed.sql');
 const previous = read('20261013090100_hire_demo_seed.sql');
 
 describe('hire jobs demo seed migration', () => {
@@ -1023,7 +1023,7 @@ Expected: PASS. The slice 1 migration test still reads the slice 1 file, which i
 - [ ] **Step 5: Commit**
 
 ```bash
-git add supabase/migrations/20261014090100_hire_jobs_demo_seed.sql tests/hire-jobs-migration.test.ts
+git add supabase/migrations/20261015090100_hire_jobs_demo_seed.sql tests/hire-jobs-migration.test.ts
 git commit -m "feat(hire): demo seed fills the new job fields; interviews in working hours"
 ```
 

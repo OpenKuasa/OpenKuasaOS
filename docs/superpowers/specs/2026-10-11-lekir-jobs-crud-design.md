@@ -340,7 +340,7 @@ The header's Publish and Preview buttons stay disabled until 2b.
 
 ## 13. Delivery
 - Branch `feat-091-lekir-jobs-crud` from `main` at `7380de5`.
-- Migrations `20261014090000_hire_jobs_writes.sql` and `20261014090100_hire_jobs_demo_seed.sql`,
+- Migrations `20261015090000_hire_jobs_writes.sql` and `20261015090100_hire_jobs_demo_seed.sql`,
   applied to the live project before the merge deploys, each after a yes.
 - One pull request, squash-merged, rebased onto `origin/main` first.
 

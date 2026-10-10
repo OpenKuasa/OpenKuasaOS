@@ -1,4 +1,4 @@
--- supabase/migrations/20261014090100_hire_jobs_demo_seed.sql
+-- supabase/migrations/20261015090100_hire_jobs_demo_seed.sql
 -- Demo-org hiring seed, slice 2a: jobs carry the new fields; interviews fall in working hours.
 -- Replaces the function from 20261013090100.
 create or replace function private.reseed_demo_hire()

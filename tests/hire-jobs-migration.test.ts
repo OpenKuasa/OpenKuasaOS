@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const read = (name: string) => readFileSync(join(process.cwd(), 'supabase/migrations', name), 'utf8');
-const sql = read('20261014090000_hire_jobs_writes.sql');
+const sql = read('20261015090000_hire_jobs_writes.sql');
 
 describe('hire jobs writes migration', () => {
   test('adds the seven job fields with their checks', () => {
@@ -47,7 +47,7 @@ describe('hire jobs writes migration', () => {
   });
 });
 
-const seed = read('20261014090100_hire_jobs_demo_seed.sql');
+const seed = read('20261015090100_hire_jobs_demo_seed.sql');
 const previous = read('20261013090100_hire_demo_seed.sql');
 
 describe('hire jobs demo seed migration', () => {
