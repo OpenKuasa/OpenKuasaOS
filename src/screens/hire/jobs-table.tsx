@@ -90,6 +90,11 @@ function openings(job: Row['job']): string {
   return job.work_arrangement ? `${ARRANGEMENT_LABEL[job.work_arrangement]} · ${count}` : count;
 }
 
+/** Focuses a button on the page, or `fallback` when it is no longer there: a row can go while its dialog is open. */
+function focusOr(element: HTMLElement | null, fallback: HTMLElement | null) {
+  (element?.isConnected ? element : fallback)?.focus();
+}
+
 export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: boolean; today: string }) {
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState<Row | null>(null);
@@ -100,19 +105,26 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
   /** Whether the open form differs from what it started with. */
   const [dirty, setDirty] = useState(false);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  /** Counts refused clicks on a blocked Delete, so the same reason is announced again each time. */
+  const [blockedClicks, setBlockedClicks] = useState(0);
   const reasonId = useId();
   const postButton = useRef<HTMLButtonElement>(null);
-  /** Set when a delete or a status move succeeds: the row's own button may be gone, so focus goes to "Post a Job". */
-  const focusPost = useRef(false);
-  /** Set when a delete succeeds, so the closing confirm does not send focus back to the deleted row. */
-  const deleted = useRef(false);
+  /** The button that opened the job form or the delete confirm: focus goes back to it when that closes. */
+  const opener = useRef<HTMLElement | null>(null);
+  /**
+   * What to focus once the running action has ended. Every button that starts an action is disabled
+   * while it runs, so none of them can take focus before then.
+   */
+  const focusWhenIdle = useRef<HTMLElement | null>(null);
+  const formContent = useRef<HTMLDivElement>(null);
+  /** The form field that last had focus, for coming back from "Discard your changes?". */
+  const lastField = useRef<HTMLElement | null>(null);
 
-  // "Post a Job" is disabled while an action runs, so it can only take focus once the action has finished.
   useEffect(() => {
-    if (!pending && focusPost.current) {
-      focusPost.current = false;
-      postButton.current?.focus();
-    }
+    if (pending || !focusWhenIdle.current) return;
+    const element = focusWhenIdle.current;
+    focusWhenIdle.current = null;
+    focusOr(element, postButton.current);
   }, [pending]);
 
   function act(promise: Promise<ActionResult>, onOk: () => void) {
@@ -136,7 +148,9 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
 
   const formOpen = canEdit && (creating || editing !== null);
 
-  function openForm(row: Row | null) {
+  function openForm(row: Row | null, from: HTMLElement) {
+    opener.current = from;
+    lastField.current = null;
     setError(null);
     setDirty(false);
     setEditing(row);
@@ -176,7 +190,7 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
             type="button"
             size="sm"
             className={cn(TARGET, 'ml-auto')}
-            onClick={() => openForm(null)}
+            onClick={(event) => openForm(null, event.currentTarget)}
             disabled={pending}
           >
             <Plus className="size-4" />
@@ -185,7 +199,8 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
         )}
       </div>
       {error && !formOpen && !deleting && (
-        <p role="alert" className={cn(ALERT_CLASS, 'mx-4 mb-3')}>
+        // Keyed, so a second click on a blocked Delete puts a new alert in the page and it is announced again.
+        <p key={blockedClicks} role="alert" className={cn(ALERT_CLASS, 'mx-4 mb-3')}>
           {error}
         </p>
       )}
@@ -245,7 +260,7 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                             className={TARGET}
                             aria-label={`Edit ${row.title}`}
                             disabled={pending}
-                            onClick={() => openForm(row)}
+                            onClick={(event) => openForm(row, event.currentTarget)}
                           >
                             <Pencil className="size-4" />
                             Edit
@@ -259,12 +274,15 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                               className={TARGET}
                               aria-label={`${move.label} ${row.title}`}
                               disabled={pending}
-                              onClick={() =>
+                              onClick={(event) => {
+                                // A refused move comes back to this button, so the keyboard position is kept.
+                                focusWhenIdle.current = event.currentTarget;
                                 act(setJobStatusAction({ id: row.id, status: move.to }), () => {
-                                  focusPost.current = true;
+                                  // This button may be gone once the status has changed.
+                                  focusWhenIdle.current = postButton.current;
                                   setNotice(`${row.title} is now ${move.to}.`);
-                                })
-                              }
+                                });
+                              }}
                             >
                               {move.label}
                             </Button>
@@ -283,10 +301,15 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                             aria-disabled={blocked || undefined}
                             aria-describedby={blocked ? blockedId : undefined}
                             disabled={pending}
-                            onClick={() => {
+                            onClick={(event) => {
                               setNotice(null);
                               setError(blocked ? HAS_APPLICATIONS : null);
-                              if (!blocked) setDeleting(row);
+                              if (blocked) {
+                                setBlockedClicks((count) => count + 1);
+                              } else {
+                                opener.current = event.currentTarget;
+                                setDeleting(row);
+                              }
                             }}
                           >
                             <Trash2 className="size-4" />
@@ -319,11 +342,10 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
           <AlertDialog.Overlay className={OVERLAY_CLASS} />
           <AlertDialog.Content
             className={cn(CONTENT_CLASS, 'max-w-sm')}
+            // There is no Radix trigger, so Radix has nothing to give focus back to: this does it.
             onCloseAutoFocus={(event) => {
-              if (!deleted.current) return;
-              deleted.current = false;
               event.preventDefault();
-              postButton.current?.focus();
+              focusOr(opener.current, postButton.current);
             }}
           >
             <AlertDialog.Title className="text-base font-semibold break-words">
@@ -363,8 +385,9 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                     if (!deleting) return;
                     const { id, title } = deleting;
                     act(deleteJobAction({ id }), () => {
-                      deleted.current = true;
-                      focusPost.current = true;
+                      // The row is gone, and with it the Delete button that opened this.
+                      opener.current = postButton.current;
+                      focusWhenIdle.current = postButton.current;
                       setDeleting(null);
                       setNotice(`${title} was deleted.`);
                     });
@@ -388,7 +411,18 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
       >
         <Dialog.Portal>
           <Dialog.Overlay className={OVERLAY_CLASS} />
-          <Dialog.Content className={cn(CONTENT_CLASS, 'max-w-lg')}>
+          <Dialog.Content
+            ref={formContent}
+            className={cn(CONTENT_CLASS, 'max-w-lg')}
+            onFocus={(event) => {
+              // Every field sits in a fieldset; Cancel, Save and the discard confirm do not.
+              if (event.target.closest('fieldset')) lastField.current = event.target;
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              focusOr(opener.current, postButton.current);
+            }}
+          >
             <Dialog.Title className="text-base font-semibold">
               {editing ? 'Edit job' : 'Post a job'}
             </Dialog.Title>
@@ -411,6 +445,8 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
                   act(
                     editing ? updateJobAction({ id: editing.id, ...input }) : createJobAction(input),
                     () => {
+                      // The opener may still be disabled when the form closes after a save.
+                      focusWhenIdle.current = opener.current;
                       closeForm();
                       setNotice(editing ? 'Changes saved.' : 'Job saved as a draft.');
                     },
@@ -423,7 +459,18 @@ export function JobsTable({ rows, canEdit, today }: { rows: Row[]; canEdit: bool
             <AlertDialog.Root open={confirmingDiscard} onOpenChange={setConfirmingDiscard}>
               <AlertDialog.Portal>
                 <AlertDialog.Overlay className={OVERLAY_CLASS} />
-                <AlertDialog.Content className={cn(CONTENT_CLASS, 'max-w-sm')}>
+                <AlertDialog.Content
+                  className={cn(CONTENT_CLASS, 'max-w-sm')}
+                  onCloseAutoFocus={(event) => {
+                    event.preventDefault();
+                    // "Keep editing" goes back into the form. After Discard the form has gone too, so
+                    // nothing here is still in the page, and the form's own close returns focus to its opener.
+                    const field = lastField.current?.isConnected
+                      ? lastField.current
+                      : formContent.current?.querySelector<HTMLElement>('input');
+                    field?.focus();
+                  }}
+                >
                   <AlertDialog.Title className="text-base font-semibold">
                     Discard your changes?
                   </AlertDialog.Title>
@@ -789,6 +836,13 @@ function JobForm({
           className={TARGET}
           onPointerDown={() => {
             cancelling.current = true;
+          }}
+          // A press that ends, or is dragged off, without a click must not skip the next field check.
+          onPointerUp={() => {
+            cancelling.current = false;
+          }}
+          onPointerLeave={() => {
+            cancelling.current = false;
           }}
           onClick={() => {
             cancelling.current = false;
