@@ -26,4 +26,12 @@ describe('JEBAT_SYSTEM', () => {
     expect(t).toContain('already approved it');
     expect(t).toContain('past tense');
   });
+  it('says it can create, edit, delete or move leads along the funnel', () => {
+    expect(JEBAT_SYSTEM.toLowerCase()).toMatch(/move .*leads?|leads?.*funnel|promote a lead/);
+  });
+  it('says it can promote a lead to a CRM contact and only once', () => {
+    const t = JEBAT_SYSTEM.toLowerCase();
+    expect(t).toContain('promote');
+    expect(t).toContain('already promoted');
+  });
 });
