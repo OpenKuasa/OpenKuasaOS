@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { Dialog } from 'radix-ui';
 import { Pause, Pencil, Play, Plus, Trash2 } from 'lucide-react';
 import type { Campaign } from '@/lib/reach/types';
-import { rm } from '@/lib/ai/tools';
+import { rm } from '@/lib/reach/format';
 import {
   createCampaignAction,
   deleteCampaignAction,

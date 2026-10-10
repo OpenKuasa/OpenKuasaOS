@@ -10,6 +10,7 @@
  */
 
 import { tool } from 'ai';
+import { rm } from '@/lib/reach/format';
 import { z } from 'zod';
 import {
   type ReachWriteContext,
@@ -45,15 +46,9 @@ import {
   type ReachData,
 } from '@/lib/reach/types';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export { rm } from '@/lib/reach/format';
 
-/** Format cents as `RM 1,234.50`. */
-export function rm(cents: number): string {
-  return `RM ${(cents / 100).toLocaleString('en-MY', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function stageRank(stage: LeadStage): number {
   return LEAD_STAGES.indexOf(stage);
