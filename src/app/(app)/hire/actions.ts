@@ -64,8 +64,9 @@ export async function updateCareersPageAction(input: unknown) {
   if (result.ok) {
     revalidatePath('/hire/careers-page');
     revalidatePath('/hire/assistant');
-    // 'layout' covers the board and every job page beneath it.
-    revalidatePath(careersPath(ctx.orgId), 'layout');
+    // The public pages render on every request, so this is not needed today. It is cheap, and it keeps the
+    // board right if the pages are ever cached. A literal path takes no `type`.
+    revalidatePath(careersPath(ctx.orgId));
   }
   return result;
 }

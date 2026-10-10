@@ -219,7 +219,7 @@ export function CareersHeaderControls({
               Make your open jobs public?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-1 text-sm text-muted-foreground">
-              Anyone with the link will be able to see your open jobs.
+              Anyone with the link will be able to see your open jobs, and they can appear in search engines.
             </AlertDialog.Description>
             <div className="mt-5 flex items-center justify-between gap-6">
               <AlertDialog.Cancel asChild>

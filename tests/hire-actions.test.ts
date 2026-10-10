@@ -93,7 +93,7 @@ describe('updateCareersPageAction', () => {
     expect(ctl.calls[0]).toMatchObject({ fn: 'updateCareersPage', ctx: { orgId: 'org1', client: { marker: 'client' } } });
     expect(ctl.calls[0].input).toEqual(sent);
     expect(ctl.revalidated).toEqual(['/hire/careers-page', '/hire/assistant', '/careers/org1']);
-    expect(ctl.types[2]).toBe('layout');
+    expect(ctl.types[2]).toBeUndefined();
   });
   it('refreshes nothing when the change was refused', async () => {
     ctl.viewer = { orgId: 'org1', role: 'owner', isDemo: false };

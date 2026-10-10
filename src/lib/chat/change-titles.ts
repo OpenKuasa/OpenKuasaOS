@@ -399,7 +399,7 @@ export function approvalDetail(toolName: string, input?: unknown): string | null
       return `${label}: ${value ? `“${value}”` : 'none'}`;
     };
     const parts = [
-      i.careers_enabled === true ? 'Your open jobs become visible to anyone with the link.' : null,
+      i.careers_enabled === true ? 'Your open jobs become visible to anyone with the link, and can appear in search engines.' : null,
       i.careers_enabled === false ? 'The page and every job page stop being public.' : null,
       quoted('Headline', 'careers_headline'),
       quoted('Tagline', 'careers_tagline'),

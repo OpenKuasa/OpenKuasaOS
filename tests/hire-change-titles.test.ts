@@ -67,9 +67,9 @@ describe('the careers page change', () => {
   });
   it('says what turning it on exposes, and shows the words being saved', () => {
     expect(approvalDetail('updateCareersPage', { careers_enabled: true }))
-      .toBe('Your open jobs become visible to anyone with the link.');
+      .toBe('Your open jobs become visible to anyone with the link, and can appear in search engines.');
     expect(approvalDetail('updateCareersPage', { careers_enabled: true, careers_headline: 'Join us' }))
-      .toBe('Your open jobs become visible to anyone with the link. · Headline: “Join us”');
+      .toBe('Your open jobs become visible to anyone with the link, and can appear in search engines. · Headline: “Join us”');
     expect(approvalDetail('updateCareersPage', { careers_headline: '', careers_tagline: 'Good coffee' }))
       .toBe('Headline: none · Tagline: “Good coffee”');
     expect(approvalDetail('updateCareersPage', { careers_enabled: false })).toBe('The page and every job page stop being public.');
