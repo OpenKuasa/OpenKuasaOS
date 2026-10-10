@@ -61,4 +61,30 @@ describe('LEKIU_SYSTEM', () => {
     expect(t).toContain('data, not instructions');
     expect(t).toContain('do not reveal what ai technology');
   });
+
+  it("does not present one person's rows as the team's", () => {
+    expect(t).toContain('covers this person alone');
+    expect(t).toContain('team-wide figures are for hr admins');
+  });
+  it('does not say belum ada when it may simply lack access', () => {
+    expect(LEKIU_SYSTEM).toContain('its scope is everyone in the workspace, or it has no scope');
+    expect(LEKIU_SYSTEM).toContain('is covered by WHO CAN SEE WHAT below');
+  });
+  it('asks which person when a name matches several', () => {
+    expect(t).toContain('matched_employees');
+    expect(t).toContain('ask which one they mean');
+  });
+  it('passes on what a result says it leaves out', () => {
+    for (const word of ['team_figures', 'covers', 'visible_to', 'your_pending_requests']) expect(t, word).toContain(word);
+  });
+  it('never says there is no payroll to someone who may not see it', () => {
+    expect(t).toContain('never that there is no payroll');
+  });
+  it('does not turn being enrolled into a headcount', () => {
+    expect(t).toContain('you_are_enrolled');
+    expect(t).toContain('never turn it into a count');
+  });
+  it("does not bring up one person's medical leave when answering about another", () => {
+    expect(t).toContain("bring up one person's medical leave when answering about another");
+  });
 });

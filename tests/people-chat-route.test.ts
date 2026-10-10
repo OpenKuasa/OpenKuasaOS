@@ -15,6 +15,8 @@ const ctl = vi.hoisted(() => ({
   tablesRead: [] as string[],
   /** What the route handed to the runner. */
   captured: null as null | import('@/lib/ai/products').PeopleAccess,
+  orgFails: false,
+  orgLookups: 0,
 }));
 
 vi.mock('@/lib/ai/agents/orchestrator', async (importOriginal) => {
@@ -58,7 +60,12 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
-vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => ctl.org }));
+vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => {
+    ctl.orgLookups += 1;
+    if (ctl.orgFails) throw new Error('secret db detail');
+    return ctl.org;
+  },
+}));
 vi.mock('@/lib/auth/viewer', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/auth/viewer')>()),
   hasSupabaseEnv: () => true,
@@ -129,6 +136,8 @@ beforeEach(() => {
   ctl.freeConsumed = 0;
   ctl.tablesRead = [];
   ctl.captured = null;
+  ctl.orgFails = false;
+  ctl.orgLookups = 0;
   process.env.AI_KEYS_ENCRYPTION_SECRET = SECRET;
 });
 
@@ -174,6 +183,19 @@ describe('POST /api/people/chat gating', () => {
     expect(ctl.usedKeys).toEqual([]);
     expect(ctl.tablesRead.filter((table) => table.startsWith('hr_'))).toEqual([]);
   });
+
+  it('503 data_unavailable when the workspace lookup throws, without calling a model', async () => {
+    ctl.orgFails = true;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await POST(post(validBody));
+    expect(res.status).toBe(503);
+    const text = await res.text();
+    expect(JSON.parse(text)).toMatchObject({ code: 'data_unavailable' });
+    expect(text).not.toContain('secret db detail');
+    expect(ctl.usedKeys).toEqual([]);
+    expect(spy).toHaveBeenCalledWith('[ask-lekiu] could not load the workspace:', 'secret db detail');
+    spy.mockRestore();
+  });
 });
 
 describe('POST /api/people/chat happy path', () => {
@@ -209,6 +231,26 @@ describe('POST /api/people/chat happy path', () => {
     expect(ctl.captured!.viewer).toEqual({ employeeId: 'emp-7', isHr: false, isDemo: false });
     // Same lookups for everyone: the database, not the tool list, limits what a member reads.
     expect(ctl.calls[0].tools.sort()).toEqual([...PEOPLE_TOOL_NAMES].sort());
+  });
+
+  it('resolves the workspace exactly once', async () => {
+    await (await POST(post(validBody))).text();
+    expect(ctl.orgLookups).toBe(1);
+  });
+
+  it('ignores a workspace or viewer named in the request body', async () => {
+    ctl.org = { orgId: 'org1', role: 'member' };
+    const res = await POST(
+      post({
+        ...validBody,
+        orgId: 'someone-elses-org',
+        org_id: 'someone-elses-org',
+        viewer: { employeeId: 'x', isHr: true, isDemo: true },
+      }),
+    );
+    expect(res.status).toBe(200);
+    await res.text();
+    expect(ctl.captured!.viewer).toEqual({ employeeId: null, isHr: false, isDemo: false });
   });
 
   it('holds no change tools for anyone', async () => {
