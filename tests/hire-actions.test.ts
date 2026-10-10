@@ -5,6 +5,7 @@ const ctl = vi.hoisted(() => ({
   revalidated: [] as string[],
   types: [] as (string | undefined)[],
   calls: [] as { fn: string; ctx: { orgId: string }; input: unknown }[],
+  fail: false,
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: (path: string, type?: string) => { ctl.revalidated.push(path); ctl.types.push(type); } }));
@@ -14,7 +15,7 @@ vi.mock('@/lib/hire/capabilities', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/hire/capabilities')>();
   const stub = (fn: string) => async (ctx: { orgId: string }, input: unknown) => {
     ctl.calls.push({ fn, ctx, input });
-    return { ok: true, data: { id: 'j1', title: 'Barista' } };
+    return ctl.fail ? { ok: false, error: 'refused' } : { ok: true, data: { id: 'j1', title: 'Barista' } };
   };
   return { ...actual, createJob: stub('createJob'), updateJob: stub('updateJob'), setJobStatus: stub('setJobStatus'), deleteJob: stub('deleteJob'), updateCareersPage: stub('updateCareersPage') };
 });
@@ -27,6 +28,7 @@ beforeEach(() => {
   ctl.revalidated = [];
   ctl.types = [];
   ctl.calls = [];
+  ctl.fail = false;
 });
 
 describe('hire job actions', () => {
@@ -51,6 +53,7 @@ describe('hire job actions', () => {
     for (const role of ['owner', 'admin']) {
       ctl.viewer = { orgId: 'org1', role, isDemo: false };
       ctl.calls = [];
+  ctl.fail = false;
       expect((await deleteJobAction({ id: ID })).ok).toBe(true);
       expect(ctl.calls).toHaveLength(1);
     }
@@ -91,5 +94,11 @@ describe('updateCareersPageAction', () => {
     expect(ctl.calls[0].input).toEqual(sent);
     expect(ctl.revalidated).toEqual(['/hire/careers-page', '/hire/assistant', '/careers/org1']);
     expect(ctl.types[2]).toBe('layout');
+  });
+  it('refreshes nothing when the change was refused', async () => {
+    ctl.viewer = { orgId: 'org1', role: 'owner', isDemo: false };
+    ctl.fail = true;
+    expect(await updateCareersPageAction({ careers_enabled: true })).toEqual({ ok: false, error: 'refused' });
+    expect(ctl.revalidated).toHaveLength(0);
   });
 });

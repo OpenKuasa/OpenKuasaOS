@@ -389,6 +389,15 @@ describe('updateCareersPage', () => {
     expect((await updateCareersPage(text.ctx, { careers_headline: 'Join us' }, NOW)).ok).toBe(true);
     expect(text.writes()).toHaveLength(1);
   });
+  it('7b: does not switch the board on when the workspace cannot be read', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // No slug given: the orgs read comes back with no row.
+    const unknown = fakeSettings({ existing: { org_id: ORG } });
+    expect(await updateCareersPage(unknown.ctx, { careers_enabled: true }, NOW))
+      .toEqual({ ok: false, error: 'That change could not be saved. Please try again.' });
+    expect(unknown.writes()).toHaveLength(0);
+    log.mockRestore();
+  });
   it('8: a database error on the write gives the generic line and logs', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { ctx } = fakeSettings({ slug: 'acme', updateError: { message: 'permission denied for table hire_settings' } });

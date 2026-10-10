@@ -309,8 +309,9 @@ export async function updateCareersPage(
 
   if (patch.careers_enabled === true) {
     const { data: org, error } = await ctx.client.from('orgs').select('slug').eq('id', ctx.orgId).maybeSingle();
-    if (error) return writeFailed('updateCareersPage', error);
-    if ((org as { slug?: string | null } | null)?.slug === DEMO_SLUG) return { ok: false, error: CAREERS_DEMO };
+    // No row is not "not the demo": without knowing which workspace this is, nothing goes public.
+    if (error || !org) return writeFailed('updateCareersPage', error ?? 'workspace not readable');
+    if ((org as { slug?: string | null }).slug === DEMO_SLUG) return { ok: false, error: CAREERS_DEMO };
   }
 
   // Not an upsert: the update grant leaves out org_id, which an upsert's "do update" would set.
