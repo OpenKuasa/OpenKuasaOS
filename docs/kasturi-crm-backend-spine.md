@@ -95,7 +95,65 @@ The migration reuses the private tenancy helper functions:
 - `private.is_org_member(org_id)`
 - `private.is_org_writer(org_id)`
 
+## Public lead forms
+
+A lead form (`public.forms`, shown at `/reach/lead-forms` and `/crm/lead-forms`) has a public page while it is active. Migration: `20261011140000_reach_form_submissions.sql`.
+
+### The link
+
+`/f/<form id>`: the form's uuid. A workspace has no public identifier of its own (`orgs.slug` is empty for every workspace except the demo), so the link does not name the workspace, and a form's slug is not part of it. The Lead Forms table shows the full link for an active form, with Copy link and Open; a draft or paused form shows "Activate this form to get its link."
+
+The page sits outside the signed-in app (`src/app/f/[formId]/`). Nothing gates it: the proxy only refreshes a session, and sign-in is enforced by the app layouts, which this route is not under. It is marked `noindex, nofollow`.
+
+| The form is | The page shows |
+| --- | --- |
+| active | The workspace's display name, the form's name, and the fields |
+| draft or paused | "This form is not accepting responses." and no names |
+| in the demo workspace | The same as a draft: the demo never takes public submissions |
+| unknown, or the link is not a form id | 404 |
+
+### What a visitor can reach
+
+A visitor is not signed in and has no grant on `forms`, `form_submissions` or `crm_contacts`. Everything goes through three `SECURITY DEFINER` functions with an empty, pinned `search_path`, executable by `anon` and `authenticated` only:
+
+| Function | Answers with |
+| --- | --- |
+| `get_public_form(p_form_id uuid)` | `(form_name, org_name, accepting)`. No row for an unknown id. Both names are null unless the form is accepting. |
+| `record_form_view(p_form_id uuid)` | Nothing. Adds one to `views_count` for an active form, unless the caller is a signed-in member of the form's workspace. |
+| `submit_public_form(p_form_id uuid, p_name text, p_email text, p_phone text, p_message text, p_honeypot text)` | One word: `ok`, `not_found`, `closed`, `throttled`, or which field was refused. Never an id, and the same `ok` whether the email was new or already a contact. |
+
+### What a submission does
+
+Every form asks for the same four fields: name and email (required), phone and message (optional). In one transaction, `submit_public_form`:
+
+1. Returns `ok` and stores nothing if the hidden field was filled in.
+2. Checks the fields again (the page has already checked them, but anyone can call the function): name up to 120 characters, email up to 254 and shaped like `name@example.com`, phone up to 40, message up to 2,000.
+3. Locks the form's row. Answers `not_found` or `closed` unless the form is active.
+4. Answers `throttled` if the form already has 30 submissions from the last minute.
+5. Looks for a contact in the workspace with the same email, ignoring case. If there is one, it is linked and left exactly as it is. If not, a contact is created: first and last name split on the first space, email in lower case, phone, `source` = `Lead form: <form name>`, status `lead`, tag `lead-form`, no owner, no country.
+6. Inserts the `form_submissions` row (`payload` holds name, email, phone and message) linked to that contact.
+7. Adds one to the form's `submissions_count`.
+
+`submissions_count` is a running total of what was received: deleting a submission does not lower it. Deleting a form deletes its submissions but not the contacts they made. Deleting a contact keeps its submissions and clears their link. Members read their workspace's submissions, writers can delete one, and nobody can insert or edit one through the API. No IP address, user agent or referrer is stored.
+
+On the Lead Forms page, "New today" and "Submissions over time" are counted from `form_submissions.created_at`, with a day being the calendar day in Asia/Kuala_Lumpur. They count stored rows, so a deleted submission leaves them, while "Total leads" is the sum of `submissions_count` and does not go down; the two can differ after a deletion. The funnel stays hidden: a form start is not recorded.
+
+### Abuse limits, and what they do not stop
+
+- **Honeypot.** A field people cannot see. A script that fills in every field is thanked and discarded. A script written for this form simply leaves it empty.
+- **Length caps**, enforced in SQL.
+- **Throttle: 30 submissions per form per minute.** This caps how fast one form can fill a workspace with junk. It is per form, not per visitor (nothing identifies a visitor), so someone flooding a form also locks out real people for that minute, and a patient script can still add 30 contacts a minute, about 43,000 a day, to each active form.
+- There is no CAPTCHA, no email confirmation and no per-IP limit. An email address is not proven to belong to whoever typed it.
+- **Views are a soft number.** Each render of an active form's page counts one, including bots, link previews, reloads, and the re-render after a submission sent without JavaScript. `record_form_view` is also a public function, so a script can raise the count directly. Members of the form's workspace are not counted while signed in.
+- Because an existing contact is matched by email, a visitor who knows a contact's email can attach a submission (and its message) to that contact. They cannot read or change the contact.
+
+If a form is abused, pausing it stops submissions at once. The next steps, if needed, are a per-IP limit at the edge and a challenge on the page.
+
 ## Not included yet
+
+- A form builder with custom fields (the four fields are fixed; `payload` is `jsonb` so more can be added later)
+- A link from a submission straight to its contact (the panel links to the Contacts page)
+- Notifying anyone when a submission arrives, or adding the message to the contact as a note
 
 - UI wiring and server actions for pages other than Contacts and Deals
 - Editing the stages of an existing pipeline: adding, renaming, reordering or removing a stage, or changing its probability (stages are set once, when the pipeline is created)
