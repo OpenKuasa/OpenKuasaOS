@@ -48,7 +48,7 @@ export function ConfirmRow({
             <Trash2 className="size-4" />
             {pending ? pendingLabel : confirmLabel}
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={pending} autoFocus>
+          <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={pending} autoFocus data-finance-focus>
             Cancel
           </Button>
         </div>
