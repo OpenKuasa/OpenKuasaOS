@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { payrollModel, readPayroll, readVouchers, vouchersModel } from '@/lib/people/payroll';
 import { createSeedPeopleData } from '@/lib/people/seed';
+import { buildDashboardModel } from '@/lib/people/company';
 import type { PaymentVoucher, PayrollRun, PeopleViewer, Payslip } from '@/lib/people/types';
 
 const NOW = new Date('2026-10-09T04:00:00Z');
@@ -40,6 +41,11 @@ describe('payrollModel on the sample data', () => {
   });
 });
 
+const slipFor = (id: string, run: string, name: string): Payslip => ({
+  id, employee_id: id, employee_name: name, payroll_run_id: run, period_month: '2026-10-01',
+  gross_cents: 1000, epf_cents: 110, socso_cents: 5, eis_cents: 2, pcb_cents: 0, net_cents: 883, status: 'pending',
+});
+
 describe('payrollModel edge cases', () => {
   it('says there is no run rather than showing zeros', () => {
     const model = payrollModel([], []);
@@ -48,11 +54,35 @@ describe('payrollModel edge cases', () => {
     expect(model.deductions).toEqual([]);
   });
 
-  it('copes with a run that has no payslips', () => {
+  it('skips a newest run with no payslips and uses the previous month', () => {
+    const runs: PayrollRun[] = [
+      { id: 'a', period_month: '2026-09-01', status: 'paid', paid_at: null },
+      { id: 'b', period_month: '2026-10-01', status: 'draft', paid_at: null },
+    ];
+    const model = payrollModel(runs, [slipFor('1', 'a', 'Amy')]);
+    expect(model.latest!.period_month).toBe('2026-09-01');
+    expect(model.latest!.headcount).toBe(1);
+    expect(model.by_month.map((b) => b.start)).toEqual(['2026-09-01']);
+  });
+
+  it('gives no latest run when every run is empty', () => {
     const run: PayrollRun = { id: 'r', period_month: '2026-10-01', status: 'draft', paid_at: null };
     const model = payrollModel([run], []);
-    expect(model.latest!.headcount).toBe(0);
-    expect(model.latest!.gross_cents).toBe(0);
+    expect(model.latest).toBeNull();
+    expect(model.by_month).toEqual([]);
+    expect(model.deductions).toEqual([]);
+  });
+
+  it('agrees with the Dashboard on the latest run gross', () => {
+    const runs: PayrollRun[] = [
+      { id: 'a', period_month: '2026-09-01', status: 'paid', paid_at: null },
+      { id: 'b', period_month: '2026-10-01', status: 'draft', paid_at: null },
+    ];
+    const payslips = [slipFor('1', 'a', 'Amy'), slipFor('2', 'a', 'Zed')];
+    const dash = buildDashboardModel({ employees: [], leave: [], attendance: [], runs, payslips }, TODAY, true);
+    const payroll = payrollModel(runs, payslips);
+    expect(dash.payroll!.latest!.gross_cents).toBe(payroll.latest!.gross_cents);
+    expect(dash.payroll!.latest!.period_month).toBe(payroll.latest!.period_month);
   });
 
   it('only lists the latest run payslips, by name', () => {

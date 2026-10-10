@@ -46,7 +46,8 @@ type DeductionField = 'epf_cents' | 'socso_cents' | 'eis_cents' | 'pcb_cents';
 const sum = (rows: Payslip[], field: DeductionField) => rows.reduce((total, row) => total + row[field], 0);
 
 export function payrollModel(runs: PayrollRun[], payslips: Payslip[]): PayrollModel {
-  const totals = payrollSummary(runs, payslips); // newest first
+  // Newest first. A run with no payslips has nothing to show, so it is left out (the Dashboard does the same).
+  const totals = payrollSummary(runs, payslips).filter((t) => t.headcount > 0);
   const newest = totals[0];
   if (!newest) return { latest: null, by_month: [], deductions: [] };
   const run = runs.find((r) => r.period_month === newest.period_month)!;
