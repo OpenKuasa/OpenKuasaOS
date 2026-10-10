@@ -6,11 +6,13 @@
 
 **Architecture:** One write path, `src/lib/people/capabilities.ts`: a Zod schema and a function per change, taking `{ client, orgId }` from the caller's session. The Employees screen reaches it through server actions (`src/app/(app)/people/actions.ts`); Lekiu reaches it through eight change tools whose `inputSchema` is the same schema. The database (plan A) already allows these writes for owner and admin only; nothing here adds a migration.
 
+**One deliberate difference from the spec (§5.3, "the tool's inputSchema is the schema"):** `linkEmployeeToMember` as a chat tool takes the member's sign-in email (`memberEmail`), not the capability's `user_id`. The model has no way to know a user id; the tool looks the email up among the workspace's members and then calls the same capability. Do not "fix" the tool to take `user_id`. The other seven tools use the capability's schema as it is.
+
 **Tech Stack:** Next.js 16 App Router (server components, server actions), Supabase Postgres under RLS, AI SDK v7 (`tool`, `streamText`, `MockLanguageModelV4`), Zod v4, Vitest, pnpm.
 
 **Spec:** `docs/superpowers/specs/2026-10-10-lekiu-foundation-chat-design.md` (§4.4, §4.5, §5.2 Employees, §5.3, §5.4, §8, §9, §11). Plan B1's Execution Notes (`docs/superpowers/plans/2026-10-11-lekiu-b1-seam-assistant.md`, last section) list what this plan carries forward.
 
-**Branch:** `feat-094-lekiu-employee-crud`, stacked on `feat-093-lekiu-seam-chat` (PR #116, open when this was written). If #116 merges first, rebase this branch onto `origin/main` before opening its PR.
+**Branch:** `feat-094-lekiu-employee-crud`, stacked on `feat-093-lekiu-seam-chat` (PR #116, open when this was written). This branch's PR cannot be opened against `main` until #116 is merged: its diff would carry all of B1. Once #116 is squash-merged, move this branch with `git rebase --onto origin/main feat-093-lekiu-seam-chat feat-094-lekiu-employee-crud` (a plain `git rebase origin/main` would replay B1's commits onto their own squashed copy and conflict).
 
 ## Global Constraints
 
@@ -60,14 +62,14 @@
 | `src/app/api/people/chat/route.ts` | Modify | Change tools for owner and admin |
 | `src/config/nav.ts`, `src/components/app/secondary-nav.tsx` | Modify | `needs` on HR-only items |
 | `src/config/live-screens.ts` | Modify | `people/employees` |
-| `tests/helpers/fake-supabase.ts`, `tests/helpers/people-member-view.ts` | Create | Test doubles |
+| `tests/setup/fake-supabase.ts`, `tests/setup/people-member-view.ts` | Create | Test doubles |
 
 ---
 
 ### Task 1: Write path scaffolding and the department changes
 
 **Files:**
-- Create: `tests/helpers/fake-supabase.ts`
+- Create: `tests/setup/fake-supabase.ts`
 - Create: `src/lib/people/capabilities.ts`
 - Test: `tests/people-capabilities.test.ts`
 
@@ -86,7 +88,7 @@ Database facts this task relies on: `hr_departments` has a unique index `hr_depa
 
 - [ ] **Step 1: Write the fake Supabase client**
 
-Create `tests/helpers/fake-supabase.ts`:
+Create `tests/setup/fake-supabase.ts`:
 
 ```ts
 /**
@@ -185,7 +187,7 @@ import {
   deleteDepartment,
   updateDepartment,
 } from '@/lib/people/capabilities';
-import { fakeSupabase } from './helpers/fake-supabase';
+import { fakeSupabase } from './setup/fake-supabase';
 
 const ORG = 'org-1';
 const DEPT = '11111111-1111-4111-8111-111111111111';
@@ -440,7 +442,7 @@ Expected: PASS, 12 tests.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add tests/helpers/fake-supabase.ts tests/people-capabilities.test.ts src/lib/people/capabilities.ts
+git add tests/setup/fake-supabase.ts tests/people-capabilities.test.ts src/lib/people/capabilities.ts
 git commit -m "feat(people): department add, rename and delete on one write path"
 ```
 
@@ -801,7 +803,7 @@ Create `tests/people-members.test.ts`:
 ```ts
 import { describe, expect, it } from 'vitest';
 import { listWorkspaceMembers } from '@/lib/people/members';
-import { fakeSupabase } from './helpers/fake-supabase';
+import { fakeSupabase } from './setup/fake-supabase';
 
 describe('listWorkspaceMembers', () => {
   it('lists members who have an email, by name, falling back to the email for a name', async () => {
@@ -994,7 +996,11 @@ function employeeFailed(fn: string, error: DbError): Refusal {
   return writeFailed(fn, error);
 }
 
-/** The next `EMP-###` after the highest one in the workspace, or null when the numbers cannot be read. */
+/**
+ * The next `EMP-###` after the highest one in the workspace, or null when the numbers cannot be read.
+ * One request reads at most 1,000 rows; past that the unique rule still stops a duplicate, and the
+ * person is asked to try again or give a number.
+ */
 async function nextEmployeeNo(ctx: PeopleWriteContext): Promise<string | null> {
   const { data, error } = await ctx.client.from('hr_employees').select('employee_no').eq('org_id', ctx.orgId);
   if (error) return null;
@@ -1551,14 +1557,14 @@ git commit -m "feat(people): server actions for employee and department changes,
 - Modify: `src/lib/ai/products.ts`
 - Modify: `src/lib/chat/change-titles.ts`
 - Modify: `src/components/chat/tool-parts.ts`
-- Create: `tests/helpers/people-member-view.ts`
+- Create: `tests/setup/people-member-view.ts`
 - Test: `tests/people-tools.test.ts` (modify), `tests/people-change-tools.test.ts` (create), `tests/people-change-titles.test.ts` (create)
 
 **Interfaces:**
 - Consumes: the schemas and functions of Tasks 1 and 2; `listWorkspaceMembers`; `combineToolkits`, `split` in `products.ts`.
 - Produces:
   - `PeopleViewer.employeeName?: string` (the linked employee's name, when there is one)
-  - `type PeopleWrite = { ctx: PeopleWriteContext; canWrite: boolean; onChanged?: () => void }`
+  - `type PeopleWrite = { ctx: PeopleWriteContext; canWrite: boolean }`
   - `createPeopleTools(data, viewer, now?, write?: PeopleWrite): ToolSet`
   - `PEOPLE_TOOL_NAMES`: 20 lookups, `listDepartments` fourth
   - `PEOPLE_WRITE_TOOL_NAMES` (in `products.ts`): `createEmployee`, `updateEmployee`, `setEmployeeStatus`, `deleteEmployee`, `linkEmployeeToMember`, `createDepartment`, `updateDepartment`, `deleteDepartment`
@@ -1584,7 +1590,7 @@ In `tests/people-tools.test.ts`:
 
 2. Any existing assertion that compares a whole directory row with `toEqual` gains `id` and `account_linked`. Change nothing else in existing tests.
 
-3. Add `import { asMember } from './helpers/people-member-view';` and append inside the top-level `describe`:
+3. Add `import { asMember } from './setup/people-member-view';` and append inside the top-level `describe`:
 
 ```ts
   it('gives each employee an id, and says whether an account is linked, but never the account itself', async () => {
@@ -1651,7 +1657,7 @@ In `tests/people-tools.test.ts`:
 
 The seed has six active people in Sales (Aisyah Rahim, Siti Aminah, Hafiz Osman, Amirul Danial, Farid Ismail, Priya Devi). If `sales.headcount` is not 6, check the seed list in `src/lib/people/seed.ts` before touching the code: the expectation is taken from it.
 
-Create `tests/helpers/people-member-view.ts`:
+Create `tests/setup/people-member-view.ts`:
 
 ```ts
 import type { PeopleData } from '@/lib/people/types';
@@ -1695,7 +1701,6 @@ const ctl = vi.hoisted(() => ({
   ran: [] as { fn: string; orgId: string; input: unknown }[],
   fail: null as string | null,
   members: [{ userId: '33333333-3333-4333-8333-333333333333', name: 'Farah', email: 'Farah@Example.com' }],
-  changed: 0,
 }));
 
 vi.mock('@/lib/people/members', () => ({ listWorkspaceMembers: async () => ctl.members }));
@@ -1729,13 +1734,7 @@ const HR = { employeeId: null, isHr: true, isDemo: false };
 const MEMBER = { employeeId: 'seed-emp-2', isHr: false, isDemo: false };
 const data = createSeedPeopleData(NOW);
 const EMP = '22222222-2222-4222-8222-222222222222';
-const write = () => ({
-  ctx: { client: {} as never, orgId: 'org-1' },
-  canWrite: true,
-  onChanged: () => {
-    ctl.changed += 1;
-  },
-});
+const write = () => ({ ctx: { client: {} as never, orgId: 'org-1' }, canWrite: true });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Loose = any;
@@ -1749,7 +1748,6 @@ const call = (name: string, input: Record<string, unknown>, access = write()): P
 beforeEach(() => {
   ctl.ran = [];
   ctl.fail = null;
-  ctl.changed = 0;
 });
 
 describe('Lekiu change tools', () => {
@@ -1782,7 +1780,6 @@ describe('Lekiu change tools', () => {
     const result = await call('createDepartment', { name: 'Legal' });
     expect(result).toEqual({ ok: true, data: { id: 'x', name: 'Saved' } });
     expect(ctl.ran).toEqual([{ fn: 'createDepartment', orgId: 'org-1', input: { name: 'Legal' } }]);
-    expect(ctl.changed).toBe(1);
   });
 
   it.each([
@@ -1797,10 +1794,9 @@ describe('Lekiu change tools', () => {
     expect(ctl.ran).toEqual([{ fn: name, orgId: 'org-1', input }]);
   });
 
-  it('passes a refusal on as it is and refreshes nothing', async () => {
+  it('passes a refusal on as it is', async () => {
     ctl.fail = 'That department still has employees. Move them to another department first.';
     expect(await call('deleteDepartment', { id: EMP })).toEqual({ ok: false, error: ctl.fail });
-    expect(ctl.changed).toBe(0);
   });
 
   it('turns a crash into a plain refusal without logging what it carried', async () => {
@@ -1812,16 +1808,6 @@ describe('Lekiu change tools', () => {
     });
     expect(JSON.stringify(log.mock.calls)).not.toContain('900101');
     log.mockRestore();
-  });
-
-  it('still reports a saved change when refreshing the pages fails', async () => {
-    const access = {
-      ...write(),
-      onChanged: () => {
-        throw new Error('no request scope');
-      },
-    };
-    expect((await call('createDepartment', { name: 'Legal' }, access)).ok).toBe(true);
   });
 
   it('links by the member\'s sign-in email, in any letter case', async () => {
@@ -1985,12 +1971,7 @@ import { listWorkspaceMembers } from '@/lib/people/members';
 
 ```ts
 /** Write access for one request: present only for an owner or admin. */
-export type PeopleWrite = {
-  ctx: PeopleWriteContext;
-  canWrite: boolean;
-  /** Called after a change is saved, to refresh the pages that show it. */
-  onChanged?: () => void;
-};
+export type PeopleWrite = { ctx: PeopleWriteContext; canWrite: boolean };
 ```
 
 5. Replace `directoryRow` with:
@@ -2080,21 +2061,12 @@ and, after the `notLinked` constant, add:
 
   /** Runs one change. A crash becomes a plain refusal; its text is never logged, since an input can hold pay or identity details. */
   const change = async <T>(name: string, run: () => Promise<CapResult<T>>): Promise<CapResult<T>> => {
-    let result: CapResult<T>;
     try {
-      result = await run();
+      return await run();
     } catch (error) {
       console.error(`[lekiu] ${name} failed:`, error instanceof Error ? error.name : 'error');
       return { ok: false, error: WRITE_FAILED };
     }
-    if (result.ok) {
-      try {
-        write.onChanged?.();
-      } catch {
-        // The change is saved; a page that could not be refreshed must not turn that into a failure.
-      }
-    }
-    return result;
   };
 
   return {
@@ -2285,7 +2257,7 @@ Run: `pnpm tsc --noEmit`
 Expected: only the known `src/app/layout.tsx` error.
 
 ```bash
-git add src/lib/people/types.ts src/lib/people/viewer.ts src/lib/ai/people-tools.ts src/lib/ai/products.ts src/lib/chat/change-titles.ts src/components/chat/tool-parts.ts tests/helpers/people-member-view.ts tests/people-tools.test.ts tests/people-change-tools.test.ts tests/people-change-titles.test.ts
+git add src/lib/people/types.ts src/lib/people/viewer.ts src/lib/ai/people-tools.ts src/lib/ai/products.ts src/lib/chat/change-titles.ts src/components/chat/tool-parts.ts tests/setup/people-member-view.ts tests/people-tools.test.ts tests/people-change-tools.test.ts tests/people-change-titles.test.ts
 git commit -m "feat(people): Lekiu change tools for employees and departments, behind approval cards"
 ```
 
@@ -2300,7 +2272,7 @@ git commit -m "feat(people): Lekiu change tools for employees and departments, b
 - Test: `tests/lekiu-prompt.test.ts` (modify), `tests/people-chat-route.test.ts` (modify), `tests/people-approval.test.ts` (create)
 
 **Interfaces:**
-- Consumes: `PeopleAccess` with `write` (Task 4), `PEOPLE_WRITE_TOOL_NAMES`, `PEOPLE_PATHS` (Task 3), `can`.
+- Consumes: `PeopleAccess` with `write` (Task 4), `PEOPLE_WRITE_TOOL_NAMES`, `can`.
 - Produces: `runLekiu` unchanged in signature, step cap 10. The route passes `write` only when the caller's role is owner or admin.
 
 - [ ] **Step 1: Rewrite the prompt tests that no longer hold**
@@ -2478,7 +2450,7 @@ describe('Lekiu’s changes require approval', () => {
 
 In `tests/people-chat-route.test.ts`:
 
-1. Add `vi.mock('next/cache', () => ({ revalidatePath: () => {} }));` next to the other mocks, and `const { PEOPLE_WRITE_TOOL_NAMES } = await import('@/lib/ai/products');` next to the other awaited imports (if `PEOPLE_TOOL_NAMES` is already imported that way, put it beside it).
+1. Add `const { PEOPLE_WRITE_TOOL_NAMES } = await import('@/lib/ai/products');` next to the other awaited imports (if `PEOPLE_TOOL_NAMES` is already imported that way, put it beside it).
 2. Widen `ctl.linkedEmployee` to `null as { id: string; name?: string } | null`. The fake client in this file answers the `hr_employees` read with `ctl.linkedEmployee` whatever columns are asked for, so it needs no other change.
 3. In `'answers as Lekiu, with the HR lookups and nothing else'` (the caller there is an owner), replace the `expect(call.tools.sort())...` line with:
 
@@ -2562,33 +2534,19 @@ In `src/lib/ai/agents/orchestrator.ts`, in the comment above `runLekiu` replace 
 
 - [ ] **Step 7: Give owners and admins the change tools in the route**
 
-Read `node_modules/next/dist/docs/` on `revalidatePath` in route handlers first.
-
 In `src/app/api/people/chat/route.ts`:
 
 1. In the file comment, replace `It holds no\n * change tools yet.` with `An owner or admin also gets the change tools for employees and departments; each change waits for their approval.`
-2. Add imports:
-
-```ts
-import { revalidatePath } from 'next/cache';
-import { can } from '@/lib/auth/permissions';
-import { PEOPLE_PATHS } from '@/lib/people/paths';
-```
+2. Add the import `import { can } from '@/lib/auth/permissions';`.
 
 3. Replace the line `const result = runLekiu(chat.messages, { data, viewer }, request.signal, chat.apiKey);` with:
 
 ```ts
   // Change tools for an owner or admin only: the same rule the database enforces. Each still needs approval.
+  // Nothing is revalidated here, as in the other chat routes: every /people page is rendered per request,
+  // and only a server action can refresh the page the person is already looking at.
   const write =
-    org && can(org.role, 'approve')
-      ? {
-          ctx: { client: chat.supabase, orgId: org.orgId },
-          canWrite: true,
-          onChanged: () => {
-            for (const path of PEOPLE_PATHS) revalidatePath(path);
-          },
-        }
-      : undefined;
+    org && can(org.role, 'approve') ? { ctx: { client: chat.supabase, orgId: org.orgId }, canWrite: true } : undefined;
   const result = runLekiu(chat.messages, { data, viewer, write }, request.signal, chat.apiKey);
 ```
 
