@@ -593,7 +593,8 @@ function ChatPane({
     const q = raw.trim();
     if (!q) return;
     if (live) {
-      if (busy || locked) return;
+      // A reply still on its way must land before the next question goes out.
+      if (busy || locked || awaiting === 'coming') return;
       if (keep) keepChat(viewer.userId, liveChat);
       setAwaiting('settled');
       void chat.sendMessage({ text: q });
