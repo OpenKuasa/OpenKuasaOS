@@ -66,6 +66,19 @@ export function changedSwitches(saved: ApplicationFormValues, current: Applicati
   return changed;
 }
 
+/**
+ * What a form shows once newer saved values arrive from the server (someone
+ * else, or the assistant, changed a switch): a switch the user has not touched
+ * takes the saved value; one they changed and have not saved keeps their choice.
+ */
+export function takeSaved(
+  baseline: ApplicationFormValues, values: ApplicationFormValues, saved: ApplicationFormValues,
+): ApplicationFormValues {
+  const next = { ...values };
+  for (const key of APPLICATION_FORM_KEYS) if (values[key] === baseline[key]) next[key] = saved[key];
+  return next;
+}
+
 /** A change in words, one phrase per switch sent, in the fixed order. Anything that is not a switch set to true or false is left out. */
 export function describeFormChange(input: unknown): string[] {
   const sent = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;

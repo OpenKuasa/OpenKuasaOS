@@ -7,6 +7,7 @@ import {
   APPLICATION_FORM_KEYS,
   applicationFormOf,
   changedSwitches,
+  takeSaved,
   type ApplicationFormKey,
   type ApplicationFormValues,
 } from '@/lib/hire/application-form';
@@ -48,6 +49,16 @@ export function ApplicationFormCard({
   /** What is saved, as far as this card knows: the server's values, then each save's result. */
   const [baseline, setBaseline] = useState<ApplicationFormValues>(mode === 'demo' ? DEMO_SAMPLE : saved);
   const [values, setValues] = useState<ApplicationFormValues>(baseline);
+  /** The last `saved` this card took in, to notice when the server sends a newer one. */
+  const [known, setKnown] = useState(saved);
+  // The assistant, or someone else, can change a switch while this screen is open: the screen
+  // is refreshed and `saved` arrives changed. Show it, keeping any switch the user has
+  // changed and not saved. (Adjusting state while rendering, as the branding form does.)
+  if (mode !== 'demo' && APPLICATION_FORM_KEYS.some((key) => saved[key] !== known[key])) {
+    setKnown(saved);
+    setValues(takeSaved(baseline, values, saved));
+    setBaseline(saved);
+  }
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const base = useId();

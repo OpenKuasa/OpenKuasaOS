@@ -107,16 +107,20 @@ testWithSupabase('4: another workspace can neither read nor change the row', asy
 }, 30_000);
 
 testWithSupabase('5: a viewer cannot set a switch in the workspace they can only read', async () => {
-  const ins = await viewer.from('hire_settings').insert({ org_id: demoId, require_cv: true }).select('org_id');
-  expect(ins.data ?? []).toHaveLength(0);
-  const upd = await viewer.from('hire_settings').update({ require_cv: true }).eq('org_id', demoId).select('org_id');
-  expect(upd.data ?? []).toHaveLength(0);
+  // Whatever the demo workspace has (usually no row at all) must be the same afterwards.
+  const before = await viewer.from('hire_settings').select(COLUMNS).eq('org_id', demoId);
+  expect(before.error, before.error?.message).toBeNull();
 
-  const read = await viewer.from('hire_settings').select(SWITCHES).eq('org_id', demoId);
-  expect(read.error, read.error?.message).toBeNull();
-  for (const row of (read.data ?? []) as unknown as Record<string, boolean>[]) {
-    for (const key of SWITCH_KEYS) expect(row[key], key).toBe(false);
-  }
+  const ins = await viewer.from('hire_settings').insert({ org_id: demoId, require_cv: true }).select('org_id');
+  // Refused by the row policy (a viewer is not a writer), not by some unrelated error.
+  expect(ins.error?.code).toBe('42501');
+  const upd = await viewer.from('hire_settings').update({ require_cv: true }).eq('org_id', demoId).select('org_id');
+  expect(upd.error, upd.error?.message).toBeNull();
+  expect(upd.data).toHaveLength(0);
+
+  const after = await viewer.from('hire_settings').select(COLUMNS).eq('org_id', demoId);
+  expect(after.error, after.error?.message).toBeNull();
+  expect(after.data).toEqual(before.data);
 }, 30_000);
 
 testWithSupabase('6: a signed-out visitor has no access to the settings table', async () => {
