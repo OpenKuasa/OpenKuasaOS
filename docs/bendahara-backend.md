@@ -150,9 +150,10 @@ The guards and functions raise these SQLSTATEs; `bills.ts`, `money.ts` and
 - Month-to-date figures use the UTC month, so on the 1st before 08:00 Malaysia
   time a payment dated today does not count yet.
 - A lost response cannot be told from a failed save. The screen says it could
-  not confirm the change and refreshes the list; a retry after a save that did
-  land can create a second bill or a second part-payment, until writes carry a
-  client-generated id.
+  not confirm the change and asks the person to reload the page and check the
+  list; it does not refresh by itself, which could reload the tab and lose the
+  form. A retry after a save that did land can create a second bill or a second
+  part-payment, until writes carry a client-generated id.
 - Payment dates are not restricted: "pay now" accepts a future date and
   "schedule for later" a past one.
 - A payment's account must be active when it is chosen (only active accounts
