@@ -549,7 +549,8 @@ Expected: PASS; tsc clean. Any other object typed `HireData` in `tests/` or `eva
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/supabase/anonymous.ts src/lib/reach/public-forms.ts src/lib/hire tests
+git add src/lib/supabase/anonymous.ts src/lib/reach/public-forms.ts src/lib/hire/types.ts src/lib/hire/seed.ts src/lib/hire/supabase.ts src/lib/hire/public-careers.ts tests/hire-public-careers.test.ts tests/hire-seed.test.ts tests/hire-provider.test.ts
+# plus any other test or eval file tsc made you add getSettings to
 git commit -m "feat(hire): hiring settings in the data seam; readers for the public job board"
 ```
 
@@ -911,7 +912,9 @@ git commit -m "feat(hire): assistants know the careers page can be switched and 
 
 **Files:**
 - Create: `src/components/hire/public-careers-shell.tsx`, `src/app/careers/[orgId]/page.tsx`, `src/app/careers/[orgId]/not-found.tsx`, `src/app/careers/[orgId]/[jobId]/page.tsx`
-- Test: `tests/hire-careers-pages.test.tsx` (or `.ts`, matching how `src/app/f/[formId]/page.tsx` is tested in `tests/`; read that test first and copy its approach to rendering a server page)
+- Test: `tests/hire-careers-pages.test.tsx`
+
+There is no page-render test in this repo to copy and no component-test setup; do not add one. The pages are tested by calling them as functions: `const element = await BoardPage({ params: Promise.resolve({ orgId }) })`, then `renderToStaticMarkup(element)` from `react-dom/server` and assertions on the HTML string. This works only while the page's own tree holds no nested async components, so keep the shell and every child synchronous: the page function does all the awaiting. If the test file needs JSX it is `.tsx`; check `vitest.config` handles that extension and, if it does not, build the element without JSX in a `.ts` file instead of changing the config.
 
 **Interfaces:**
 - Consumes: everything exported from `@/lib/hire/public-careers` (Task 2); `createAnonymousClient` from `@/lib/supabase/anonymous`; `hasSupabaseEnv` from `@/lib/auth/viewer`.
@@ -971,14 +974,14 @@ Before writing: read `src/screens/hire/jobs-table.tsx` for the house patterns th
 1. `buildCareersModel` also reads `data.getSettings()`; `showing` uses the same filter as the database function (status open and a non-blank description).
 2. Header actions, for a real workspace: a **Publish** switch (the `Switch` component, `role="switch"`, with a visible label "Public careers page" and its state in words, "On" / "Off"), **Preview**, and **Copy link**. Beside the switch one line: "When on, your open jobs are visible to anyone with the link and can appear in search engines."
 3. Switching **on** opens a confirm ("Make your open jobs public?", body "Anyone with the link will be able to see your open jobs.", buttons "Cancel" and "Make public"). Switching **off** does not confirm. Both call `updateCareersPageAction({ careers_enabled })`; the switch is disabled while pending; a refusal is shown in a `role="alert"` beside it and the switch stays where it was.
-4. **Preview** is a link (`target="_blank"`, `rel="noopener"`) to `careersPath(orgId)`; **Copy link** copies `careersUrl(origin, orgId)` and announces "Link copied" in an `aria-live="polite"` region (if `navigator.clipboard` fails, show "Could not copy. The link is: <url>"). While the board is off both are disabled with `title="Turn the careers page on first"` and are real disabled controls, not dead links. The origin comes from the request headers in the server screen (`originFromHeaders`), as `src/screens/reach/lead-forms.tsx` does.
+4. **Preview**: while the board is on it is a link styled as a button (`target="_blank"`, `rel="noopener"`) to `careersPath(orgId)`; while it is off it is rendered instead as a disabled `<button>` with `title="Turn the careers page on first"` (an anchor cannot be disabled). **Copy link** is a button that copies `careersUrl(origin, orgId)` and announces "Link copied" in an `aria-live="polite"` region (if `navigator.clipboard` fails, show "Could not copy. The link is: <url>"); it is disabled with the same title while the board is off. The origin comes from the request headers in the server screen (`originFromHeaders`), as `src/screens/reach/lead-forms.tsx` does.
 5. **Preview card**: shows the workspace's real name, the headline (`DEFAULT_HEADLINE` when unset), the tagline when set, and up to three of `showing`. When the board is off, the frame shows "Your careers page is off" instead. The address bar text is `careersPath(orgId)`. The sample "Rimba Ventures" branding appears only for demo visitors.
 6. **Page branding card**: Headline and Tagline are real inputs with visible labels, a character count hint ("Up to 80 characters", "Up to 160 characters"), errors under the field from `brandingErrors` checked on blur and on Save, the server's refusal under the field it names, and a **Save** button that reads "Saving…" and is disabled while pending and disabled when nothing changed. After a save: "Careers page saved." in the live region, focus stays where it was. The colour field is removed.
 7. A viewer (no `edit-data`) sees the same screen read-only: the switch disabled with `title="You do not have permission to change this"`, the inputs `readOnly`, no Save button. Preview and Copy link still work when the board is on.
 8. The demo workspace keeps its sample branding and sample charts, and shows the switch disabled with the text "Not available in the demo".
 9. Page views, Applies, Conversion, the trend, the funnel and the source chart stay exactly as they are (sample for demo, "Not available yet" otherwise). The Job listings table and its `PublishButton` are unchanged.
 10. All interactive targets are at least 44px tall; nothing scrolls sideways at 375px; no purple or violet.
-11. The workspace id and name come from `getViewer()` (check which fields it exposes; use them, do not query again).
+11. The workspace id and name come from `getViewer()` (`viewer.orgId`, `viewer.orgName`); do not query for them again.
 
 **Tests:**
 - `tests/hire-lists.test.ts`: the model carries `settings` from the provider; `showing` leaves out a draft, a paused job and an open job with a blank description, and is ordered newest opened first.
