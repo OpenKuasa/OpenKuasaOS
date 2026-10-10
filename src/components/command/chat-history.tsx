@@ -315,12 +315,6 @@ function ThreadRow({
           working && 'opacity-50',
         )}
       >
-        {active ? (
-          <span
-            className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-primary"
-            aria-hidden
-          />
-        ) : null}
         <button
           type="button"
           onClick={() => onSelect(thread.id)}
