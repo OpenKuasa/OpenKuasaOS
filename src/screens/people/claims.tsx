@@ -12,9 +12,12 @@ const dash = '—';
 
 /** Your own expense claims. */
 export default async function ClaimsScreen() {
-  const { model } = await loadPeople('claims', async (data, now, ctx) =>
-    buildClaimsModel(await data.listClaims(), ctx.viewer, todayInMalaysia(now)),
-  );
+  const { model } = await loadPeople('claims', async (data, now, ctx) => {
+    const today = todayInMalaysia(now);
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) return buildClaimsModel([], ctx.viewer, today);
+    return buildClaimsModel(await data.listClaims(), ctx.viewer, today);
+  });
   const claims = model?.linked ? model : null;
 
   const slices: Slice[] = (claims?.by_category ?? []).map((c, index) => ({

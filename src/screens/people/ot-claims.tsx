@@ -12,9 +12,12 @@ const OT_SERIES: Series[] = [{ key: 'hours', label: 'OT hours', color: 'var(--ch
 
 /** Your own overtime claims. */
 export default async function OtClaimsScreen() {
-  const { model } = await loadPeople('ot-claims', async (data, now, ctx) =>
-    buildOtModel(await data.listOvertime(), ctx.viewer, todayInMalaysia(now)),
-  );
+  const { model } = await loadPeople('ot-claims', async (data, now, ctx) => {
+    const today = todayInMalaysia(now);
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) return buildOtModel([], ctx.viewer, today);
+    return buildOtModel(await data.listOvertime(), ctx.viewer, today);
+  });
   const ot = model?.linked ? model : null;
   const month = ot?.overtime.month;
   const hasHistory = (ot?.overtime.by_month ?? []).some((b) => b.value > 0);

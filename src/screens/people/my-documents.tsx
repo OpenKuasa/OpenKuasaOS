@@ -19,9 +19,12 @@ const STATUS_TONE: Record<DocumentStatus, 'good' | 'pending' | 'bad' | 'neutral'
 
 /** The signed-in employee's own document library. Records only: no file is stored yet. */
 export default async function MyDocumentsScreen() {
-  const { model } = await loadPeople('my-documents', async (data, now, ctx) =>
-    buildDocumentsModel(await data.listDocuments(), ctx.viewer, todayInMalaysia(now)),
-  );
+  const { model } = await loadPeople('my-documents', async (data, now, ctx) => {
+    const today = todayInMalaysia(now);
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) return buildDocumentsModel([], ctx.viewer, today);
+    return buildDocumentsModel(await data.listDocuments(), ctx.viewer, today);
+  });
 
   const header = (
     <PageHeader

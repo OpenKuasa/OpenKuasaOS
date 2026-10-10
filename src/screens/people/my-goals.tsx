@@ -19,9 +19,11 @@ const STATUS_TONE = { on_track: 'good', at_risk: 'pending', done: 'neutral' } as
 const STATUS_ICON = { on_track: Target, at_risk: AlertTriangle, done: CircleCheck } as const;
 
 export default async function MyGoalsScreen() {
-  const { model } = await loadPeople('my-goals', async (data, _now, ctx) =>
-    buildGoalsModel(await data.listGoals(), ctx.viewer),
-  );
+  const { model } = await loadPeople('my-goals', async (data, _now, ctx) => {
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) return buildGoalsModel([], ctx.viewer);
+    return buildGoalsModel(await data.listGoals(), ctx.viewer);
+  });
   const dash = '—';
   const header = (
     <PageHeader

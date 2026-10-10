@@ -16,6 +16,10 @@ const LEAVE_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-4)', 'var
 export default async function MyAttendanceScreen() {
   const { model } = await loadPeople('my-attendance', async (data, now, ctx) => {
     const today = todayInMalaysia(now);
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) {
+      return buildMyAttendance({ days: [], leave: [], balances: [], viewer: ctx.viewer, today });
+    }
     const [days, leave, balances] = await Promise.all([
       data.listAttendance(attendanceWindowStart(today), today),
       data.listLeaveRequests(),

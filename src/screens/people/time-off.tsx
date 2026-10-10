@@ -7,9 +7,12 @@ const dash = '—';
 
 /** Your own short time-off requests. */
 export default async function TimeOffScreen() {
-  const { model } = await loadPeople('time-off', async (data, now, ctx) =>
-    buildTimeOffModel(await data.listTimeOffRequests(), ctx.viewer, todayInMalaysia(now)),
-  );
+  const { model } = await loadPeople('time-off', async (data, now, ctx) => {
+    const today = todayInMalaysia(now);
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) return buildTimeOffModel([], ctx.viewer, today);
+    return buildTimeOffModel(await data.listTimeOffRequests(), ctx.viewer, today);
+  });
   const timeOff = model?.linked ? model : null;
 
   return (

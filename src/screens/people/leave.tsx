@@ -13,6 +13,8 @@ const dash = '—';
 export default async function LeaveScreen() {
   const { model } = await loadPeople('leave', async (data, now, ctx) => {
     const today = todayInMalaysia(now);
+    // Not linked to an employee: nothing to read, the builder answers "not linked".
+    if (ctx.viewer.employeeId === null) return buildLeaveModel([], [], ctx.viewer, today);
     const [requests, balances] = await Promise.all([
       data.listLeaveRequests(),
       data.listLeaveBalances(Number(today.slice(0, 4))),
