@@ -64,11 +64,14 @@ export function AgentsPanel({
   config,
   runs,
   assets,
+  assetUrls,
   canEdit,
 }: {
   config: AgentConfig;
   runs: AgentRun[];
   assets: AgentRunAsset[];
+  /** Signed URL strings keyed by asset id, built server-side. */
+  assetUrls: Record<string, string>;
   canEdit: boolean;
 }) {
   const [pending, start] = useTransition();
@@ -194,6 +197,32 @@ export function AgentsPanel({
                   </span>
                 </div>
                 <p className="text-muted-foreground">{preview(run.digest_md)}</p>
+                {assets.some((a) => a.run_id === run.id) && (
+                  <div className="grid gap-2 pt-1 sm:grid-cols-2">
+                    {assets
+                      .filter((a) => a.run_id === run.id)
+                      .map((a) => {
+                        const url = a.status === 'done' ? assetUrls[a.id] : undefined;
+                        const label = a.kind === 'poster' ? 'Poster' : 'Hero image';
+                        return url ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
+                          <img
+                            key={a.id}
+                            src={url}
+                            alt={label}
+                            className="w-full rounded-md border object-cover"
+                          />
+                        ) : (
+                          <div
+                            key={a.id}
+                            className="grid min-h-24 place-items-center rounded-md border border-dashed text-xs text-muted-foreground"
+                          >
+                            {label} {a.status === 'failed' ? 'could not be generated' : 'is not ready yet'}
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

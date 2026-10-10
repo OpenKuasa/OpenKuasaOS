@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/lib/agents/openrouter-media', () => ({
   webSearch: vi.fn(),
   writeDigest: vi.fn(),
+  generateImage: vi.fn(),
 }));
 vi.mock('@/lib/ai/key-crypto', () => ({
   hasKeySecret: () => true,
@@ -17,15 +18,20 @@ vi.mock('@/lib/reach/supabase', () => ({
 }));
 
 import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
-import { webSearch, writeDigest } from '@/lib/agents/openrouter-media';
+import { generateImage, webSearch, writeDigest } from '@/lib/agents/openrouter-media';
 
 const ORG = 'org-123';
 
 type Call = { table: string; op: string; payload?: unknown; eqs: [string, unknown][] };
 
-function fakeService(keyRow: { ciphertext: string } | null) {
+function fakeService(
+  keyRow: { ciphertext: string } | null,
+  cap: { max_cost_cents: number } | null = { max_cost_cents: 200 },
+) {
   const calls: Call[] = [];
   const runs: Record<string, unknown>[] = [];
+  const assets: Record<string, unknown>[] = [];
+  const uploads: { path: string; bytes: unknown; opts: unknown }[] = [];
   const service = {
     from(table: string) {
       return {
@@ -37,13 +43,17 @@ function fakeService(keyRow: { ciphertext: string } | null) {
               call.eqs.push([col, val]);
               return b;
             },
-            maybeSingle: async () => ({ data: keyRow, error: null }),
+            maybeSingle: async () => ({ data: table === 'agent_configs' ? cap : keyRow, error: null }),
           };
           return b;
         },
         insert(payload: Record<string, unknown>) {
           const call: Call = { table, op: 'insert', payload, eqs: [] };
           calls.push(call);
+          if (table === 'agent_run_assets') {
+            assets.push(payload);
+            return Promise.resolve({ error: null });
+          }
           const row = { id: 'run-1', ...payload };
           runs.push(row);
           return { select: () => ({ single: async () => ({ data: row, error: null }) }) };
@@ -65,13 +75,27 @@ function fakeService(keyRow: { ciphertext: string } | null) {
         },
       };
     },
+    storage: {
+      from: (bucket: string) => ({
+        upload: async (path: string, bytes: unknown, opts: unknown) => {
+          uploads.push({ path: `${bucket}/${path}`, bytes, opts });
+          return { data: { path }, error: null };
+        },
+      }),
+    },
   };
-  return { service: service as never, calls, runs };
+  return { service: service as never, calls, runs, assets, uploads };
 }
 
 beforeEach(() => {
   vi.mocked(webSearch).mockReset();
   vi.mocked(writeDigest).mockReset();
+  vi.mocked(generateImage).mockReset();
+  vi.mocked(generateImage).mockResolvedValue({
+    bytes: new Uint8Array([1, 2, 3]),
+    contentType: 'image/png',
+    cost_cents: 5,
+  });
 });
 
 describe('runWeeklyStudio', () => {
@@ -86,7 +110,7 @@ describe('runWeeklyStudio', () => {
     expect(writeDigest).not.toHaveBeenCalled();
   });
 
-  it('runs search + digest and finishes done with summed cost', async () => {
+  it('runs search + digest + images and finishes done with summed cost', async () => {
     vi.mocked(webSearch).mockResolvedValue({ text: 'angle', cost_cents: 3 });
     vi.mocked(writeDigest).mockResolvedValue({ text: '# Digest', cost_cents: 4 });
     const { service, runs } = fakeService({ ciphertext: 'abc' });
@@ -94,7 +118,7 @@ describe('runWeeklyStudio', () => {
     expect(res.status).toBe('done');
     expect(webSearch).toHaveBeenCalledWith('decrypted-abc', expect.any(String));
     expect(writeDigest).toHaveBeenCalledWith('decrypted-abc', expect.stringContaining('angle'));
-    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest', cost_cents: 7, trigger: 'schedule' });
+    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest', cost_cents: 17, trigger: 'schedule' });
     expect(runs[0].finished_at).toBeTruthy();
   });
 
@@ -120,5 +144,56 @@ describe('runWeeklyStudio', () => {
     const updates = calls.filter((c) => c.table === 'agent_runs' && c.op === 'update');
     expect(updates.length).toBeGreaterThan(0);
     for (const u of updates) expect(u.eqs).toContainEqual(['org_id', ORG]);
+  });
+
+  it('generates poster + hero, uploads via the passed service, and records done assets', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 4 });
+    const { service, runs, assets, uploads } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(generateImage).toHaveBeenCalledTimes(2);
+    expect(uploads.map((u) => u.path)).toEqual([
+      `agent-assets/${ORG}/run-1/poster.png`,
+      `agent-assets/${ORG}/run-1/image.png`,
+    ]);
+    expect(uploads[0].opts).toMatchObject({ contentType: 'image/png', upsert: true });
+    expect(assets).toHaveLength(2);
+    expect(assets[0]).toMatchObject({
+      org_id: ORG,
+      run_id: 'run-1',
+      kind: 'poster',
+      status: 'done',
+      storage_path: `${ORG}/run-1/poster.png`,
+    });
+    expect(assets[1]).toMatchObject({ kind: 'image', status: 'done' });
+    expect(runs[0].cost_cents).toBe(3 + 4 + 5 + 5);
+  });
+
+  it('skips image generation when the per-run cap would be exceeded but still persists the digest', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 3 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: '# Digest', cost_cents: 4 });
+    const { service, runs, assets, uploads } = fakeService(
+      { ciphertext: 'abc' },
+      { max_cost_cents: 1 },
+    );
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(generateImage).not.toHaveBeenCalled();
+    expect(uploads).toHaveLength(0);
+    expect(assets).toHaveLength(0);
+    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest', cost_cents: 7 });
+  });
+
+  it('records a failed asset (no secret) when an image fails and keeps the run done', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'a', cost_cents: 1 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: 'd', cost_cents: 1 });
+    vi.mocked(generateImage).mockRejectedValue(new Error('boom sk-or-secret'));
+    const { service, runs, assets } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    expect(runs[0].digest_md).toBe('d');
+    expect(assets.map((a) => a.status)).toEqual(['failed', 'failed']);
+    expect(JSON.stringify(assets)).not.toContain('secret');
   });
 });

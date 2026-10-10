@@ -36,6 +36,7 @@ export default async function AgentsScreen() {
   let config: AgentConfig = defaultConfig(viewer.orgId ?? '');
   let runs: AgentRun[] = [];
   let assets: AgentRunAsset[] = [];
+  const assetUrls: Record<string, string> = {};
 
   if (!viewer.isDemo && viewer.orgId) {
     const supabase = await createClient();
@@ -59,6 +60,17 @@ export default async function AgentsScreen() {
           runs.map((r) => r.id),
         );
       assets = (data ?? []) as AgentRunAsset[];
+      // Private bucket: sign a short-lived URL per finished asset (org-member SELECT policy).
+      await Promise.all(
+        assets
+          .filter((a) => a.status === 'done' && a.storage_path)
+          .map(async (a) => {
+            const { data: signed } = await supabase.storage
+              .from('agent-assets')
+              .createSignedUrl(a.storage_path as string, 3600);
+            if (signed?.signedUrl) assetUrls[a.id] = signed.signedUrl;
+          }),
+      );
     }
   }
 
@@ -76,7 +88,7 @@ export default async function AgentsScreen() {
           icon={Bot}
           className="col-span-2 md:col-span-12"
         >
-          <AgentsPanel config={config} runs={runs} assets={assets} canEdit={canEdit} />
+          <AgentsPanel config={config} runs={runs} assets={assets} assetUrls={assetUrls} canEdit={canEdit} />
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
