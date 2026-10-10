@@ -84,7 +84,10 @@ const days = z.number().optional().describe('How many days back to cover, counti
 const SCOPE_NOTE =
   ' The result says whose records it covers in "scope": for someone who is not an HR admin that is their own records only, so never present it as the whole team.';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+const NOT_LINKED =
+  'This account is not linked to an employee record yet, so none of this person\'s own records can be shown. It does not mean they have none.';
+
+const round2 =(n: number) => Math.round(n * 100) / 100;
 
 /** The distinct names among matching rows, when the caller filtered by a name: so several people sharing a fragment are never merged silently. */
 const matchedNames = (filter: string | undefined, names: string[]) =>
@@ -114,6 +117,11 @@ export function createPeopleTools(
   /** Whose rows a personal lookup returned: everyone's for HR and in the demo, otherwise the caller's own. */
   const ownOnly = !viewer.isHr && !viewer.isDemo;
   const scope = viewer.isHr || viewer.isDemo ? 'everyone in the workspace' : 'your own records only';
+  /**
+   * A member whose account is linked to no employee record gets none of their own rows back.
+   * Spread into every result that carries `scope` (and the trainings list) so no tool can forget it.
+   */
+  const notLinked = ownOnly && viewer.employeeId === null ? { not_linked: NOT_LINKED } : {};
   /** The first day of a window of `requested` days ending today. */
   const windowStart = (requested: number | undefined) => addDays(today(), -(rowLimit(requested, 7, 31) - 1));
 
@@ -123,6 +131,7 @@ export function createPeopleTools(
         'The team at a glance today: headcount, number of departments, how many are on leave today, how many came in ' +
         'and the attendance rate, and how many requests are waiting for approval (leave, claims, overtime, time-off). ' +
         'Someone who is not an HR admin gets the team\'s headcount and their own pending requests only.' +
+        ' A null attendance rate means nobody was expected at work today (a weekend, or nothing recorded yet), not that attendance was zero.' +
         SCOPE_NOTE,
       inputSchema: z.object({}),
       execute: async () =>
@@ -141,6 +150,7 @@ export function createPeopleTools(
               departments: headcountByDepartment(employees).length,
               your_pending_requests: counts,
               scope,
+              ...notLinked,
               team_figures: 'On-leave, attendance and approval figures for the whole team are visible to HR admins only.',
             };
           }
@@ -153,6 +163,7 @@ export function createPeopleTools(
             attendance_rate_pct: at.rate_pct,
             pending_approvals: counts,
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -179,7 +190,8 @@ export function createPeopleTools(
       description:
         'One employee by name. Returns their directory details. Pay, NRIC, bank, statutory numbers, address, phone ' +
         'and emergency contact are returned only when includePrivate is true, and only if this user may see them: ' +
-        'private_access false means this user may not, not that the details do not exist. ' +
+        'private_access false means this user may not see them, not that they do not exist. ' +
+        'private_recorded false (with private_access true) means this user may see them but none have been entered yet. ' +
         'If several people match the name, several_match lists them and nothing else is returned.',
       inputSchema: z.object({
         employee: z.string().describe('The employee, by name. Part of the name is enough, in any letter case.'),
@@ -200,10 +212,18 @@ export function createPeopleTools(
           const found = { found: true as const, employee: directoryRow(match) };
           if (!includePrivate) return found;
           const priv = await data.getEmployeePrivate(match.id);
+          // A missing row means either this user may not read it, or nobody has entered it.
+          const mayRead = !ownOnly || match.id === viewer.employeeId;
+          if (!priv) {
+            return mayRead
+              ? { ...found, private_access: true, private_recorded: false, private: null }
+              : { ...found, private_access: false, private: null };
+          }
           return {
             ...found,
-            private_access: priv !== null,
-            private: priv && {
+            private_access: true,
+            private_recorded: true,
+            private: {
               base_salary: priv.base_salary_cents === null ? null : rm(priv.base_salary_cents),
               nric: priv.nric,
               date_of_birth: priv.date_of_birth,
@@ -251,6 +271,7 @@ export function createPeopleTools(
               days: r.days,
             })),
             scope,
+            ...notLinked,
             ...(ownOnly ? { covers: 'Only your own leave. Who else is on leave is visible to HR admins only.' } : {}),
           };
         }),
@@ -289,6 +310,7 @@ export function createPeopleTools(
               status: r.status,
             })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -309,6 +331,7 @@ export function createPeopleTools(
             ...matchedNames(name, rows.map((b) => b.employee)),
             balances: rows.slice(0, LOOKUP_MAX),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -334,6 +357,7 @@ export function createPeopleTools(
               detail: r.detail,
             })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -368,6 +392,7 @@ export function createPeopleTools(
               status: c.status,
             })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -396,6 +421,7 @@ export function createPeopleTools(
               status: o.status,
             })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -417,6 +443,7 @@ export function createPeopleTools(
             ...attendanceCounts(rows),
             late_most_often: lateByEmployee(rows, employees).slice(0, 5),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -440,6 +467,7 @@ export function createPeopleTools(
             ...matchedNames(name, rows.map((r) => r.employee)),
             by_employee: rows.slice(0, LOOKUP_MAX),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -467,6 +495,7 @@ export function createPeopleTools(
               shift: s.shift,
             })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -516,6 +545,7 @@ export function createPeopleTools(
                 net: rm(r.net_cents),
               })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -551,6 +581,7 @@ export function createPeopleTools(
               status: p.status,
             })),
             scope,
+            ...notLinked,
           };
         }),
     }),
@@ -566,7 +597,7 @@ export function createPeopleTools(
           const [goals, scorecards, reviews] = await Promise.all([
             data.listGoals(), data.listScorecards(), data.listReviews(),
           ]);
-          return { ...performanceSummary(goals, scorecards, reviews), scope };
+          return { ...performanceSummary(goals, scorecards, reviews), scope, ...notLinked };
         }),
     }),
 
@@ -582,6 +613,7 @@ export function createPeopleTools(
         safe('listTrainings', async () => {
           const [trainings, enrolments] = await Promise.all([data.listTrainings(), data.listTrainingEnrolments()]);
           return {
+            ...notLinked,
             trainings: trainings
               .filter((t) => !status || t.status === status)
               .slice(0, LOOKUP_MAX)

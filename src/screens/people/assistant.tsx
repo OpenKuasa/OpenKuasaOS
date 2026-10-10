@@ -65,7 +65,9 @@ export default async function OverviewScreen() {
   const teamView = viewer.isHr || viewer.isDemo;
   const heading = approvalsHeading(teamView);
   // A member whose HR record is not linked sees the directory but none of their own records.
-  const notLinked = hasWorkspace && !teamView && viewer.employeeId === null && model !== null;
+  // Only worth saying when there is a team to see: an empty workspace gets the "No employees yet" card.
+  const notLinked = hasWorkspace && !teamView && viewer.employeeId === null && model !== null && headcount > 0;
+  const noEmployees = hasWorkspace && model !== null && headcount === 0;
   const noWorkspace = !hasWorkspace && model !== null;
   const departmentMix: Slice[] = (model?.departments ?? []).map((d, index) => ({
     key: d.department,
@@ -90,8 +92,16 @@ export default async function OverviewScreen() {
             className="col-span-2 md:col-span-12"
           >
             <p className="text-sm text-muted-foreground">
-              You can see the team, but not your own leave, claims or payslips until your HR admin links
-              your account to your employee record. Ask them to link it on the Employees screen.
+              You can see the team, but your own leave, claims and payslips will appear only once your
+              account is linked to your employee record. Linking accounts is coming soon.
+            </p>
+          </BentoCard>
+        ) : null}
+
+        {noEmployees ? (
+          <BentoCard title="No employees yet" icon={Users} className="col-span-2 md:col-span-12">
+            <p className="text-sm text-muted-foreground">
+              No employees have been added yet. Adding employees is coming soon.
             </p>
           </BentoCard>
         ) : null}
@@ -165,7 +175,7 @@ export default async function OverviewScreen() {
         {/* Leave by type + attendance + agents */}
         <BentoCard
           title="Leave by type"
-          subtitle="Approved days starting this month"
+          subtitle="Approved days this month"
           icon={Plane}
           className="col-span-2 md:col-span-4"
         >

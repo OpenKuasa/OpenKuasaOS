@@ -345,4 +345,46 @@ describe('people tools', () => {
     expect(hr.runs).toHaveLength(3);
     expect(hr.scope).toBe('everyone in the workspace');
   });
+
+  const NOT_LINKED_TEXT =
+    'This account is not linked to an employee record yet, so none of this person\'s own records can be shown. It does not mean they have none.';
+  const UNLINKED: PeopleViewer = { employeeId: null, isHr: false, isDemo: false };
+
+  it('tells an unlinked member that nothing can be shown, in every result that has a scope', async () => {
+    const unlinked = runner(data, UNLINKED);
+    for (const name of PEOPLE_TOOL_NAMES) {
+      const result = await unlinked(name)(name === 'getEmployee' ? { employee: 'aisyah' } : {});
+      if ('scope' in result) expect(result.not_linked, name).toBe(NOT_LINKED_TEXT);
+    }
+    expect((await unlinked('listTrainings')({})).not_linked).toBe(NOT_LINKED_TEXT);
+  });
+
+  it('adds no not_linked note for HR or a linked member', async () => {
+    for (const viewer of [HR, MEMBER]) {
+      const r = runner(data, viewer);
+      for (const name of PEOPLE_TOOL_NAMES) {
+        const result = await r(name)(name === 'getEmployee' ? { employee: 'aisyah' } : {});
+        expect(result, name).not.toHaveProperty('not_linked');
+      }
+    }
+  });
+
+  it('says private details were never entered, apart from the user not being allowed to see them', async () => {
+    const blank: PeopleData = { ...data, getEmployeePrivate: async () => null };
+    const hr = await runner(blank, HR)('getEmployee')({ employee: 'Ahmad Zaki', includePrivate: true });
+    expect(hr).toMatchObject({ private_access: true, private_recorded: false, private: null });
+    const self = await runner(blank, MEMBER)('getEmployee')({ employee: 'Faiz Hakim', includePrivate: true });
+    expect(self).toMatchObject({ private_access: true, private_recorded: false, private: null });
+    const other = await runner(blank, MEMBER)('getEmployee')({ employee: 'Ahmad Zaki', includePrivate: true });
+    expect(other).toMatchObject({ private_access: false, private: null });
+    expect(other).not.toHaveProperty('private_recorded');
+    const real = await run('getEmployee')({ employee: 'Aisyah Rahim', includePrivate: true });
+    expect(real).toMatchObject({ private_access: true, private_recorded: true });
+  });
+
+  it('explains a null attendance rate in the overview description', () => {
+    const description = (createPeopleTools(data, HR, NOW).getPeopleOverview as unknown as { description: string }).description;
+    expect(description).toContain('A null attendance rate means nobody was expected at work today');
+    expect(description.endsWith('their own records only, so never present it as the whole team.')).toBe(true);
+  });
 });

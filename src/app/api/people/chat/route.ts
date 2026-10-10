@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   return result.toUIMessageStreamResponse({
     onError: (error) => {
-      console.error('[ask-lekiu] stream error:', error);
+      console.error('[ask-lekiu] stream error:', error instanceof Error ? error.message : error);
       return 'Lekiu ran into a problem. Please try again in a moment.';
     },
   });

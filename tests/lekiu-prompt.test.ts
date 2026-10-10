@@ -87,4 +87,20 @@ describe('LEKIU_SYSTEM', () => {
   it("does not bring up one person's medical leave when answering about another", () => {
     expect(t).toContain("bring up one person's medical leave when answering about another");
   });
+  it('says when an account is not linked to an employee record', () => {
+    expect(t).toContain('not_linked');
+    expect(t).toContain('never say they have no leave, no claims or no payslip');
+  });
+  it('tells never-entered private details apart from details the user may not see', () => {
+    expect(t).toContain('private_recorded');
+  });
+  it('does not send people to screens that cannot do the job yet', () => {
+    expect(t).toContain('not available in openkuasa yet');
+    expect(t).toContain('do not send them to a screen to do it');
+    expect(t).not.toContain('name the screen where it is done');
+  });
+  it('asks who "saya" is when it can see everyone', () => {
+    expect(t).toContain('you do not know which employee they are');
+    expect(t).toContain("never present everyone's rows as theirs");
+  });
 });
