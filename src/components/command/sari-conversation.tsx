@@ -59,6 +59,14 @@ import {
   type ChatThread,
 } from '@/lib/chat/threads';
 import { screenFromPath, screenLabel } from '@/lib/chat/screen';
+import { ApprovalCard, ToolStepCard } from '@/components/chat/tool-cards';
+import {
+  hasVisibleContent,
+  isText,
+  toPendingApproval,
+  toToolStep,
+  type AnyPart,
+} from '@/components/chat/tool-parts';
 import {
   ATTACH_ACCEPT,
   MAX_ATTACHMENTS,
@@ -89,6 +97,8 @@ type Message = {
   card?: CardType;
   /** Files sent with a question, while they are still in memory. */
   files?: FilePart[];
+  /** A live answer as it was built: words, lookups and changes to approve. */
+  parts?: AnyPart[];
 };
 type Reply = { text: string; card?: CardType };
 
@@ -743,8 +753,21 @@ function ChatPane({
         .map((part) => (part.type === 'text' ? part.text : ''))
         .join(''),
       files: m.role === 'user' ? m.parts.filter(isFilePart) : [],
+      parts: m.role === 'user' ? undefined : m.parts,
+      shown: hasVisibleContent(m),
     }))
-    .filter((m) => m.text.trim().length > 0 || m.files.length > 0);
+    .filter((m) => m.shown || m.files.length > 0);
+
+  // A change Tuah proposed is waiting for a yes or no.
+  const lastRaw = chat.messages[chat.messages.length - 1];
+  const lastParts = lastRaw?.role === 'assistant' ? lastRaw.parts : [];
+  const needsDecision = live && !busy && lastParts.some((p) => toPendingApproval(p));
+  // Words are arriving, or a lookup is showing its own spinner.
+  const lastPart = lastParts[lastParts.length - 1];
+  const midAnswer =
+    !!lastPart &&
+    ((isText(lastPart) && lastPart.text.trim().length > 0) ||
+      (toToolStep(lastPart, '', 0)?.running ?? false));
   const messages = live ? liveMessages : demoMessages;
 
   // A thread read back moments after its question (a reload mid-answer): the
@@ -774,11 +797,8 @@ function ChatPane({
     };
   }, [awaiting, threadId, setMessages]);
 
-  // Show the dots until the first words of the answer arrive.
-  const thinking = live
-    ? (busy && liveMessages[liveMessages.length - 1]?.role !== 'assistant') ||
-      awaiting === 'coming'
-    : demoThinking;
+  // Show the dots whenever Tuah is working with nothing on screen to show it.
+  const thinking = live ? (busy && !midAnswer) || awaiting === 'coming' : demoThinking;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -817,6 +837,10 @@ function ChatPane({
       if (!q && attachments.length === 0) return;
       // A reply still on its way must land before the next question goes out.
       if (busy || locked || awaiting === 'coming') return;
+      if (needsDecision) {
+        setAttachNote('Approve or reject the change above first.');
+        return;
+      }
       if (keep) keepChat(viewer.userId, liveChat);
       setAwaiting('settled');
       const options = pathname ? { body: { pathname } } : undefined;
@@ -986,9 +1010,39 @@ function ChatPane({
                     <div key={m.id} className="flex gap-3">
                       <SariAvatar />
                       <div className="min-w-0 flex-1 space-y-3 pt-1">
-                        <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                          {m.text}
-                        </p>
+                        {m.parts ? (
+                          m.parts.map((part, i) => {
+                            if (isText(part)) {
+                              return part.text.trim() ? (
+                                <p key={i} className="whitespace-pre-wrap text-sm leading-relaxed">
+                                  {part.text.trim()}
+                                </p>
+                              ) : null;
+                            }
+                            const pending = toPendingApproval(part);
+                            if (pending) {
+                              return (
+                                <ApprovalCard
+                                  key={pending.approvalId}
+                                  approval={pending}
+                                  onDecide={(approved) => {
+                                    setAttachNote(null);
+                                    void chat.addToolApprovalResponse({
+                                      id: pending.approvalId,
+                                      approved,
+                                    });
+                                  }}
+                                />
+                              );
+                            }
+                            const step = toToolStep(part, String(m.id), i);
+                            return step ? <ToolStepCard key={step.key} step={step} /> : null;
+                          })
+                        ) : (
+                          <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                            {m.text}
+                          </p>
+                        )}
                         {m.card ? <ReplyCard type={m.card} /> : null}
                       </div>
                     </div>

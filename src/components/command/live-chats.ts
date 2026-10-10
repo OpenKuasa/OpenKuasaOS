@@ -1,5 +1,9 @@
 import { Chat } from '@ai-sdk/react';
-import { DefaultChatTransport, type UIMessage } from 'ai';
+import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  type UIMessage,
+} from 'ai';
 import type { StoredMessage } from '@/lib/chat/threads';
 
 /**
@@ -23,7 +27,13 @@ const isBusy = (chat: LiveChat) =>
 
 /** A chat whose id is the thread id, which travels with every request. */
 export function createChat(threadId: string, messages: StoredMessage[] = []): LiveChat {
-  return new Chat<UIMessage>({ id: threadId, messages, transport });
+  return new Chat<UIMessage>({
+    id: threadId,
+    messages,
+    transport,
+    // Approving or rejecting a change sends the turn back so Tuah can finish it.
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
+  });
 }
 
 export function keptChat(userId: string, threadId: string): LiveChat | undefined {
