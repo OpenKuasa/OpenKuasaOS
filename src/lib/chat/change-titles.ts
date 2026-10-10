@@ -3,6 +3,8 @@
  * thing it is about. Pure, so the server can word a change a specialist
  * prepared and the chat can word one it finds in a message.
  */
+// Itself pure and import-free: the words for the application form switches live with the switches.
+import { describeFormChange } from '@/lib/hire/application-form';
 
 const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
   scheduled: 'scheduled',
@@ -264,6 +266,10 @@ export function approvalTitle(
         : i.careers_enabled === false
           ? 'Turn off the public careers page?'
           : 'Save changes to the careers page?';
+    case 'updateApplicationForm': {
+      const changes = describeFormChange(i);
+      return changes.length === 1 ? `${changes[0]} on applications?` : 'Change what the application form asks for?';
+    }
     default: return 'Approve this change?';
   }
 }
@@ -391,6 +397,11 @@ export function approvalDetail(toolName: string, input?: unknown): string | null
     // A new employee has nothing to clear: a null or blank field simply sets nothing.
     const words = employeeFieldWords(i, false).filter((w) => !w.endsWith('(cleared)'));
     return words.length > 0 ? `Sets: ${words.join(', ')}` : null;
+  }
+  if (toolName === 'updateApplicationForm') {
+    const changes = describeFormChange(i);
+    // One change is already the question; several are listed.
+    return changes.length > 1 ? changes.join(' · ') : null;
   }
   if (toolName === 'updateCareersPage') {
     const quoted = (label: string, key: string) => {
