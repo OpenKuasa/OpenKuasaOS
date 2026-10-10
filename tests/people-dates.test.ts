@@ -84,6 +84,15 @@ describe('people dates', () => {
     expect(hoursBetweenTimes('15:00', '14:00')).toBe(0);
   });
 
+  it('does not throw on an unparseable instant', () => {
+    const now = new Date('2026-10-09T04:00:00Z');
+    expect(clockTime('not a time')).toBe('—');
+    expect(malaysiaDate('not a time')).toBe('');
+    expect(relativeTime('not a time', now)).toBe('—');
+    expect(hoursBetween('not a time', '2026-10-09T01:00:00Z')).toBe(0);
+    expect(hoursBetween('2026-10-09T01:00:00Z', 'nope')).toBe(0);
+  });
+
   it('says how long ago something happened', () => {
     const now = new Date('2026-10-09T04:00:00Z');
     const before = (seconds: number) => new Date(now.getTime() - seconds * 1000).toISOString();

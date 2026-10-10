@@ -60,7 +60,7 @@ const REVIEW_COLUMNS = `id,employee_id,period,rating,score,reviewer_name,reviewe
 type Named = { name?: string | null } | null | undefined;
 type WithEmployee<T> = Omit<T, 'employee_name'> & { employee: Named };
 type EmployeeRow = Omit<Employee, 'department_name'> & { department: Named };
-type Order = { col: string; asc: boolean };
+type Order = { col: string; asc: boolean; nullsLast?: boolean };
 type Options = { window?: { column: string; from: string; to: string }; eq?: [string, string | number] };
 
 const UNKNOWN = 'Unknown';
@@ -101,7 +101,7 @@ export function createSupabasePeopleData(client: SupabaseClient, orgId: string):
         query = query.gte(options.window.column, options.window.from).lte(options.window.column, options.window.to);
       }
       const { data, error } = await query
-        .order(order.col, { ascending: order.asc })
+        .order(order.col, order.nullsLast ? { ascending: order.asc, nullsFirst: false } : { ascending: order.asc })
         // A second, unique order keeps pages from overlapping when many rows share a date.
         .order('id', { ascending: true })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
@@ -169,7 +169,7 @@ export function createSupabasePeopleData(client: SupabaseClient, orgId: string):
     listAnnouncements: () =>
       rows<Announcement>('hr_announcements', 'id,title,body,category,published_at,author_name', { col: 'published_at', asc: false }),
     listDocuments: async () =>
-      (await rows<WithEmployee<HrDocument>>('hr_documents', DOCUMENT_COLUMNS, { col: 'issued_on', asc: false })).map(named),
+      (await rows<WithEmployee<HrDocument>>('hr_documents', DOCUMENT_COLUMNS, { col: 'issued_on', asc: false, nullsLast: true })).map(named),
     listLetters: async () =>
       (await rows<WithEmployee<Letter>>('hr_letters', LETTER_COLUMNS, { col: 'created_at', asc: false })).map(named),
     listPaymentVouchers: () =>

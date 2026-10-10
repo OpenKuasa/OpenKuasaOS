@@ -12,14 +12,24 @@ import {
 } from '@/screens/people/parts';
 
 describe('LaterButton', () => {
+  const DISABLED = /<button[^>]*\sdisabled(=""|\s|>)/;
+
   it('is a real disabled button that says why, where it can be seen', () => {
     const html = renderToStaticMarkup(<LaterButton icon={Plus}>New request</LaterButton>);
-    expect(html).toContain('<button');
-    expect(html).toContain('disabled');
+    expect(html).toMatch(DISABLED);
+    expect(html).not.toContain('sr-only');
     expect(html).toContain('type="button"');
     expect(html).toContain('New request');
     expect(html).toContain(LATER_NOTE);
     expect(html).toContain(`title="${LATER_NOTE}"`);
+  });
+
+  it('in compact form keeps the note for screen readers only', () => {
+    const html = renderToStaticMarkup(<LaterButton compact>Approve</LaterButton>);
+    expect(html).toMatch(DISABLED);
+    expect(html).toContain(`<span class="sr-only">${LATER_NOTE}</span>`);
+    expect(html).toContain(`title="${LATER_NOTE}"`);
+    expect(html).toContain('whitespace-nowrap');
   });
 
   it('has the agreed note', () => {

@@ -131,26 +131,29 @@ export const LATER_NOTE = 'Available in a later update';
 /**
  * A control for something not built yet: a real disabled button that submits
  * nothing. A disabled button shows no tooltip on hover, so the note is also
- * printed beside it in small muted text.
+ * printed beside it in small muted text (`compact` hides it visually).
  */
 export function LaterButton({
   children,
   icon: Icon,
   variant = 'default',
   size = 'default',
+  compact = false,
 }: {
   children: ReactNode;
   icon?: LucideIcon;
   variant?: 'default' | 'outline' | 'ghost';
   size?: 'sm' | 'default';
+  /** For table rows: the note is kept for screen readers and the tooltip, not printed. */
+  compact?: boolean;
 }) {
   return (
-    <span className="inline-flex items-center gap-2" title={LATER_NOTE}>
-      <Button type="button" variant={variant} size={size} disabled title={LATER_NOTE}>
+    <span className="inline-flex items-center gap-2 whitespace-nowrap" title={LATER_NOTE}>
+      <Button type="button" variant={variant} size={size} disabled>
         {Icon ? <Icon aria-hidden /> : null}
         {children}
       </Button>
-      <span className="text-xs text-muted-foreground">{LATER_NOTE}</span>
+      <span className={compact ? 'sr-only' : 'text-xs text-muted-foreground'}>{LATER_NOTE}</span>
     </span>
   );
 }

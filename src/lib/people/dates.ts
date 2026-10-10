@@ -24,6 +24,7 @@ export function todayInMalaysia(now: Date): string {
 
 /** The `YYYY-MM-DD` an instant falls on in Malaysia. */
 export function malaysiaDate(instant: string): string {
+  if (Number.isNaN(Date.parse(instant))) return '';
   return iso(Date.parse(instant) + MALAYSIA_OFFSET);
 }
 
@@ -84,13 +85,14 @@ export function weekdayName(date: string): string {
 
 /** `08:59`, on the Malaysian clock. */
 export function clockTime(instant: string): string {
+  if (Number.isNaN(Date.parse(instant))) return '—';
   return new Date(Date.parse(instant) + MALAYSIA_OFFSET).toISOString().slice(11, 16);
 }
 
 /** Hours between two instants, to 1 decimal; 0 when the end is not after the start. */
 export function hoursBetween(startIso: string, endIso: string): number {
   const span = Date.parse(endIso) - Date.parse(startIso);
-  if (!(span > 0)) return 0;
+  if (!(span > 0)) return 0; // also false for NaN
   return Math.round(span / 360_000) / 10;
 }
 
@@ -107,6 +109,7 @@ const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} a
 
 /** `just now`, `5 minutes ago`, `2 hours ago`, `yesterday`, `3 days ago`, `2 weeks ago`, then the date. */
 export function relativeTime(instant: string, now: Date): string {
+  if (Number.isNaN(Date.parse(instant))) return '—';
   const seconds = Math.floor((now.getTime() - Date.parse(instant)) / 1000);
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return plural(Math.floor(seconds / 60), 'minute');

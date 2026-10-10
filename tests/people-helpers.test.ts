@@ -38,7 +38,7 @@ const EMPTY: PeopleData = {
   listScorecards: async () => [], listReviews: async () => [], listTrainings: async () => [],
   listTrainingEnrolments: async () => [], listAnnouncements: async () => [],
   listDocuments: async () => [], listLetters: async () => [], listPaymentVouchers: async () => [],
-  getSettings: async () => DEFAULT_PEOPLE_SETTINGS,
+  getSettings: async () => structuredClone(DEFAULT_PEOPLE_SETTINGS),
 };
 
 describe('overview helpers', () => {

@@ -27,6 +27,6 @@ export function asMember(data: PeopleData, employeeId: string): PeopleData {
     listDocuments: async () => mine(await data.listDocuments()),
     listLetters: async () => mine(await data.listLetters()),
     listPaymentVouchers: async () => [],
-    getSettings: async () => DEFAULT_PEOPLE_SETTINGS,
+    getSettings: async () => structuredClone(DEFAULT_PEOPLE_SETTINGS),
   };
 }

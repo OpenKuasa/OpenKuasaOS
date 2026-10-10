@@ -13,7 +13,7 @@ import { getPeopleData } from '@/lib/people/supabase';
 import { NO_WORKSPACE_VIEWER, PREVIEW_PEOPLE_VIEWER, getPeopleViewer } from '@/lib/people/viewer';
 import { DEFAULT_PEOPLE_SETTINGS, DEMO_EMPLOYEE_ID } from '@/lib/people/types';
 
-type Call = { table: string; columns: string; filters: [string, string, unknown][]; order: string[]; range?: [number, number] };
+type Call = { table: string; columns: string; filters: [string, string, unknown][]; order: string[]; nullsLast?: string[]; range?: [number, number] };
 const calls: Call[] = [];
 
 const ROWS: Record<string, unknown[]> = {
@@ -43,7 +43,11 @@ const client = {
       eq(column: string, value: unknown) { call.filters.push(['eq', column, value]); return query; },
       gte(column: string, value: unknown) { call.filters.push(['gte', column, value]); return query; },
       lte(column: string, value: unknown) { call.filters.push(['lte', column, value]); return query; },
-      order(column: string) { call.order.push(column); return query; },
+      order(column: string, opts?: { nullsFirst?: boolean }) {
+        call.order.push(column);
+        if (opts?.nullsFirst === false) call.nullsLast = [...(call.nullsLast ?? []), column];
+        return query;
+      },
       range(from: number, to: number) {
         call.range = [from, to];
         calls.push(call);
@@ -150,6 +154,7 @@ describe('getPeopleData', () => {
     expect(await data.listPaymentVouchers()).toHaveLength(1);
     expect(calls.find((c) => c.table === 'hr_documents')!.columns).toContain('employee:hr_employees(name)');
     expect(calls.find((c) => c.table === 'hr_documents')!.order[0]).toBe('issued_on');
+    expect(calls.find((c) => c.table === 'hr_documents')!.nullsLast).toEqual(['issued_on']);
     expect(calls.find((c) => c.table === 'hr_letters')!.order[0]).toBe('created_at');
     expect(calls.find((c) => c.table === 'hr_payment_vouchers')!.order[0]).toBe('issued_date');
   });
