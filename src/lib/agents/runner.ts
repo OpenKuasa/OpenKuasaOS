@@ -1,6 +1,64 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { checkVideo } from '@/lib/agents/openrouter-media';
 import { decryptApiKey, hasKeySecret } from '@/lib/ai/key-crypto';
+import { runWeeklyStudio } from '@/lib/agents/weekly-studio';
+import { WEEKLY_STUDIO } from '@/lib/agents/types';
+
+const CADENCE_WINDOW_MS: Record<string, number> = {
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+};
+
+export type RunAgentsSummary = { ran: number; skipped: number; failed: number };
+
+/**
+ * Scheduled driver. `client` MUST be the service-role client. Kill-switch:
+ * does nothing unless AGENTS_ENABLED is 'true'/'1'. Each due config is CLAIMED
+ * with a conditional update (last_run_at null or older than the window) before
+ * running, so overlapping triggers run it at most once per window. The org comes
+ * from the claimed row only; the per-run cost cap (max_cost_cents) is enforced
+ * inside runWeeklyStudio from that same config row. One failure never stops the loop.
+ */
+export async function runAgents(client: SupabaseClient): Promise<RunAgentsSummary> {
+  const summary: RunAgentsSummary = { ran: 0, skipped: 0, failed: 0 };
+  const flag = (process.env.AGENTS_ENABLED ?? '').trim().toLowerCase();
+  if (flag !== 'true' && flag !== '1') return summary;
+
+  const { data, error } = await client
+    .from('agent_configs')
+    .select('id, org_id, cadence, last_run_at')
+    .eq('agent_key', WEEKLY_STUDIO)
+    .eq('enabled', true)
+    .neq('cadence', 'off');
+  if (error || !data) return summary;
+
+  for (const cfg of data as { id: string; org_id: string; cadence: string; last_run_at: string | null }[]) {
+    const window = CADENCE_WINDOW_MS[cfg.cadence];
+    if (!window) continue;
+    const now = Date.now();
+    if (cfg.last_run_at && now - new Date(cfg.last_run_at).getTime() < window) continue;
+    try {
+      const cutoff = new Date(now - window).toISOString();
+      const { data: claimed, error: claimErr } = await client
+        .from('agent_configs')
+        .update({ last_run_at: new Date(now).toISOString() })
+        .eq('id', cfg.id)
+        .or(`last_run_at.is.null,last_run_at.lt.${cutoff}`)
+        .select('id, org_id')
+        .maybeSingle();
+      if (claimErr || !claimed) {
+        summary.skipped += 1;
+        continue;
+      }
+      await runWeeklyStudio(client, claimed.org_id as string, 'schedule');
+      summary.ran += 1;
+    } catch {
+      // Deliberately drop the exception text; the run row records its own failure.
+      summary.failed += 1;
+    }
+  }
+  return summary;
+}
 
 /** A video still pending after this long is given up on. */
 const VIDEO_MAX_AGE_MS = 30 * 60 * 1000;

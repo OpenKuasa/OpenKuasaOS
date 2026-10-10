@@ -1,0 +1,16 @@
+import { NextResponse } from 'next/server';
+import { runAgents } from '@/lib/agents/runner';
+import { isTriggerAuthorized } from '@/lib/agents/trigger-auth';
+import { serviceClient } from '@/lib/supabase/service';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+/** Scheduler entrypoint (operator cron). Authed by the service-role key header. */
+export async function POST(req: Request) {
+  if (!isTriggerAuthorized(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const summary = await runAgents(serviceClient());
+  return NextResponse.json(summary);
+}
