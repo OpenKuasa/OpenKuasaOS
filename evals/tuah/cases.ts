@@ -365,6 +365,27 @@ export const CASES: Case[] = [
     },
   },
   {
+    id: 'careers-page-on',
+    about: 'Turns on the public careers page through Lekir, after approval, and says open jobs are now public',
+    run: async (ws) => {
+      const chat = new Conversation(ws);
+      const asked = await chat.ask('Turn on our public careers page.');
+      const checks = [
+        check('asked Lekir', asked.asked.includes('Lekir'), `asked: ${asked.asked.join(', ') || 'nobody'}`),
+        check('put one change up for approval', asked.pending.length === 1, `${asked.pending.length} waiting; said: ${asked.text}`),
+      ];
+      if (asked.pending.length !== 1) return checks;
+      const done = await chat.decide(true);
+      const [applied] = done.applied;
+      return [
+        ...checks,
+        check('it is updateCareersPage', applied?.proposal.action === 'updateCareersPage', applied?.proposal.action),
+        check('with careers_enabled true', (applied?.proposal.input as { careers_enabled?: boolean } | undefined)?.careers_enabled === true, JSON.stringify(applied?.proposal.input)),
+        check('says open jobs are now public', /public|visible|awam|umum/i.test(done.text), done.text),
+      ];
+    },
+  },
+  {
     id: 'hiring-lookup-empty',
     about: 'Asks Lekir about hiring, and says there is nothing yet instead of inventing jobs',
     run: async (ws) => {
