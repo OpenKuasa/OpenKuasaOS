@@ -29,7 +29,18 @@ vi.mock('@/lib/reach/capabilities', async (orig) => {
   };
 });
 
-const { createCampaignAction, createLeadAction, createAppointmentAction } = await import('@/app/(app)/reach/actions');
+vi.mock('@/lib/agents/config', async (orig) => {
+  const actual = await orig<typeof import('@/lib/agents/config')>();
+  return {
+    ...actual,
+    setAgentEnabled: async (_ctx: unknown, input: unknown) => {
+      ctl.created.push(input);
+      return { ok: true, data: { id: 'ac1' } };
+    },
+  };
+});
+
+const { createCampaignAction, createLeadAction, createAppointmentAction, setAgentEnabledAction } = await import('@/app/(app)/reach/actions');
 
 beforeEach(() => {
   ctl.viewer = { userId: 'u1', orgId: 'org1', role: 'member', isDemo: false };
@@ -100,6 +111,28 @@ describe('createAppointmentAction', () => {
   });
   it('calls the capability for a member with valid input', async () => {
     expect(await createAppointmentAction(valid)).toMatchObject({ ok: true });
+    expect(ctl.created).toHaveLength(1);
+  });
+});
+
+describe('setAgentEnabledAction', () => {
+  const valid = { agent_key: 'weekly-studio', enabled: true };
+  it('forbids a demo guest', async () => {
+    ctl.viewer = { ...ctl.viewer, isDemo: true };
+    expect(await setAgentEnabledAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('forbids a viewer', async () => {
+    ctl.viewer = { ...ctl.viewer, role: 'viewer' };
+    expect(await setAgentEnabledAction(valid)).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('rejects invalid input before calling the capability', async () => {
+    expect(await setAgentEnabledAction({ agent_key: 'nope', enabled: 'yes' })).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('calls the capability for a member with valid input', async () => {
+    expect(await setAgentEnabledAction(valid)).toMatchObject({ ok: true });
     expect(ctl.created).toHaveLength(1);
   });
 });

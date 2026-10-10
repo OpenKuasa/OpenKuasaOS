@@ -52,6 +52,14 @@ import {
   updateLead,
   updateLeadInput,
 } from '@/lib/reach/capabilities';
+import {
+  setAgentCadence,
+  setAgentCadenceInput,
+  setAgentCap,
+  setAgentCapInput,
+  setAgentEnabled,
+  setAgentEnabledInput,
+} from '@/lib/agents/config';
 import { createSupabaseReachData, getReachData } from '@/lib/reach/supabase';
 import { FORM_MESSAGES } from '@/lib/reach/forms';
 import { leadsToCsv } from '@/lib/reach/csv';
@@ -256,6 +264,38 @@ export async function setAppointmentStatusAction(input: unknown) {
 }
 export async function deleteAppointmentAction(input: unknown) {
   return runAppointments(deleteAppointmentInput, input, deleteAppointment);
+}
+
+// ─── agents ──────────────────────────────────────────────────────────────────
+
+/** The Agents screen is Reach-only: crm/finance map to their own components. */
+const AGENTS_PATHS = ['/reach/agents'];
+
+/** Same shape as {@link runLeads}, refreshing the Agents screen. */
+async function runAgentConfig<I, O>(
+  schema: ZodType<I>,
+  input: unknown,
+  fn: (ctx: ReachWriteContext, parsed: I) => Promise<CapResult<O>>,
+): Promise<CapResult<O>> {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'That input was not valid.' };
+  }
+  const result = await fn(ctx, parsed.data);
+  if (result.ok) for (const path of AGENTS_PATHS) revalidatePath(path);
+  return result;
+}
+
+export async function setAgentEnabledAction(input: unknown) {
+  return runAgentConfig(setAgentEnabledInput, input, setAgentEnabled);
+}
+export async function setAgentCadenceAction(input: unknown) {
+  return runAgentConfig(setAgentCadenceInput, input, setAgentCadence);
+}
+export async function setAgentCapAction(input: unknown) {
+  return runAgentConfig(setAgentCapInput, input, setAgentCap);
 }
 
 export async function exportLeadsCsv(
