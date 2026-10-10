@@ -101,6 +101,17 @@ testWithSupabase('two requests at the same moment never get the same number', as
   expect(new Set(numbers).size).toBe(8);
 });
 
+testWithSupabase('a number longer than the padding is not cut short', async () => {
+  const { error } = await a.c
+    .from('finance_sequences')
+    .insert({ org_id: a.orgId, doc_type: 'credit_note', prefix: 'CN-', next_number: 9999 });
+  expect(error, error?.message).toBeNull();
+  const last = await a.c.rpc('finance_next_number', { target_org: a.orgId, doc: 'credit_note' });
+  const next = await a.c.rpc('finance_next_number', { target_org: a.orgId, doc: 'credit_note' });
+  expect(last.data).toBe('CN-9999');
+  expect(next.data).toBe('CN-10000');
+});
+
 testWithSupabase('a number cannot be taken for another workspace, or for an unknown document type', async () => {
   const other = await b.c.rpc('finance_next_number', { target_org: a.orgId, doc: 'invoice' });
   expect(other.error?.code).toBe('42501');

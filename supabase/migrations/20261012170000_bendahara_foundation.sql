@@ -121,7 +121,8 @@ begin
    where org_id = target_org and doc_type = doc
   returning prefix, next_number - 1, pad into p, n, w;
 
-  return p || lpad(n::text, w, '0');
+  -- lpad cuts a string longer than the target, so never pad to less than the number's own length.
+  return p || lpad(n::text, greatest(w, length(n::text)), '0');
 end $$;
 
 revoke all on function public.finance_next_number(uuid, text) from public, anon;
