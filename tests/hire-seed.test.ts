@@ -95,4 +95,27 @@ describe('hire seed', () => {
       expect(kl.getUTCMinutes() % 30).toBe(0);
     }
   });
+
+  it('moves an evening interview to the next day, so upcoming ones stay after now', async () => {
+    const eveningNow = new Date('2026-10-10T10:00:00Z'); // 18:00 in Kuala Lumpur
+    const interviews = await createSeedHireData(eveningNow).listInterviews();
+    const scheduled = interviews.filter((i) => i.status === 'scheduled');
+    expect(scheduled).toHaveLength(6);
+    for (const interview of scheduled) {
+      expect(new Date(interview.scheduled_at).getTime(), interview.scheduled_at).toBeGreaterThan(eveningNow.getTime());
+    }
+    expect(scheduled[0].scheduled_at).toBe('2026-10-11T09:00:00.000Z'); // 17:00 the next day
+    for (const interview of interviews) {
+      const kl = new Date(new Date(interview.scheduled_at).getTime() + 8 * 3_600_000);
+      const minutes = kl.getUTCHours() * 60 + kl.getUTCMinutes();
+      expect(minutes, interview.scheduled_at).toBeGreaterThanOrEqual(9 * 60);
+      expect(minutes, interview.scheduled_at).toBeLessThanOrEqual(17 * 60);
+      expect(kl.getUTCMinutes() % 30).toBe(0);
+    }
+    const done = interviews.filter((i) => i.status !== 'scheduled');
+    expect(done).toHaveLength(4);
+    for (const interview of done) {
+      expect(new Date(interview.scheduled_at).getTime(), interview.scheduled_at).toBeLessThan(eveningNow.getTime());
+    }
+  });
 });
