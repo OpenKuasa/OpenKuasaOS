@@ -46,3 +46,38 @@ describe('hire jobs writes migration', () => {
     expect(sql).not.toMatch(/create policy \w+ on public\.hire_(candidates|applications|interviews)/);
   });
 });
+
+const seed = read('20261014090100_hire_jobs_demo_seed.sql');
+const previous = read('20261013090100_hire_demo_seed.sql');
+
+describe('hire jobs demo seed migration', () => {
+  test('replaces the reseed function and keeps it private', () => {
+    expect(seed).toContain('create or replace function private.reseed_demo_hire()');
+    expect(seed).toContain('security definer');
+    expect(seed).toContain('revoke all on function private.reseed_demo_hire() from public, anon, authenticated');
+    expect(seed).toContain('select private.reseed_demo_hire();');
+  });
+  test('deletes applications before jobs, so the delete guard never fires', () => {
+    const apps = seed.indexOf('delete from public.hire_applications where org_id = demo');
+    const jobs = seed.indexOf('delete from public.hire_jobs where org_id = demo');
+    expect(apps).toBeGreaterThan(-1);
+    expect(jobs).toBeGreaterThan(apps);
+  });
+  test('fills the new job fields', () => {
+    for (const column of ['description', 'salary_min_cents', 'salary_max_cents', 'show_salary', 'closes_on', 'work_arrangement', 'headcount']) {
+      expect(seed, column).toContain(column);
+    }
+    expect(seed.match(/, true,/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+  });
+  test('keeps the application arithmetic unchanged', () => {
+    for (const line of ['(i * 37) % 248', '(i * 91) % 248', '(i * 53) % 248', 'generate_series(1, 248)', 'generate_series(1, 342)', '28 + k * 2']) {
+      expect(seed, line).toContain(line);
+      expect(previous, line).toContain(line);
+    }
+  });
+  test('snaps interview times to working hours in Kuala Lumpur', () => {
+    expect(seed).toContain("at time zone 'Asia/Kuala_Lumpur'");
+    expect(seed).toMatch(/interval '9 hours'/);
+    expect(seed).toMatch(/interval '17 hours'/);
+  });
+});
