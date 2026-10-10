@@ -55,11 +55,17 @@ export async function loadChatThreadAction(id: string): Promise<LoadedThread> {
   if (!parsed.success) return { ok: false, reason: 'missing' };
 
   const supabase = await createClient();
+  // A link to a thread from another workspace reads as missing, so a chat
+  // never continues somewhere the list does not show it.
+  const org = await getCurrentOrg(supabase);
+  if (!org) return { ok: false, reason: 'missing' };
+
   const [thread, messages] = await Promise.all([
     supabase
       .from('chat_threads')
       .select('id, title, updated_at')
       .eq('id', parsed.data)
+      .eq('org_id', org.orgId)
       .maybeSingle(),
     supabase
       .from('chat_messages')
