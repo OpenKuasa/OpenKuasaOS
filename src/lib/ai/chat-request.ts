@@ -14,6 +14,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { resolveChatAccess } from '@/lib/ai/gate';
+import { screenFromPath, type Screen } from '@/lib/chat/screen';
 import { isThreadId } from '@/lib/chat/threads';
 
 // Keep input bounded: long histories multiply token cost. The larger byte cap
@@ -23,10 +24,12 @@ const MAX_MESSAGES = 12;
 const MAX_BODY_BYTES = 12 * 1024 * 1024;
 
 // `id` is the chat's id as the client knows it. Only chats that are saved
-// send a UUID; anything else is ignored rather than refused.
+// send a UUID; anything else is ignored rather than refused. `pathname` is
+// the screen the question was asked from, read the same forgiving way.
 const bodySchema = z.object({
   messages: z.array(z.unknown()).min(1),
   id: z.unknown().optional(),
+  pathname: z.unknown().optional(),
 });
 
 export function chatJson(status: number, body: Record<string, unknown>): Response {
@@ -48,6 +51,8 @@ export type PreparedChat =
       threadId: string | null;
       /** The newest message as sent: the question this turn answers. */
       lastMessage: UIMessage;
+      /** The product screen the question was asked from, when it is a known one. */
+      screen: Screen | null;
     };
 
 /**
@@ -78,6 +83,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
   let messages: ModelMessage[];
   let threadId: string | null = null;
   let lastMessage: UIMessage;
+  let screen: Screen | null = null;
   try {
     const parsed = bodySchema.parse(JSON.parse(raw));
     const recent = parsed.messages.slice(-MAX_MESSAGES);
@@ -85,6 +91,7 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
     if (!validated.success) return fail(400, { error: 'Invalid request.' });
     messages = await convertToModelMessages(validated.data);
     threadId = isThreadId(parsed.id) ? parsed.id : null;
+    screen = screenFromPath(parsed.pathname);
     lastMessage = validated.data[validated.data.length - 1];
   } catch {
     return fail(400, { error: 'Invalid request.' });
@@ -106,5 +113,6 @@ export async function prepareChat(request: Request): Promise<PreparedChat> {
     userId: user.id,
     threadId,
     lastMessage,
+    screen,
   };
 }

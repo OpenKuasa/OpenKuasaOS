@@ -10,7 +10,8 @@ import { getModel } from '@/lib/ai/provider';
 import { createReachTools } from '@/lib/ai/tools';
 import type { ReachWriteContext } from '@/lib/reach/capabilities';
 import type { ReachData } from '@/lib/reach/types';
-import { JEBAT_SYSTEM, TUAH_SYSTEM } from '@/lib/ai/agents/prompts';
+import { JEBAT_SYSTEM, tuahSystem } from '@/lib/ai/agents/prompts';
+import type { Screen } from '@/lib/chat/screen';
 
 /** Tools that change data: each one pauses for the owner's approval before running. */
 export const WRITE_TOOL_NAMES = [
@@ -60,10 +61,12 @@ export function runTuah(
   messages: ModelMessage[],
   abortSignal?: AbortSignal,
   apiKey?: string,
+  /** The screen the question was asked from, if it came from the floating assistant. */
+  screen?: Screen | null,
 ) {
   return streamText({
     model: getModel('worker', apiKey),
-    system: TUAH_SYSTEM,
+    system: tuahSystem(screen),
     messages,
     maxOutputTokens: 800,
     abortSignal,

@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     chat.messages,
     AbortSignal.timeout(ANSWER_TIMEOUT_MS),
     chat.apiKey,
+    chat.screen,
   );
   void result.consumeStream();
 
