@@ -1,15 +1,5 @@
-import {
-  BarChart3,
-  FileText,
-  Filter,
-  PieChart,
-  Plus,
-  Search,
-  TrendingUp,
-} from 'lucide-react';
-import { ScreenContainer } from '@/components/screen/screen-container';
-import { PageHeader } from '@/components/screen/page-header';
-import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
+import { BarChart3, Filter, PieChart, TrendingUp } from 'lucide-react';
+import { BentoCard, BentoStat } from '@/components/bento/bento';
 import {
   AreaTrend,
   BarGroup,
@@ -19,105 +9,28 @@ import {
   type Series,
   type Slice,
 } from '@/components/charts';
-import { LiveDot } from '@/components/ui/live-dot';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { LeadFormsView, type LeadFormActions } from '@/components/reach/lead-forms-view';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  createFormAction,
+  deleteFormAction,
+  setFormStatusAction,
+  updateFormAction,
+} from '@/app/(app)/reach/actions';
+import { createClient } from '@/lib/supabase/server';
+import { getReachData } from '@/lib/reach/supabase';
+import { createSeedReachData } from '@/lib/reach/seed';
+import { getViewer, hasSupabaseEnv } from '@/lib/auth/viewer';
+import { can } from '@/lib/auth/permissions';
+import { formKpis } from '@/lib/reach/forms';
+import type { Form, ReachData } from '@/lib/reach/types';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
-
-type FormStatus = 'Active' | 'Draft';
-
-type LeadForm = {
-  id: string;
-  name: string;
-  category: string;
-  slug: string;
-  status: FormStatus;
-  views: number;
-  contacts: number;
-  created: string;
-};
-
-/** Rows reconcile with the KPIs: contacts sum to 428, views to 2,378. */
-const FORMS: LeadForm[] = [
-  {
-    id: '1',
-    name: 'Raya Promo Signup',
-    category: 'Promotions',
-    slug: '/raya-promo',
-    status: 'Active',
-    views: 612,
-    contacts: 128,
-    created: '12 Mar 2026',
-  },
-  {
-    id: '2',
-    name: 'Free Consultation',
-    category: 'Sales',
-    slug: '/free-consult',
-    status: 'Active',
-    views: 540,
-    contacts: 96,
-    created: '28 Feb 2026',
-  },
-  {
-    id: '3',
-    name: 'Newsletter',
-    category: 'Marketing',
-    slug: '/newsletter',
-    status: 'Active',
-    views: 488,
-    contacts: 84,
-    created: '05 Jan 2026',
-  },
-  {
-    id: '4',
-    name: 'Product Demo Request',
-    category: 'Sales',
-    slug: '/demo-request',
-    status: 'Active',
-    views: 354,
-    contacts: 62,
-    created: '19 Jan 2026',
-  },
-  {
-    id: '5',
-    name: 'eBook Download',
-    category: 'Content',
-    slug: '/ebook-sme-growth',
-    status: 'Draft',
-    views: 246,
-    contacts: 38,
-    created: '02 Mar 2026',
-  },
-  {
-    id: '6',
-    name: 'Event RSVP',
-    category: 'Events',
-    slug: '/usahawan-meetup',
-    status: 'Draft',
-    views: 138,
-    contacts: 20,
-    created: '08 Mar 2026',
-  },
-];
-
-const CATEGORIES = ['Promotions', 'Sales', 'Marketing', 'Content', 'Events'];
+/*
+ * ---- demo-only values: no live source yet (shown only to demo viewers) ----
+ *
+ * These need per-submission data (when each submission came in, from where, and
+ * how far a visitor got), which does not exist until the public form page and
+ * form_submissions do. A real workspace is shown none of them.
+ */
 
 /* KPI sparkline trends ------------------------------------------------ */
 const SPARK_FORMS = [2, 3, 3, 4, 4, 5, 5, 6];
@@ -174,214 +87,157 @@ const SOURCE_MIX: Slice[] = [
   { key: 'tiktok', label: 'TikTok', value: 44, color: 'var(--chart-3)' },
 ];
 
-const COLUMNS = [
-  'Form Details',
-  'URL / Slug',
-  'Status',
-  'Views',
-  'Contacts',
-  'Created At',
-  'Action',
-];
+/* ---- live ----------------------------------------------------------- */
+
+const TOP_FORMS_LIMIT = 6;
+
+/** The forms with the most contacts, for the live bar chart. */
+function topForms(forms: Form[]) {
+  return [...forms]
+    .filter((f) => f.submissions_count > 0)
+    .sort((a, b) => b.submissions_count - a.submissions_count)
+    .slice(0, TOP_FORMS_LIMIT)
+    .map((f) => ({ label: f.name, contacts: f.submissions_count }));
+}
+
+/**
+ * The workspace's reach data. With no Supabase project configured there is no
+ * client to build (building one throws), so the sample forms are read directly.
+ */
+async function loadReachData(): Promise<ReachData> {
+  if (!hasSupabaseEnv()) return createSeedReachData();
+  return getReachData(await createClient());
+}
 
 /* ------------------------------------------------------------------ */
 
-export default function LeadFormsScreen() {
-  return (
-    <ScreenContainer>
-      <PageHeader
-        className="mb-3"
-        title="Lead Forms"
-        subtitle="Manage all your lead-generation forms."
-        actions={
-          <Button size="sm">
-            <Plus className="size-4" />
-            Create New Form
-          </Button>
-        }
-      />
+/**
+ * Lead Forms, shown by Jebat at /reach/lead-forms and by Kasturi at
+ * /crm/lead-forms. Both read the same workspace's forms through the reach
+ * provider, and both write through the reach capabilities.
+ */
+export default async function LeadFormsScreen() {
+  const [data, viewer] = await Promise.all([loadReachData(), getViewer()]);
+  const forms: Form[] = await data.listForms();
+  const kpis = formKpis(forms);
+  const isDemo = viewer.isDemo;
+  const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
+  const actions: LeadFormActions | undefined = canEdit
+    ? {
+        create: createFormAction,
+        update: updateFormAction,
+        setStatus: setFormStatusAction,
+        remove: deleteFormAction,
+      }
+    : undefined;
 
-      <BentoGrid>
-        {/* KPI row */}
-        <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Total forms"
-            value="6"
-            delta="+1"
-            onPrimary
-            chart={
-              <Sparkline
-                data={SPARK_FORMS}
-                color="var(--primary-foreground)"
-                height={36}
-              />
-            }
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Total leads"
-            value="428"
-            delta="+8%"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_LEADS} color="var(--chart-2)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Conversion"
-            value="18%"
-            delta="+1.4pt"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_CONV} color="var(--chart-1)" height={36} />}
-          />
-        </BentoCard>
-        <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="New today"
-            value="12"
-            delta="+3"
-            deltaTone="up"
-            chart={<Sparkline data={SPARK_TODAY} color="var(--chart-3)" height={36} />}
-          />
-        </BentoCard>
+  const totalForms = kpis.total_forms.toLocaleString('en-US');
+  const totalLeads = kpis.total_leads.toLocaleString('en-US');
+  const liveTopForms = topForms(forms);
 
-        {/* Submissions trend + conversion funnel */}
-        <BentoCard
-          title="Submissions over time"
-          subtitle="Last 14 days"
-          icon={TrendingUp}
-          className="col-span-2 md:col-span-8"
-        >
-          <AreaTrend
-            data={SUBMISSIONS_TREND}
-            series={SUBMISSIONS_SERIES}
-            height={240}
-          />
-        </BentoCard>
-        <BentoCard
-          title="Conversion funnel"
-          subtitle="Views → starts → submits"
-          icon={Filter}
-          className="col-span-2 md:col-span-4"
-        >
-          <FunnelFlow data={FUNNEL} height={240} />
-        </BentoCard>
+  // The three figures are counted from the forms themselves in every mode. Only
+  // the demo adds the sample deltas, sparklines and the widgets with no source.
+  const top = isDemo ? (
+    <>
+      <BentoCard tone="primary" className="col-span-1 md:col-span-3">
+        <BentoStat
+          label="Total forms"
+          value={totalForms}
+          delta="+1"
+          onPrimary
+          chart={
+            <Sparkline data={SPARK_FORMS} color="var(--primary-foreground)" height={36} />
+          }
+        />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-3">
+        <BentoStat
+          label="Total leads"
+          value={totalLeads}
+          delta="+8%"
+          deltaTone="up"
+          chart={<Sparkline data={SPARK_LEADS} color="var(--chart-2)" height={36} />}
+        />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-3">
+        <BentoStat
+          label="Conversion"
+          value={kpis.conversion}
+          delta="+1.4pt"
+          deltaTone="up"
+          chart={<Sparkline data={SPARK_CONV} color="var(--chart-1)" height={36} />}
+        />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-3">
+        <BentoStat
+          label="New today"
+          value="12"
+          delta="+3"
+          deltaTone="up"
+          chart={<Sparkline data={SPARK_TODAY} color="var(--chart-3)" height={36} />}
+        />
+      </BentoCard>
 
-        {/* Forms table */}
-        <BentoCard
-          title="Your forms"
-          subtitle="6 forms"
-          icon={FileText}
-          flush
-          className="col-span-2 md:col-span-12"
-        >
-          <div className="flex flex-col gap-3 px-4 sm:flex-row sm:items-center">
-            <div className="relative w-full sm:max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search form title…" className="pl-9" />
-            </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {CATEGORIES.map((cat) => (
-                  <SelectItem key={cat} value={cat.toLowerCase()}>
-                    {cat}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="mt-3 overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  {COLUMNS.map((c) => (
-                    <TableHead key={c} className="whitespace-nowrap">
-                      {c}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {FORMS.map((f) => (
-                  <TableRow key={f.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                          <FileText className="size-4" />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{f.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {f.category}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                      {f.slug}
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-2 text-sm">
-                        <LiveDot active={f.status === 'Active'} />
-                        {f.status}
-                      </span>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {f.views.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {f.contacts.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {f.created}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="sm">
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {FORMS.length} of {FORMS.length} forms</span>
-          </div>
-        </BentoCard>
-
-        {/* Top forms + source mix */}
-        <BentoCard
-          title="Top forms by contacts"
-          subtitle="This quarter"
-          icon={BarChart3}
-          className="col-span-2 md:col-span-8"
-        >
-          <BarGroup
-            data={TOP_FORMS}
-            series={TOP_FORMS_SERIES}
-            horizontal
-            height={220}
-          />
-        </BentoCard>
-        <BentoCard
-          title="Submissions by source"
-          icon={PieChart}
-          className="col-span-2 md:col-span-4"
-        >
-          <DonutStat
-            data={SOURCE_MIX}
-            height={220}
-            centerValue="428"
-            centerLabel="leads"
-          />
-        </BentoCard>
-      </BentoGrid>
-    </ScreenContainer>
+      {/* Submissions trend + conversion funnel */}
+      <BentoCard
+        title="Submissions over time"
+        subtitle="Last 14 days"
+        icon={TrendingUp}
+        className="col-span-2 md:col-span-8"
+      >
+        <AreaTrend data={SUBMISSIONS_TREND} series={SUBMISSIONS_SERIES} height={240} />
+      </BentoCard>
+      <BentoCard
+        title="Conversion funnel"
+        subtitle="Views → starts → submits"
+        icon={Filter}
+        className="col-span-2 md:col-span-4"
+      >
+        <FunnelFlow data={FUNNEL} height={240} />
+      </BentoCard>
+    </>
+  ) : (
+    <>
+      <BentoCard tone="primary" className="col-span-2 md:col-span-4">
+        <BentoStat label="Total forms" value={totalForms} onPrimary />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-4">
+        <BentoStat label="Total leads" value={totalLeads} />
+      </BentoCard>
+      <BentoCard className="col-span-1 md:col-span-4">
+        <BentoStat label="Conversion" value={kpis.conversion} />
+      </BentoCard>
+    </>
   );
+
+  const bottom = isDemo ? (
+    <>
+      <BentoCard
+        title="Top forms by contacts"
+        subtitle="This quarter"
+        icon={BarChart3}
+        className="col-span-2 md:col-span-8"
+      >
+        <BarGroup data={TOP_FORMS} series={TOP_FORMS_SERIES} horizontal height={220} />
+      </BentoCard>
+      <BentoCard
+        title="Submissions by source"
+        icon={PieChart}
+        className="col-span-2 md:col-span-4"
+      >
+        <DonutStat data={SOURCE_MIX} height={220} centerValue="428" centerLabel="leads" />
+      </BentoCard>
+    </>
+  ) : liveTopForms.length > 0 ? (
+    <BentoCard
+      title="Top forms by contacts"
+      subtitle="All time"
+      icon={BarChart3}
+      className="col-span-2 md:col-span-12"
+    >
+      <BarGroup data={liveTopForms} series={TOP_FORMS_SERIES} horizontal height={220} />
+    </BentoCard>
+  ) : null;
+
+  return <LeadFormsView forms={forms} actions={actions} top={top} bottom={bottom} />;
 }
