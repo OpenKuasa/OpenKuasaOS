@@ -11,6 +11,7 @@ const CLAIMS = '20261013090200_people_claims_overtime.sql';
 const ATTENDANCE = '20261013090300_people_attendance.sql';
 const PAYROLL = '20261013090400_people_payroll.sql';
 const PERFORMANCE = '20261013090500_people_performance.sql';
+const COMMS = '20261013090600_people_comms_documents.sql';
 
 /** Every Lekiu table, the file that creates it, and who may read it. */
 const TABLES: { file: string; table: string; kind: Kind }[] = [
@@ -34,6 +35,10 @@ const TABLES: { file: string; table: string; kind: Kind }[] = [
   { file: PERFORMANCE, table: 'reviews', kind: 'personal' },
   { file: PERFORMANCE, table: 'trainings', kind: 'shared' },
   { file: PERFORMANCE, table: 'training_enrolments', kind: 'personal' },
+  { file: COMMS, table: 'announcements', kind: 'shared' },
+  { file: COMMS, table: 'documents', kind: 'personal' },
+  { file: COMMS, table: 'letters', kind: 'personal' },
+  { file: COMMS, table: 'people_settings', kind: 'hr' },
 ];
 
 const sql = (file: string) => readFileSync(join(DIR, file), 'utf8');
@@ -126,5 +131,11 @@ describe('Lekiu schema', () => {
     expect(body).toContain(
       'net_cents bigint generated always as (gross_cents - epf_cents - socso_cents - eis_cents - pcb_cents) stored',
     );
+  });
+
+  test('all 24 tables are listed, each once', () => {
+    const names = TABLES.map((t) => t.table);
+    expect(names).toHaveLength(24);
+    expect(new Set(names).size).toBe(24);
   });
 });
