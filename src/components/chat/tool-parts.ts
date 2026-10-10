@@ -94,26 +94,66 @@ export function toPendingApproval(part: AnyPart): PendingApproval | null {
   };
 }
 
-export function approvalTitle(toolName: string, input: unknown): string {
+/** A named row with this id, anywhere in a tool result (a listing, or a saved row). */
+function nameOf(value: unknown, id: string, depth = 0): string | null {
+  if (!value || typeof value !== 'object' || depth > 3) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = nameOf(item, id, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  if (row.id === id && typeof row.name === 'string' && row.name.trim()) return row.name.trim();
+  for (const inner of Object.values(row)) {
+    const found = nameOf(inner, id, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * The name of the thing a change is about. A change tool is given an id, and
+ * the assistant got that id from an earlier tool result in the conversation
+ * (a listing, or the row it created), so the name is there too.
+ */
+export function approvalSubject(input: unknown, messages: { parts: AnyPart[] }[]): string | null {
+  const id = (input as { id?: unknown } | null)?.id;
+  if (typeof id !== 'string' || !id) return null;
+  for (let m = messages.length - 1; m >= 0; m -= 1) {
+    for (const part of messages[m].parts) {
+      if (!toolName(part) || !('output' in part)) continue;
+      const found = nameOf(part.output, id);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** The question on an approval card. `subject` names the item when it is known. */
+export function approvalTitle(toolName: string, input: unknown, subject?: string | null): string {
   const i = (input ?? {}) as Record<string, unknown>;
+  const the = (kind: string) => (subject ? `${kind} “${subject}”` : `this ${kind}`);
   switch (toolName) {
     case 'createCampaign': return `Create campaign “${i.name ?? ''}”?`;
-    case 'updateCampaign': return 'Save changes to this campaign?';
-    case 'setCampaignStatus': return i.status === 'paused' ? 'Pause this campaign?' : 'Resume this campaign?';
-    case 'deleteCampaign': return 'Delete this campaign?';
+    case 'updateCampaign': return `Save changes to ${the('campaign')}?`;
+    case 'setCampaignStatus':
+      return i.status === 'paused' ? `Pause ${the('campaign')}?` : `Resume ${the('campaign')}?`;
+    case 'deleteCampaign': return `Delete ${the('campaign')}?`;
     case 'createCreative': return `Add creative “${i.name ?? ''}”?`;
-    case 'updateCreative': return 'Save changes to this creative?';
-    case 'deleteCreative': return 'Delete this creative?';
+    case 'updateCreative': return `Save changes to ${the('creative')}?`;
+    case 'deleteCreative': return `Delete ${the('creative')}?`;
     case 'updateAdSettings': return 'Update ad settings?';
     case 'createForm': return `Create lead form “${i.name ?? ''}”?`;
-    case 'updateForm': return 'Save changes to this lead form?';
+    case 'updateForm': return `Save changes to ${the('lead form')}?`;
     case 'setFormStatus':
       return i.status === 'active'
-        ? 'Activate this lead form?'
+        ? `Activate ${the('lead form')}?`
         : i.status === 'paused'
-          ? 'Pause this lead form?'
-          : 'Move this lead form back to draft?';
-    case 'deleteForm': return 'Delete this lead form?';
+          ? `Pause ${the('lead form')}?`
+          : `Move ${the('lead form')} back to draft?`;
+    case 'deleteForm': return `Delete ${the('lead form')}?`;
     default: return 'Approve this change?';
   }
 }
