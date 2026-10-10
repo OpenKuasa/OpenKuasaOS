@@ -103,7 +103,7 @@ testWithSupabase('an owner adds, edits, links and deletes through the capabiliti
   });
   expect(await deleteDepartment(ctx, { id: sales.data.id })).toEqual({
     ok: false,
-    error: 'That department still has employees. Move them to another department first.',
+    error: 'That department still has employees, including inactive ones. Move them to another department first.',
   });
 
   // Linking: only a member of the workspace, and one employee per member.

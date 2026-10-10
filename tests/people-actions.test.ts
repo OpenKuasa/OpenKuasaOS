@@ -38,7 +38,7 @@ vi.mock('@/lib/people/capabilities', async (orig) => {
     linkEmployeeToMember: record('linkEmployeeToMember', { id: 'e1', name: 'Farah', user_id: null }),
     createDepartment: record('createDepartment', { id: 'd1', name: 'Sales', created_at: '' }),
     updateDepartment: record('updateDepartment', { id: 'd1', name: 'Sales', created_at: '' }),
-    deleteDepartment: async () => ({ ok: false as const, error: 'That department still has employees.' }),
+    deleteDepartment: async () => ({ ok: false as const, error: 'That department still has employees, including inactive ones. Move them to another department first.' }),
   };
 });
 
@@ -106,7 +106,7 @@ describe('people actions', () => {
   it('refreshes nothing when the change was refused', async () => {
     expect(await actions.deleteDepartmentAction({ id: DEPT })).toEqual({
       ok: false,
-      error: 'That department still has employees.',
+      error: 'That department still has employees, including inactive ones. Move them to another department first.',
     });
     expect(ctl.revalidated).toEqual([]);
   });

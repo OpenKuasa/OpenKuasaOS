@@ -98,7 +98,7 @@ describe('Lekiu change tools', () => {
   });
 
   it('passes a refusal on as it is', async () => {
-    ctl.fail = 'That department still has employees. Move them to another department first.';
+    ctl.fail = 'That department still has employees, including inactive ones. Move them to another department first.';
     expect(await call('deleteDepartment', { id: EMP })).toEqual({ ok: false, error: ctl.fail });
   });
 

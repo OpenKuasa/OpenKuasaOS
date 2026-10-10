@@ -123,7 +123,7 @@ export async function deleteDepartment(
     .select('id,name')
     .maybeSingle();
   if (violates(error, FOREIGN_KEY)) {
-    return refuse('That department still has employees. Move them to another department first.');
+    return refuse('That department still has employees, including inactive ones. Move them to another department first.');
   }
   if (error) return writeFailed('deleteDepartment', error);
   if (!data) return refuse(DEPARTMENT_MISSING);

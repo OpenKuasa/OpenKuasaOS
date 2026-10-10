@@ -111,7 +111,7 @@ describe('deleteDepartment', () => {
     });
     expect(await deleteDepartment(ctxOf(client), { id: DEPT })).toEqual({
       ok: false,
-      error: 'That department still has employees. Move them to another department first.',
+      error: 'That department still has employees, including inactive ones. Move them to another department first.',
     });
   });
 
