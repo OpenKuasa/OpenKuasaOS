@@ -68,6 +68,8 @@ export type BillRow = {
 };
 
 export type PaymentRow = {
+  /** Unique per row; the payment number is not (a scheduled payment has none, and a payment split across bills repeats it). */
+  key?: string;
   payment_no: string;
   paid_on: string;
   method: 'bank_transfer' | 'fpx' | 'cash' | 'cheque';
@@ -216,7 +218,7 @@ export function paymentsView(payments: PaymentRow[], today: string): PaymentsVie
     byMethod,
     paidMtd: rmShort(paidMtdTotal),
     payments: payments.slice(0, TABLE_ROWS).map((p) => ({
-      id: p.payment_no,
+      id: p.key ?? p.payment_no,
       date: day(p.paid_on),
       supplier: p.supplier_bills.contacts.name,
       bill: p.supplier_bills.bill_no,
@@ -260,6 +262,7 @@ async function fetchBills({ supabase, orgId }: Live) {
 
 /** A row of the finance_payments_out view, as PostgREST returns it. */
 export type PaymentOutViewRow = {
+  allocation_id: string;
   number: string | null;
   txn_date: string;
   method: string;
@@ -277,6 +280,7 @@ export type PaymentOutViewRow = {
 export function toPaymentRow(row: PaymentOutViewRow): PaymentRow {
   const method = (row.method in METHODS ? row.method : 'bank_transfer') as PaymentRow['method'];
   return {
+    key: row.allocation_id,
     payment_no: row.number ?? '—',
     paid_on: row.txn_date,
     method,
@@ -289,12 +293,13 @@ export function toPaymentRow(row: PaymentOutViewRow): PaymentRow {
 async function fetchPayments({ supabase, orgId }: Live) {
   const { data, error } = await supabase
     .from('finance_payments_out')
-    .select('number, txn_date, method, amount, status, bill_no, supplier_name')
+    .select('allocation_id, number, txn_date, method, amount, status, bill_no, supplier_name')
     .eq('org_id', orgId)
     // Voided and rejected payments are not shown on this screen yet.
     .in('status', ['posted', 'scheduled'])
     .order('txn_date', { ascending: false })
-    .order('number', { ascending: false });
+    .order('number', { ascending: false })
+    .order('allocation_id', { ascending: true });
   if (error) throw error;
   return ((data ?? []) as PaymentOutViewRow[]).map(toPaymentRow);
 }

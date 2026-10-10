@@ -72,6 +72,7 @@ test('payment cards count only paid money; trend covers the last 8 months', () =
 });
 
 const viewRow = {
+  allocation_id: 'a1',
   number: 'PV-0003',
   txn_date: '2026-10-05',
   method: 'fpx',
@@ -83,6 +84,7 @@ const viewRow = {
 
 test('a row of finance_payments_out becomes the payment the screen shows', () => {
   expect(toPaymentRow(viewRow)).toEqual({
+    key: 'a1',
     payment_no: 'PV-0003',
     paid_on: '2026-10-05',
     method: 'fpx',
@@ -102,4 +104,14 @@ test('a scheduled payment has no number yet and stays scheduled', () => {
 test('a method the screen does not chart yet is counted with bank transfers', () => {
   expect(toPaymentRow({ ...viewRow, method: 'duitnow' }).method).toBe('bank_transfer');
   expect(toPaymentRow({ ...viewRow, method: 'cash' }).method).toBe('cash');
+});
+
+test('every payment row gets its own id, even with a missing or repeated number', () => {
+  const rows = [
+    toPaymentRow({ ...viewRow, allocation_id: 'a1', bill_no: 'BILL-0007' }),
+    toPaymentRow({ ...viewRow, allocation_id: 'a2', bill_no: 'BILL-0008' }),
+    toPaymentRow({ ...viewRow, allocation_id: 'a3', number: null, status: 'scheduled' }),
+  ];
+  const ids = paymentsView(rows, '2026-10-09').payments.map((p) => p.id);
+  expect(new Set(ids).size).toBe(3);
 });
