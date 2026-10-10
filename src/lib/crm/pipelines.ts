@@ -67,7 +67,7 @@ const PIPELINE_GONE = 'That pipeline no longer exists.';
 export const LAST_PIPELINE_MESSAGE = 'A workspace needs at least one pipeline.';
 
 const STAGE_NAME_TAKEN = 'Another stage in this pipeline already uses that name.';
-const STAGE_GONE = 'That stage no longer exists.';
+export const STAGE_GONE = 'That stage no longer exists.';
 const STAGES_CHANGED = 'The stages changed while this was saving. Check them and try again.';
 const STAGE_ADDED_OUT_OF_PLACE =
   'The stage was added, but the order may not be right. Check it and move the stage if needed.';

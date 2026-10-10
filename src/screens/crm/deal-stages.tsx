@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, useTransition } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import {
   MAX_STAGE_NAME_LENGTH,
   MIN_PIPELINE_STAGES,
   MIN_STAGES_MESSAGE,
+  STAGE_GONE,
   isWonStage,
   parseStageName,
   parseStageProbability,
@@ -322,6 +323,27 @@ export function PipelineStagesEditor({
 
   const move = useCrmForm(actions.moveStage);
 
+  // Two refusals make their own form disappear when the page catches up: the
+  // stage has gone (its row goes with it), and the pipeline is now full (the
+  // add form is replaced). They are shown here instead, where they survive.
+  const [lost, setLost] = useState<string | null>(null);
+  const kept = useMemo(() => {
+    const keep =
+      (action: CrmFormAction): CrmFormAction =>
+      async (prev, formData) => {
+        const result = await action(prev, formData);
+        const survives =
+          result && !result.ok && (result.error === STAGE_GONE || result.error === MAX_STAGES_MESSAGE);
+        setLost(survives ? result.error : null);
+        return result;
+      };
+    return {
+      updateStage: keep(actions.updateStage),
+      removeStage: keep(actions.removeStage),
+      addStage: keep(actions.addStage),
+    };
+  }, [actions]);
+
   const stages = pipeline.stages;
   const order = stages.map((stage) => stage.id).join(' ');
 
@@ -403,7 +425,7 @@ export function PipelineStagesEditor({
                   <EditStageForm
                     pipeline={pipeline}
                     stage={stage}
-                    action={actions.updateStage}
+                    action={kept.updateStage}
                     onClose={() => close(stage.id, 'edit')}
                   />
                 ) : mode === 'remove' ? (
@@ -411,7 +433,7 @@ export function PipelineStagesEditor({
                     pipeline={pipeline}
                     stage={stage}
                     dealCount={dealCount}
-                    action={actions.removeStage}
+                    action={kept.removeStage}
                     onClose={() => close(stage.id, 'remove')}
                     onRemoved={() => {
                       // Its row is about to go.
@@ -497,9 +519,14 @@ export function PipelineStagesEditor({
           {move.error}
         </p>
       ) : null}
+      {lost && !move.error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {lost}
+        </p>
+      ) : null}
 
       <div className="border-t pt-3">
-        <AddStageForm pipeline={pipeline} action={actions.addStage} />
+        <AddStageForm pipeline={pipeline} action={kept.addStage} />
       </div>
     </div>
   );
