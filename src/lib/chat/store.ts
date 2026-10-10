@@ -1,14 +1,43 @@
 /**
- * Writes chat turns to the signed-in user's saved threads. Runs as the user,
- * so row level security decides what may be written. Saving is best effort:
- * a failure is logged and the conversation carries on unsaved.
+ * Reads and writes the signed-in user's saved threads. Runs as the user, so
+ * row level security decides what may be read or written. Saving is best
+ * effort: a failure is logged and the conversation carries on unsaved.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getCurrentOrg } from '@/lib/auth/current-org';
-import { textParts, titleFromText, type StoredTextPart } from '@/lib/chat/threads';
+import {
+  textParts,
+  titleFromText,
+  type ChatThread,
+  type StoredTextPart,
+} from '@/lib/chat/threads';
 
 type Role = 'user' | 'assistant';
+
+const THREAD_LIMIT = 200;
+
+/** The user's threads in one workspace, newest first. `null` on failure. */
+export async function listThreads(
+  supabase: SupabaseClient,
+  orgId: string,
+): Promise<ChatThread[] | null> {
+  const { data, error } = await supabase
+    .from('chat_threads')
+    .select('id, title, updated_at')
+    .eq('org_id', orgId)
+    .order('updated_at', { ascending: false })
+    .limit(THREAD_LIMIT);
+  if (error) {
+    console.error('[chat] could not list threads:', error.message);
+    return null;
+  }
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    title: row.title as string,
+    updatedAt: row.updated_at as string,
+  }));
+}
 
 async function insertMessage(
   supabase: SupabaseClient,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   Lock,
   MessagesSquare,
@@ -32,6 +32,8 @@ export type ChatHistoryState = 'loading' | 'ready' | 'error';
 type Props = {
   threads: ChatThread[];
   state: ChatHistoryState;
+  /** When the server read the list, if it came with the page. */
+  listedAt?: string;
   /** The thread on screen, or null while a chat has not been saved yet. */
   activeId: string | null;
   /** Demo guests never have saved chats. */
@@ -43,10 +45,13 @@ type Props = {
   onRetry: () => void;
 };
 
+const subscribeNever = () => () => {};
+
 /** The saved-chats column: new chat, search, and threads grouped by day. */
 export function ChatHistory({
   threads,
   state,
+  listedAt,
   activeId,
   isDemo,
   onNew,
@@ -57,7 +62,16 @@ export function ChatHistory({
 }: Props) {
   const [query, setQuery] = useState('');
   const matches = useMemo(() => filterThreads(threads, query), [threads, query]);
-  const groups = useMemo(() => groupThreads(matches), [matches]);
+  // The server does not know the viewer's time zone. The first paint groups
+  // by the server's clock so it matches what was sent, then days become local.
+  const hydrated = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const groups = useMemo(
+    () =>
+      hydrated || !listedAt
+        ? groupThreads(matches)
+        : groupThreads(matches, new Date(listedAt), 'utc'),
+    [matches, hydrated, listedAt],
+  );
   const hasThreads = threads.length > 0;
 
   return (

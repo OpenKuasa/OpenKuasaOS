@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentOrg } from '@/lib/auth/current-org';
+import { listThreads } from '@/lib/chat/store';
 import {
   textParts,
   type ChatThread,
@@ -15,7 +16,6 @@ import {
  * only narrow the list to the workspace they are in.
  */
 
-const THREAD_LIMIT = 200;
 const idSchema = z.string().uuid();
 const titleSchema = z
   .string()
@@ -27,22 +27,7 @@ export async function listChatThreadsAction(): Promise<ChatThread[] | null> {
   const supabase = await createClient();
   const org = await getCurrentOrg(supabase);
   if (!org) return [];
-
-  const { data, error } = await supabase
-    .from('chat_threads')
-    .select('id, title, updated_at')
-    .eq('org_id', org.orgId)
-    .order('updated_at', { ascending: false })
-    .limit(THREAD_LIMIT);
-  if (error) {
-    console.error('[chat] could not list threads:', error.message);
-    return null;
-  }
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    title: row.title as string,
-    updatedAt: row.updated_at as string,
-  }));
+  return listThreads(supabase, org.orgId);
 }
 
 export type LoadedThread =

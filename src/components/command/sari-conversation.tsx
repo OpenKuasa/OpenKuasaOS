@@ -141,6 +141,12 @@ const ANSWER_WINDOW_MS = 90_000;
 const ANSWER_POLL_MS = 2_500;
 const ANSWER_POLL_TRIES = 30;
 
+/**
+ * Lists this tab has already shown. Back and forward bring a page back with
+ * the list it had then, which is how an out-of-date one is told apart.
+ */
+const shownLists = new WeakSet<ChatThread[]>();
+
 function freshSession(): Session {
   const id = crypto.randomUUID();
   return { id, status: 'ready', chat: createChat(id), saved: false, answer: 'settled' };
@@ -172,11 +178,17 @@ export function SariConversation({
   showSidebar = false,
   compact = false,
   urlThreadId = null,
+  initialThreads = null,
+  listedAt,
 }: {
   showSidebar?: boolean;
   compact?: boolean;
   /** The thread named in the address bar, on the page that keeps history. */
   urlThreadId?: string | null;
+  /** The saved chats sent with the page; without them the list is read here. */
+  initialThreads?: ChatThread[] | null;
+  /** When the page read that list. */
+  listedAt?: string;
 }) {
   const viewer = useViewer();
   const userId = viewer.userId;
@@ -187,9 +199,11 @@ export function SariConversation({
   const [session, setSession] = useState<Session>(() =>
     wanted ? savedSession(userId, wanted) : freshSession(),
   );
-  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [threads, setThreads] = useState<ChatThread[]>(
+    () => (keepsHistory && initialThreads) || [],
+  );
   const [listState, setListState] = useState<ChatHistoryState>(
-    keepsHistory ? 'loading' : 'ready',
+    keepsHistory && !initialThreads ? 'loading' : 'ready',
   );
   const [notice, setNotice] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -271,18 +285,27 @@ export function SariConversation({
 
   useEffect(() => {
     if (!keepsHistory) return;
+    // A list that came with the page is current the first time it is shown.
+    if (initialThreads && !shownLists.has(initialThreads)) {
+      shownLists.add(initialThreads);
+      return;
+    }
     let current = true;
     const load = async () => {
       const next = await listChatThreadsAction().catch(() => null);
       if (!current) return;
-      if (next) applyThreads(next);
-      setListState(next ? 'ready' : 'error');
+      if (next) {
+        applyThreads(next);
+        setListState('ready');
+      } else {
+        setListState((state) => (state === 'loading' ? 'error' : state));
+      }
     };
     void load();
     return () => {
       current = false;
     };
-  }, [keepsHistory, applyThreads]);
+  }, [keepsHistory, applyThreads, initialThreads]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -356,6 +379,7 @@ export function SariConversation({
     <ChatHistory
       threads={threads}
       state={listState}
+      listedAt={listedAt}
       activeId={session.saved ? session.id : null}
       isDemo={viewer.isDemo}
       onNew={newChat}
