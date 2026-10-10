@@ -376,12 +376,12 @@ export const CASES: Case[] = [
       ];
       if (asked.pending.length !== 1) return checks;
       const done = await chat.decide(true);
-      const [applied] = done.applied;
+      // What was saved, not what was proposed: the switch itself is the thing that matters.
+      const { data } = await ws.client.from('hire_settings').select('careers_enabled').eq('org_id', ws.orgId).maybeSingle();
       return [
         ...checks,
-        check('it is updateCareersPage', applied?.proposal.action === 'updateCareersPage', applied?.proposal.action),
-        check('with careers_enabled true', (applied?.proposal.input as { careers_enabled?: boolean } | undefined)?.careers_enabled === true, JSON.stringify(applied?.proposal.input)),
-        check('says open jobs are now public', /public|visible|awam|umum/i.test(done.text), done.text),
+        check('the careers page is on', data?.careers_enabled === true, JSON.stringify(data)),
+        check('says open jobs can now be seen by others', /visible|anyone|sesiapa|awam|umum/i.test(done.text), done.text),
       ];
     },
   },
