@@ -28,6 +28,8 @@ export type PaymentsViewData = {
   stats: Stat[];
   /** The last eight months, oldest first, in RM thousands. */
   trend: { label: string; electronic: number; cash: number }[];
+  /** Whether anything was paid in those eight months, however little: a small payment rounds to 0 in `trend`. */
+  hasTrend: boolean;
   /** Paid this month per method, in RM. */
   byMethod: Slice[];
   paidMtd: string;
@@ -178,10 +180,12 @@ export function paymentsView(rows: PaymentOutRow[], today: string): PaymentsView
   // Last 8 months, oldest first, in RM thousands.
   const [y, m] = month.split('-').map(Number);
   const thousands = (list: PaymentOutRow[]) => Math.round(sum(list, (p) => p.amount) / 100) / 10;
+  let hasTrend = false;
   const trend = Array.from({ length: 8 }, (_, i) => {
     const start = new Date(Date.UTC(y, m - 8 + i, 1));
     const key = start.toISOString().slice(0, 7);
     const inMonth = paid.filter((p) => p.txn_date.slice(0, 7) === key);
+    if (inMonth.length > 0) hasTrend = true;
     return {
       label: MONTHS[start.getUTCMonth()],
       electronic: thousands(inMonth.filter((p) => ELECTRONIC.has(p.method))),
@@ -210,6 +214,7 @@ export function paymentsView(rows: PaymentOutRow[], today: string): PaymentsView
       { label: 'Scheduled', value: rmShort(sum(scheduled, (p) => p.amount)), delta: count(paymentCount(scheduled), 'payment'), deltaTone: 'flat' },
     ],
     trend,
+    hasTrend,
     // Seven empty slices would be noise; with nothing paid, all seven stay so the legend still shows.
     byMethod: used.length ? used : methods,
     paidMtd: rmShort(paidMtdTotal),

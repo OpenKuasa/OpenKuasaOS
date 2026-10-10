@@ -269,10 +269,10 @@ export function PaymentsView({
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          {view.trend.every((month) => month.electronic === 0 && month.cash === 0) ? (
-            <p className="grid h-60 place-items-center text-sm text-muted-foreground">No payments yet.</p>
-          ) : (
+          {view.hasTrend ? (
             <AreaTrend data={view.trend} series={PAID_SERIES} height={240} showLegend />
+          ) : (
+            <p className="grid h-60 place-items-center text-sm text-muted-foreground">No payments in the last 8 months.</p>
           )}
         </BentoCard>
         <BentoCard title="Paid by method" subtitle="Month to date · RM" icon={PieChart} className="col-span-2 md:col-span-4">

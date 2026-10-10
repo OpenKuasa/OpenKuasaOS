@@ -228,6 +228,31 @@ describe('paymentsView', () => {
     ]);
   });
 
+  describe('hasTrend', () => {
+    it('is true for one small paid payment this month, although the chart rounds it to nothing', () => {
+      const view = paymentsView([payment({ amount: 30 })], today);
+      expect(view.hasTrend).toBe(true);
+      expect(view.trend.every((t) => t.electronic === 0 && t.cash === 0)).toBe(true);
+    });
+    it('is true at the oldest month the trend covers', () => {
+      expect(paymentsView([payment({ amount: 30, txn_date: '2026-03-01' })], today).hasTrend).toBe(true);
+    });
+    it('is false when the only paid payment is older than the eight months', () => {
+      expect(paymentsView([payment({ amount: 5000, txn_date: '2026-01-09' })], today).hasTrend).toBe(false);
+      expect(paymentsView([payment({ amount: 5000, txn_date: '2026-02-28' })], today).hasTrend).toBe(false);
+    });
+    it('is false when there are only scheduled and void payments', () => {
+      const view = paymentsView(
+        [payment({ amount: 4300, status: 'scheduled', number: null }), payment({ amount: 700, status: 'void' })],
+        today,
+      );
+      expect(view.hasTrend).toBe(false);
+    });
+    it('is false with no rows', () => {
+      expect(paymentsView([], today).hasTrend).toBe(false);
+    });
+  });
+
   it('uses no purple, violet, indigo or fuchsia for a method', () => {
     const view = paymentsView([], today);
     for (const slice of view.byMethod) {
