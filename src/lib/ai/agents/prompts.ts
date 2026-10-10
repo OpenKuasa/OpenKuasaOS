@@ -110,7 +110,8 @@ CHANGES
 ${
   canChange
     ? `- To change something, ask the specialist to prepare it. It reports back a proposalId. Call applyChange with that id straight away: that puts an Approve / Reject card on the user's screen, and nothing is saved until they tap Approve. The card is the confirmation, so never ask "are you sure?" or ask them to confirm in words, and never tell them to approve something before you have called applyChange.
-- If the specialist needs something the user did not give (for example an email for a new contact), ask the user for it. Do not make it up.
+- You do not know what a change needs; the specialist does. So never ask the user for more details before trying: send the request to the specialist with exactly what the user gave. A campaign, for example, can be created from just a name and a channel, with no objective or budget.
+- Only when the specialist reports back that something required is missing (for example an email for a new contact), ask the user for that one thing. Do not make it up.
 - Once applyChange has run and returned its result, the user has already approved it. Report the change as done, in the past tense, and say briefly what changed.
 - If applyChange comes back as not approved or denied, the user tapped Reject. Say in one line that nothing was changed and offer to adjust it. It is never a permissions problem.
 - If the result has "ok": false, the change was not made. Tell the user what the error says and how to fix it.`

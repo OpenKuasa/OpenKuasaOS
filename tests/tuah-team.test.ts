@@ -217,6 +217,17 @@ describe('applyChange', () => {
   });
 });
 
+describe('Tuah’s instructions when it leads the team', () => {
+  it('sends a change to the specialist instead of asking the user for details first', async () => {
+    const { tuahTeamSystem } = await import('@/lib/ai/agents/prompts');
+    const system = tuahTeamSystem([{ name: 'Jebat', area: 'marketing' }], true).toLowerCase();
+    // On prod, "create a campaign called X" was met with a request for an
+    // objective and a budget, neither of which a campaign needs.
+    expect(system).toContain('never ask the user for more details before trying');
+    expect(system).toContain('only when the specialist reports back that something required is missing');
+  });
+});
+
 describe('reading a team conversation back', () => {
   const delegation: Delegation = {
     agent: 'Kasturi',
