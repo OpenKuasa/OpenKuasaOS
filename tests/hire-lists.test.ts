@@ -9,7 +9,7 @@ import {
   buildPoolModel,
 } from '@/lib/hire/lists';
 import { createSeedHireData } from '@/lib/hire/seed';
-import type { HireData } from '@/lib/hire/types';
+import type { Application, Candidate, HireData } from '@/lib/hire/types';
 
 const NOW = new Date('2026-10-10T04:00:00Z');
 const data = createSeedHireData(NOW);
@@ -72,7 +72,15 @@ describe('interviews', () => {
     expect(model.rows).toHaveLength(10);
     expect(model).toMatchObject({ scheduled: 6, completed: 3, noShow: 1, next7Days: 6 });
     // NOW is a Saturday, so some of the six fall on the weekend and are not in the weekday chart.
-    expect(model.weekLoad.reduce((sum, d) => sum + d.count, 0)).toBeLessThanOrEqual(6);
+    const expected: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0 };
+    for (const i of await data.listInterviews()) {
+      const at = Date.parse(i.scheduled_at);
+      if (i.status !== 'scheduled' || at < NOW.getTime() || at >= NOW.getTime() + 7 * 86_400_000) continue;
+      const day = new Date(i.scheduled_at).toLocaleDateString('en-MY', { weekday: 'short', timeZone: 'Asia/Kuala_Lumpur' });
+      if (day in expected) expected[day] += 1;
+    }
+    expect(model.weekLoad.map((d) => d.count)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((d) => expected[d]));
+    expect(model.weekLoad.reduce((sum, d) => sum + d.count, 0)).toBeGreaterThan(0);
     expect(model.weekLoad.map((d) => d.label)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     expect(model.rows[0]).toMatchObject({ status: 'Scheduled' });
   });
@@ -85,16 +93,112 @@ describe('talent pool', () => {
     expect(model.rows.length).toBeLessThanOrEqual(50);
     expect(model.rows.every((r) => ['Available', 'Shortlisted', 'Passive', 'Re-engaged'].includes(r.status))).toBe(true);
   });
+
+  const cand = (id: string, pool_status: Candidate['pool_status']): Candidate => ({
+    id, name: id, email: null, phone: null, headline: null, location: null, skills: [], source: null,
+    pool_status, created_at: '2026-01-01T00:00:00Z',
+  });
+  const app = (id: string, candidate_id: string, over: Partial<Application>): Application => ({
+    id, candidate_id, job_id: 'j1', candidate_name: candidate_id, job_title: 'Role', stage: 'applied', outcome: 'active',
+    rating: null, source: null, applied_at: '2026-10-01T00:00:00Z', offered_at: null, hired_at: null,
+    created_at: '2026-10-01T00:00:00Z', ...over,
+  });
+  const small: HireData = {
+    ...EMPTY,
+    listCandidates: async () => [
+      cand('outsider', 'none'),
+      cand('interviewee', 'available'),
+      cand('offered', 'passive'),
+      cand('hiree', 're_engaged'),
+      cand('rejected', 'passive'),
+      cand('rated', 'available'),
+      cand('unrated', 'available'),
+    ],
+    listApplications: async () => [
+      app('a0', 'outsider', { stage: 'interview' }),
+      app('a1', 'interviewee', { stage: 'interview' }),
+      app('a2', 'offered', { stage: 'offer' }),
+      app('a3', 'hiree', { stage: 'hired' }),
+      app('a4', 'rejected', { stage: 'interview', outcome: 'rejected' }),
+      app('a5', 'rated', { rating: 3 }),
+      app('a6', 'rated', { rating: 5 }),
+      app('a7', 'rated', { rating: 4 }),
+    ],
+  };
+
+  it('leaves out people with pool_status none', async () => {
+    const model = await buildPoolModel(small);
+    expect(model.size).toBe(6);
+    expect(model.rows.map((r) => r.id)).not.toContain('outsider');
+  });
+
+  it('shows Shortlisted for a live application at interview or beyond, and the pool label otherwise', async () => {
+    const byId = Object.fromEntries((await buildPoolModel(small)).rows.map((r) => [r.id, r.status]));
+    expect(byId).toMatchObject({
+      interviewee: 'Shortlisted', offered: 'Shortlisted', hiree: 'Shortlisted',
+      rejected: 'Passive', rated: 'Available', unrated: 'Available',
+    });
+  });
+
+  it('rates by the best application, and null when none is rated', async () => {
+    const byId = Object.fromEntries((await buildPoolModel(small)).rows.map((r) => [r.id, r.rating]));
+    expect(byId.rated).toBe(5);
+    expect(byId.unrated).toBeNull();
+    expect(byId.interviewee).toBeNull();
+  });
 });
 
+/** Every number inside a model, however deep. */
+function numbers(value: unknown): number[] {
+  if (typeof value === 'number') return [value];
+  if (Array.isArray(value)) return value.flatMap(numbers);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(numbers);
+  return [];
+}
+
 describe('an empty workspace', () => {
-  it('gives empty models, not errors', async () => {
-    expect((await buildJobsModel(EMPTY, NOW)).isEmpty).toBe(true);
-    expect((await buildCareersModel(EMPTY)).isEmpty).toBe(true);
-    expect((await buildBoardModel(EMPTY, NOW)).isEmpty).toBe(true);
-    expect((await buildApplicationsModel(EMPTY)).isEmpty).toBe(true);
-    expect((await buildInterviewsModel(EMPTY, NOW)).isEmpty).toBe(true);
-    expect((await buildPoolModel(EMPTY)).isEmpty).toBe(true);
-    expect((await buildBoardModel(EMPTY, NOW)).stages).toHaveLength(5);
+  it('gives zeros and empty lists, not errors', async () => {
+    const jobs = await buildJobsModel(EMPTY, NOW);
+    expect(jobs).toMatchObject({ isEmpty: true, rows: [], byJob: [], totalApplicants: 0, openJobs: 0 });
+    expect(jobs.statusMix.map((s) => [s.key, s.value])).toEqual([['open', 0], ['paused', 0], ['closed', 0], ['draft', 0]]);
+
+    const careers = await buildCareersModel(EMPTY);
+    expect(careers).toMatchObject({ isEmpty: true, rows: [], openRoles: 0 });
+
+    const board = await buildBoardModel(EMPTY, NOW);
+    expect(board).toMatchObject({ isEmpty: true, total: 0, hired: 0, inPipeline: 0, interviewing: 0, offers: 0 });
+    expect(board.stages).toHaveLength(5);
+    expect(board.stages.every((s) => s.candidates.length === 0)).toBe(true);
+    expect(board.funnel).toHaveLength(5);
+    expect(board.funnel.every((f) => f.value === 0)).toBe(true);
+    expect(board.trend).toHaveLength(8);
+    expect(board.trend.every((t) => t.applied === 0 && t.shortlisted === 0)).toBe(true);
+
+    const apps = await buildApplicationsModel(EMPTY);
+    expect(apps).toMatchObject({ isEmpty: true, total: 0, rows: [], byJob: [] });
+    expect(apps.statusMix.map((s) => [s.key, s.value])).toEqual([['New', 0], ['In review', 0], ['Shortlisted', 0], ['Rejected', 0]]);
+
+    const interviews = await buildInterviewsModel(EMPTY, NOW);
+    expect(interviews).toMatchObject({ isEmpty: true, rows: [], scheduled: 0, completed: 0, noShow: 0, next7Days: 0 });
+    expect(interviews.weekLoad).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((label) => ({ label, count: 0 })));
+
+    const pool = await buildPoolModel(EMPTY);
+    expect(pool).toMatchObject({ isEmpty: true, size: 0, rows: [] });
+  });
+
+  it('has only finite numbers in every empty model', async () => {
+    const models = [
+      await buildJobsModel(EMPTY, NOW),
+      await buildCareersModel(EMPTY),
+      await buildBoardModel(EMPTY, NOW),
+      await buildApplicationsModel(EMPTY),
+      await buildInterviewsModel(EMPTY, NOW),
+      await buildPoolModel(EMPTY),
+    ];
+    for (const model of models) {
+      const leaves = numbers(model);
+      expect(leaves.length).toBeGreaterThan(0);
+      expect(leaves.every(Number.isFinite)).toBe(true);
+    }
   });
 });
