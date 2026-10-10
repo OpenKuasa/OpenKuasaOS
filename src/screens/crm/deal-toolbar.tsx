@@ -76,7 +76,7 @@ export function DealsToolbar({
         value={filters.status}
         onValueChange={(status) => onChange({ ...filters, status: status as DealStatusView })}
       >
-        <SelectTrigger aria-label="Status view" className="w-32">
+        <SelectTrigger aria-label="Status view" className="w-40">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

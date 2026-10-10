@@ -52,9 +52,21 @@ function ids(filters: Partial<DealFilters>, deals = DEALS) {
 
 describe('the status views', () => {
   test('are Open, Won, Lost and All deals, starting on Open', () => {
-    expect(DEAL_STATUS_VIEWS.map((view) => view.key)).toEqual(['open', 'won', 'lost', 'all']);
-    expect(DEAL_STATUS_VIEWS.map((view) => view.label)).toEqual(['Open', 'Won', 'Lost', 'All deals']);
-    expect(DEFAULT_DEAL_FILTERS).toEqual({ search: '', owner: ALL_OWNERS, status: 'open' });
+    expect(DEAL_STATUS_VIEWS.map((view) => view.key)).toEqual([
+      'active',
+      'open',
+      'won',
+      'lost',
+      'all',
+    ]);
+    expect(DEAL_STATUS_VIEWS.map((view) => view.label)).toEqual([
+      'Open and won',
+      'Open',
+      'Won',
+      'Lost',
+      'All deals',
+    ]);
+    expect(DEFAULT_DEAL_FILTERS).toEqual({ search: '', owner: ALL_OWNERS, status: 'active' });
   });
 });
 
@@ -68,8 +80,14 @@ describe('dealsInPipeline', () => {
 });
 
 describe('filterDeals', () => {
-  test('hides won and lost deals by default', () => {
-    expect(filterDeals(DEALS, DEFAULT_DEAL_FILTERS).map((d) => d.id)).toEqual(['a', 'b', 'e']);
+  test('hides only lost deals by default, so won deals stay on the board', () => {
+    expect(filterDeals(DEALS, DEFAULT_DEAL_FILTERS).map((d) => d.id)).toEqual(['a', 'b', 'c', 'e']);
+  });
+
+  test('the Open view hides won and lost deals', () => {
+    expect(
+      filterDeals(DEALS, { ...DEFAULT_DEAL_FILTERS, status: 'open' }).map((d) => d.id),
+    ).toEqual(['a', 'b', 'e']);
   });
 
   test('shows one status at a time, or all of them', () => {
@@ -134,7 +152,7 @@ describe('dealOwners', () => {
 
 describe('statusCounts', () => {
   test('counts the deals each view holds', () => {
-    expect(statusCounts(DEALS)).toEqual({ open: 3, won: 1, lost: 1, all: 5 });
-    expect(statusCounts([])).toEqual({ open: 0, won: 0, lost: 0, all: 0 });
+    expect(statusCounts(DEALS)).toEqual({ active: 4, open: 3, won: 1, lost: 1, all: 5 });
+    expect(statusCounts([])).toEqual({ active: 0, open: 0, won: 0, lost: 0, all: 0 });
   });
 });

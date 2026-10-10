@@ -1,9 +1,13 @@
 import type { CrmDeal } from '@/lib/crm/deals';
 
-export type DealStatusView = 'open' | 'won' | 'lost' | 'all';
+export type DealStatusView = 'active' | 'open' | 'won' | 'lost' | 'all';
 
-/** In menu order. Open is what the board starts on. */
+/**
+ * In menu order. The board starts on "Open and won": everything except lost
+ * deals, so the Won column fills up as deals close instead of sitting empty.
+ */
 export const DEAL_STATUS_VIEWS: { key: DealStatusView; label: string }[] = [
+  { key: 'active', label: 'Open and won' },
   { key: 'open', label: 'Open' },
   { key: 'won', label: 'Won' },
   { key: 'lost', label: 'Lost' },
@@ -23,12 +27,19 @@ export type DealFilters = {
   status: DealStatusView;
 };
 
-/** No search, every owner, open deals only. */
+/** No search, every owner, lost deals hidden. */
 export const DEFAULT_DEAL_FILTERS: DealFilters = {
   search: '',
   owner: ALL_OWNERS,
-  status: 'open',
+  status: 'active',
 };
+
+/** Whether a status view puts a deal of this status on the board. */
+export function viewShows(view: DealStatusView, status: CrmDeal['status']): boolean {
+  if (view === 'all') return true;
+  if (view === 'active') return status !== 'lost';
+  return view === status;
+}
 
 /** The deals of one pipeline, in the order given. */
 export function dealsInPipeline(deals: CrmDeal[], pipelineId: string | null): CrmDeal[] {
@@ -52,7 +63,7 @@ export function filterDeals(deals: CrmDeal[], filters: DealFilters): CrmDeal[] {
   const words = filters.search.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
   return deals.filter((deal) => {
-    if (filters.status !== 'all' && deal.status !== filters.status) return false;
+    if (!viewShows(filters.status, deal.status)) return false;
     if (filters.owner !== ALL_OWNERS && deal.owner !== filters.owner) return false;
     return matchesSearch(deal, words);
   });
@@ -74,7 +85,14 @@ export function dealOwners(deals: CrmDeal[]): string[] {
 
 /** How many deals each status view would show, before search and owner. */
 export function statusCounts(deals: CrmDeal[]): Record<DealStatusView, number> {
-  const counts: Record<DealStatusView, number> = { open: 0, won: 0, lost: 0, all: deals.length };
+  const counts: Record<DealStatusView, number> = {
+    active: 0,
+    open: 0,
+    won: 0,
+    lost: 0,
+    all: deals.length,
+  };
   for (const deal of deals) counts[deal.status] += 1;
+  counts.active = counts.open + counts.won;
   return counts;
 }

@@ -10,8 +10,8 @@ import { LiveDot } from '@/components/ui/live-dot';
 import { Button } from '@/components/ui/button';
 import {
   ALL_OWNERS,
-  DEAL_STATUS_VIEWS,
   DEFAULT_DEAL_FILTERS,
+  viewShows,
   dealOwners,
   dealsInPipeline,
   filterDeals,
@@ -124,10 +124,10 @@ export default function DealsScreen({
   // What the status view is keeping off the board, so a deal that has just
   // been won or lost is not simply gone.
   const counts = statusCounts(pipelineDeals);
-  const elsewhere = DEAL_STATUS_VIEWS.filter(
-    (view) => view.key !== 'all' && view.key !== filters.status && counts[view.key] > 0,
-  ).map((view) => `${counts[view.key]} ${view.label.toLowerCase()}`);
-  const hiddenByView = filters.status === 'all' ? '' : elsewhere.join(', ');
+  const hiddenByView = (['open', 'won', 'lost'] as const)
+    .filter((status) => !viewShows(filters.status, status) && counts[status] > 0)
+    .map((status) => `${counts[status]} ${status}`)
+    .join(', ');
 
   const firstFieldRef = useRef<HTMLElement>(null);
   const askingRef = useRef<HTMLElement>(null);
