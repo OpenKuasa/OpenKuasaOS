@@ -2308,7 +2308,14 @@ describe('hire tools', () => {
     const t = createHireTools(empty, NOW);
     for (const name of HIRE_TOOL_NAMES) {
       const result = await (t[name] as unknown as { execute: (i: unknown, o: unknown) => Promise<unknown> }).execute({}, { toolCallId: 't', messages: [] });
-      expect(JSON.stringify(result), name).not.toMatch(/NaN|Infinity/);
+      // JSON.stringify would hide NaN and Infinity (it writes them as null), so check the numbers themselves.
+      const numbersIn = (value: unknown): number[] =>
+        typeof value === 'number' ? [value]
+        : Array.isArray(value) ? value.flatMap(numbersIn)
+        : value && typeof value === 'object' ? Object.values(value).flatMap(numbersIn)
+        : [];
+      expect(result, name).not.toMatchObject({ ok: false });
+      expect(numbersIn(result).every(Number.isFinite), name).toBe(true);
     }
   });
 
