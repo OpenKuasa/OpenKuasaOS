@@ -1,15 +1,16 @@
 'use client';
 
 /**
- * Ask-Jebat — the in-card chat for the Jebat (CMO) Overview screen.
+ * The in-card chat on a product's Overview screen: Ask-Jebat on marketing,
+ * Ask-Kasturi on the CRM.
  *
- * Jebat is the module-level marketing assistant, so it lives INSIDE its own card
- * (the CEO / cross-app assistant is the separate right-docked "Sari"). The
- * conversation expands in place — the card grows and pushes the dashboard grid
- * down, with a smooth transition — and shows live tool-call cards (the real
- * read-only data tools) plus image / PDF / text attachments. Signed-in members
- * stream from /api/reach/chat; demo / anonymous viewers get a canned answer + a
- * sign-up gate (never POST, $0 LLM).
+ * A product's own assistant lives INSIDE its card (the cross-app assistant is
+ * the separate right-docked "Sari"). The conversation expands in place — the
+ * card grows and pushes the dashboard grid down, with a smooth transition —
+ * and shows live tool-call cards, changes waiting for approval, and image /
+ * PDF / text attachments. Signed-in members stream from the persona's `api`;
+ * demo / anonymous viewers get a canned answer + a sign-up gate (never POST,
+ * $0 LLM).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -44,6 +45,7 @@ import {
   approvalTitle,
   hasVisibleContent,
   isText,
+  nameFinder,
   toPendingApproval,
   toToolStep,
   toolMeta,
@@ -51,8 +53,18 @@ import {
   type ToolStep,
 } from '@/components/chat/tool-parts';
 
-const CANNED_DEMO_ANSWER =
-  'Jap, saya tengok dulu… Cost-per-lead terbaik awak ialah campaign "Lead Magnet — eBook" pada RM 6.88, manakala "Brand Awareness" paling mahal (RM 50.00). WhatsApp bawa paling banyak lead. Untuk Jebat jawab guna nombor sebenar bisnes awak, sila sign up akaun percuma.';
+/** Who answers in the card, and where its questions go. Plain strings, so a server screen can pass it. */
+export type AskPersona = {
+  /** The assistant's name, as in "Ask Jebat anything…". */
+  name: string;
+  /** What it is to the owner, shown after the name: "your CMO". */
+  role: string;
+  heading: string;
+  /** The endpoint its questions stream from. */
+  api: string;
+  /** What a demo or anonymous visitor is shown instead of a live answer. */
+  demoAnswer: string;
+};
 
 function isFile(p: AnyPart): p is Extract<AnyPart, { type: 'file' }> {
   return p.type === 'file';
@@ -61,7 +73,15 @@ function textOf(message: UIMessage): string {
   return message.parts.filter(isText).map((p) => p.text).join('');
 }
 
-export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: boolean }) {
+export function AskHero({
+  persona,
+  prompts,
+  isDemo,
+}: {
+  persona: AskPersona;
+  prompts: string[];
+  isDemo: boolean;
+}) {
   const [input, setInput] = useState('');
   const [demoAsked, setDemoAsked] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -69,7 +89,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
   const [attachments, setAttachments] = useState<FileUIPart[]>([]);
   const [openSteps, setOpenSteps] = useState<Record<string, boolean>>({});
 
-  const [transport] = useState(() => new DefaultChatTransport({ api: '/api/reach/chat' }));
+  const [transport] = useState(() => new DefaultChatTransport({ api: persona.api }));
   const { messages, sendMessage, status, error, addToolApprovalResponse } = useChat({
     transport,
     throttle: 50,
@@ -141,10 +161,10 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs font-medium text-primary-foreground/70">
             <Sparkles className="size-3.5 animate-twinkle" />
-            Jebat · your CMO
+            {persona.name} · {persona.role}
           </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
-            How can I grow your business, Saudara?
+            {persona.heading}
           </h1>
           <div className="mt-3 flex flex-wrap gap-2">
             {prompts.map((p) => (
@@ -215,8 +235,8 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
               onChange={(e) => setInput(e.target.value)}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              placeholder="Ask Jebat anything…"
-              aria-label="Ask Jebat anything"
+              placeholder={`Ask ${persona.name} anything…`}
+              aria-label={`Ask ${persona.name} anything`}
               className="min-w-0 flex-1 bg-transparent text-sm text-primary-foreground placeholder:text-primary-foreground/60 focus:outline-none"
             />
             <span
@@ -249,6 +269,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
             }`}
           >
             <Thread
+              persona={persona}
               isDemo={isDemo}
               demoAsked={demoAsked}
               messages={messages}
@@ -274,6 +295,7 @@ export function AskJebatHero({ prompts, isDemo }: { prompts: string[]; isDemo: b
 }
 
 function Thread({
+  persona,
   isDemo,
   demoAsked,
   messages,
@@ -283,6 +305,7 @@ function Thread({
   onToggleStep,
   onApproval,
 }: {
+  persona: AskPersona;
   isDemo: boolean;
   demoAsked: boolean;
   messages: UIMessage[];
@@ -292,7 +315,9 @@ function Thread({
   onToggleStep: (key: string) => void;
   onApproval: (approvalId: string, approved: boolean) => void;
 }) {
-  if (isDemo) return demoAsked ? <DemoBubble /> : null;
+  if (isDemo) return demoAsked ? <DemoBubble persona={persona} /> : null;
+  // A change names its item by id; the name comes from the lookup that found it.
+  const named = nameFinder(messages);
 
   return (
     <div className="flex flex-col gap-4">
@@ -336,7 +361,7 @@ function Thread({
 
         return (
           <div key={m.id} className="text-sm">
-            <div className="mb-1 text-xs font-semibold text-primary-foreground/60">Jebat</div>
+            <div className="mb-1 text-xs font-semibold text-primary-foreground/60">{persona.name}</div>
             <div className="flex flex-col gap-2">
               {m.parts.map((part, i) => {
                 if (isText(part)) {
@@ -354,7 +379,7 @@ function Thread({
                       key={`appr-${pending.approvalId}`}
                       className="rounded-lg border border-border bg-card p-3 text-sm text-card-foreground"
                     >
-                      <p className="font-medium">{approvalTitle(pending.toolName, pending.input)}</p>
+                      <p className="font-medium">{approvalTitle(pending.toolName, pending.input, named)}</p>
                       {detail && <p className="mt-1 text-muted-foreground">{detail}</p>}
                       <div className="mt-3 flex gap-2">
                         <button
@@ -388,7 +413,7 @@ function Thread({
               {!hasVisibleContent(m) && busy && (
                 <div className="flex items-center gap-2 text-xs text-primary-foreground/70">
                   <Loader2 className="size-3.5 animate-spin" />
-                  Jebat is thinking…
+                  {persona.name} is thinking…
                 </div>
               )}
             </div>
@@ -399,7 +424,9 @@ function Thread({
         <div className="text-xs text-primary-foreground/80">
           {chatErrorCode(error) === 'key_required'
             ? 'That question was not sent: your free questions are used up. Add an OpenRouter key to keep chatting.'
-            : 'Jebat couldn’t respond just now. Please try again.'}
+            : chatErrorCode(error) === 'no_workspace'
+              ? `${persona.name} needs a workspace to look at. Create or join one first.`
+              : `${persona.name} couldn’t respond just now. Please try again.`}
         </div>
       )}
     </div>
@@ -455,18 +482,18 @@ function ToolCard({
   );
 }
 
-function DemoBubble() {
+function DemoBubble({ persona }: { persona: AskPersona }) {
   return (
     <div className="flex flex-col gap-2 text-sm">
       <div>
-        <div className="mb-0.5 text-xs font-semibold text-primary-foreground/60">Jebat (demo)</div>
-        <div className="leading-relaxed text-primary-foreground">{CANNED_DEMO_ANSWER}</div>
+        <div className="mb-0.5 text-xs font-semibold text-primary-foreground/60">{persona.name} (demo)</div>
+        <div className="leading-relaxed text-primary-foreground">{persona.demoAnswer}</div>
       </div>
       <Link
         href="/onboarding"
         className="inline-flex w-fit items-center rounded-full bg-primary-foreground px-3 py-1 text-xs font-semibold text-primary transition hover:opacity-90"
       >
-        Sign up free to chat with Jebat
+        Sign up free to chat with {persona.name}
       </Link>
     </div>
   );
