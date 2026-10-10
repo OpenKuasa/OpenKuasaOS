@@ -46,6 +46,16 @@ const PROMPTS = [
   'Draft a JD for Software Engineer',
 ];
 
+type SourceRow = { source: string; applications: number };
+
+/** At most `max` slices: the biggest sources, with the rest folded into 'Other' so slices sum to the total. */
+function topSources(rows: SourceRow[], max: number): { key: string; label: string; value: number }[] {
+  const slices = rows.map((r) => ({ key: r.source, label: r.source, value: r.applications }));
+  if (slices.length <= max) return slices;
+  const rest = slices.slice(max - 1).reduce((sum, r) => sum + r.value, 0);
+  return [...slices.slice(0, max - 1), { key: 'other', label: 'Other', value: rest }];
+}
+
 const initials = (name: string) =>
   name
     .split(' ')
@@ -56,12 +66,10 @@ const initials = (name: string) =>
 
 export default async function OverviewScreen() {
   const { model, isDemo } = await loadHire('overview', buildHireOverviewModel);
-  const empty = model?.isEmpty ?? false;
   const applications = model?.funnel[0]?.value ?? 0;
-  const sourceMix: Slice[] = (model?.sources ?? []).slice(0, 4).map((row, index) => ({
-    key: row.source,
-    label: row.source,
-    value: row.applications,
+  const noApplications = applications === 0;
+  const sourceMix: Slice[] = topSources(model?.sources ?? [], 4).map((row, index) => ({
+    ...row,
     color: SOURCE_COLORS[index],
   }));
   const pipeline: Slice[] = (model?.funnel ?? []).map((f) => ({
@@ -107,7 +115,7 @@ export default async function OverviewScreen() {
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          {!model ? LOAD_FAILED : empty ? (
+          {!model ? LOAD_FAILED : noApplications ? (
             <Muted>No applications yet</Muted>
           ) : (
             <AreaTrend data={model.trend} series={APPS_SERIES} height={240} showLegend />
@@ -118,7 +126,7 @@ export default async function OverviewScreen() {
           icon={PieChart}
           className="col-span-2 md:col-span-4"
         >
-          {!model ? LOAD_FAILED : empty ? (
+          {!model ? LOAD_FAILED : noApplications ? (
             <Muted>No applications yet</Muted>
           ) : (
             <DonutStat
@@ -137,7 +145,7 @@ export default async function OverviewScreen() {
           icon={Filter}
           className="col-span-2 md:col-span-4"
         >
-          {!model ? LOAD_FAILED : empty ? (
+          {!model ? LOAD_FAILED : noApplications ? (
             <Muted>No applications yet</Muted>
           ) : (
             <FunnelFlow data={pipeline} height={200} />
