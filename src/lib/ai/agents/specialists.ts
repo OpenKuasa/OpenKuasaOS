@@ -10,11 +10,19 @@
  * the only place a real change tool is ever run.
  */
 
-import { stepCountIs, streamText, tool, type Tool, type ToolSet } from 'ai';
+import {
+  stepCountIs,
+  streamText,
+  tool,
+  type LanguageModel,
+  type Tool,
+  type ToolSet,
+} from 'ai';
 import { z } from 'zod';
 import { subAgentSystem } from '@/lib/ai/agents/prompts';
 import type { ProductToolkit } from '@/lib/ai/products';
-import { getModel } from '@/lib/ai/provider';
+import { logModelCall } from '@/lib/ai/call-log';
+import { getModel, pickModelId } from '@/lib/ai/provider';
 import {
   approvalDetail,
   approvalTitle,
@@ -27,6 +35,7 @@ import {
 import {
   APPLY_TOOL,
   ASK_PREFIX,
+  isDelegation,
   type AgentStep,
   type Delegation,
   type Proposal,
@@ -153,8 +162,7 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
     description:
       `Ask ${product.name}, the specialist for ${AREA[product.key]}, to look things up` +
       (canChange ? ' or to prepare a change' : '') +
-      `. ${product.name} does not see this conversation: give a complete task, with the names, ` +
-      'amounts and details the user gave.',
+      `. Give ${product.name} a complete task, with the names, amounts and details the user gave.`,
     inputSchema: z.object({
       task: z.string().min(1).describe('What to find out or prepare, in full.'),
     }),
@@ -168,7 +176,10 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
         product: product.key,
         status,
         steps: steps.map((step) => ({ ...step })),
-        answer,
+        answer:
+          answer.trim() || status === 'working' || prepared.length === 0
+            ? answer
+            : `Prepared: ${prepared.map((p) => p.title).join(' ')}`,
         proposals: [...prepared],
         ...(status === 'working' ? {} : { names: collectNames(results) }),
       });
@@ -184,9 +195,12 @@ function askTool(product: ProductToolkit, team: TeamContext): Tool {
           system: subAgentSystem(product.key, canChange),
           prompt: given,
           tools: specialistTools(product, team, results, prepared, given),
-          stopWhen: stepCountIs(8),
+          // A prepared change is the whole report: stop there rather than
+          // spend another call having the specialist describe it.
+          stopWhen: [stepCountIs(8), () => prepared.length > 0],
           maxOutputTokens: 900,
           abortSignal,
+          onLanguageModelCallEnd: logModelCall(product.name.toLowerCase(), pickModelId('worker')),
         });
         for await (const part of result.fullStream) {
           if (part.type === 'tool-call') {
@@ -258,11 +272,75 @@ async function apply(
   return output;
 }
 
+/**
+ * Stands in for Tuah's model on the one step whose outcome is already
+ * decided: a specialist has just prepared a single change, and the rule is to
+ * put it in front of the user at once. It makes that `applyChange` call
+ * without a round trip to a model, which is about two seconds the user would
+ * otherwise wait for the Approve card.
+ */
+function applyStep(proposalId: string): LanguageModel {
+  const usage = {
+    inputTokens: { total: 0, noCache: 0, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 0, text: 0, reasoning: 0 },
+  };
+  const chunks = [
+    {
+      type: 'tool-call',
+      toolCallId: `apply-${proposalId}`,
+      toolName: APPLY_TOOL,
+      input: JSON.stringify({ proposalId }),
+    },
+    { type: 'finish', finishReason: { unified: 'tool-calls', raw: 'tool_calls' }, usage },
+  ];
+  return {
+    specificationVersion: 'v4',
+    provider: 'openkuasa',
+    modelId: 'apply-prepared-change',
+    supportedUrls: {},
+    doGenerate: async () => {
+      throw new Error('apply-prepared-change only streams.');
+    },
+    doStream: async () => ({
+      stream: new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(chunk);
+          controller.close();
+        },
+      }),
+    }),
+  } as unknown as LanguageModel;
+}
+
+type StepLike = { toolResults: { toolName: string; output: unknown; preliminary?: boolean }[] };
+
+/**
+ * The single change to apply straight away after a step, if that is what the
+ * step produced: every specialist asked has finished, and between them they
+ * prepared exactly one change. Anything else is left to Tuah to think about.
+ */
+export function changeToApply(step: StepLike | undefined): Proposal | null {
+  if (!step) return null;
+  const reports = step.toolResults
+    .filter((r) => r.toolName.startsWith(ASK_PREFIX) && r.toolName !== APPLY_TOOL && !r.preliminary)
+    .map((r) => r.output);
+  if (reports.length === 0 || !reports.every((r) => isDelegation(r) && r.status === 'done')) {
+    return null;
+  }
+  const proposals = reports.flatMap((r) => (isDelegation(r) ? r.proposals : []));
+  return proposals.length === 1 ? proposals[0] : null;
+}
+
 /** Tuah's tools when it works through its team, and which of them need approval. */
 export function createTeamTools(
   products: ProductToolkit[],
   team: TeamContext,
-): { tools: ToolSet; toolApproval: Record<string, 'user-approval'> | undefined } {
+): {
+  tools: ToolSet;
+  toolApproval: Record<string, 'user-approval'> | undefined;
+  /** Chooses the model for a step: the scripted one when a single change is ready to apply. */
+  prepareStep?: (options: { steps: StepLike[] }) => { model: LanguageModel } | undefined;
+} {
   const tools: ToolSet = {};
   for (const product of products) {
     tools[`${ASK_PREFIX}${product.name}`] = askTool(product, team);
@@ -281,5 +359,12 @@ export function createTeamTools(
     execute: async ({ proposalId }, options) =>
       apply(products, team, team.proposals.get(proposalId), options),
   });
-  return { tools, toolApproval: { [APPLY_TOOL]: 'user-approval' } };
+  return {
+    tools,
+    toolApproval: { [APPLY_TOOL]: 'user-approval' },
+    prepareStep: ({ steps }) => {
+      const proposal = changeToApply(steps[steps.length - 1]);
+      return proposal ? { model: applyStep(proposal.id) } : undefined;
+    },
+  };
 }

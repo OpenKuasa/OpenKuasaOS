@@ -169,6 +169,54 @@ describe('Tuah with its team', () => {
   });
 });
 
+describe('applying a prepared change without another model call', () => {
+  const report = (over: Partial<Delegation> = {}): Delegation => ({
+    agent: 'Kasturi',
+    product: 'crm',
+    status: 'done',
+    steps: [],
+    answer: '',
+    proposals: [
+      { id: 'abc12345', product: 'crm', action: 'createContact', input: {}, title: 'Add?', detail: null },
+    ],
+    ...over,
+  });
+  const step = (...outputs: unknown[]) => ({
+    toolResults: outputs.map((output) => ({ toolName: 'askKasturi', output })),
+  });
+
+  it('applies the one change a finished specialist prepared', async () => {
+    const { changeToApply } = await import('@/lib/ai/agents/specialists');
+    expect(changeToApply(step(report()))?.id).toBe('abc12345');
+    // A lookup beside it changes nothing: there is still exactly one change.
+    expect(changeToApply(step(report(), report({ proposals: [] })))?.id).toBe('abc12345');
+  });
+
+  it('leaves everything else to Tuah', async () => {
+    const { changeToApply } = await import('@/lib/ai/agents/specialists');
+    expect(changeToApply(undefined)).toBeNull();
+    expect(changeToApply(step(report({ proposals: [] })))).toBeNull();
+    expect(changeToApply(step(report(), report()))).toBeNull();
+    expect(changeToApply(step(report({ status: 'failed' })))).toBeNull();
+    expect(changeToApply(step(report({ status: 'working' })))).toBeNull();
+    expect(changeToApply({ toolResults: [{ toolName: 'applyChange', output: report() }] })).toBeNull();
+    expect(
+      changeToApply({ toolResults: [{ toolName: 'askKasturi', output: report(), preliminary: true }] }),
+    ).toBeNull();
+  });
+
+  it('makes one model call for Tuah on a change, not two', async () => {
+    // `tuahTools` gets one entry each time Tuah's model is actually called.
+    seen.tuahTools = [];
+    const result = runTuah(ask, reach(), undefined, undefined, null, crm(), team());
+    await result.consumeStream();
+    expect(seen.tuahTools).toHaveLength(1);
+    // The change still reaches the user as an approval.
+    const calls = (await result.steps).flatMap((s) => s.toolCalls.map((c) => c.toolName));
+    expect(calls).toEqual(['askKasturi', 'applyChange']);
+  });
+});
+
 describe('applyChange', () => {
   const products = () => [
     reachProduct({ data: createSeedReachData() }),
