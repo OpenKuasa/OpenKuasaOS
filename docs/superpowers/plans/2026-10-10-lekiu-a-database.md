@@ -145,6 +145,18 @@ describe('Lekiu schema', () => {
     expect(text).toContain('after delete on public.org_members');
     expect(text).not.toContain('on delete restrict');
   });
+
+  test('a member leaving does not touch employees of a workspace that is being deleted', () => {
+    expect(sql(CORE)).toContain('and exists (select 1 from public.orgs o where o.id = old.org_id);');
+  });
+
+  test('a department name is unique whatever its capitals or spaces', () => {
+    const text = sql(CORE);
+    expect(text).toContain(
+      'create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));',
+    );
+    expect(text).not.toContain('unique (org_id, name)');
+  });
 });
 ```
 
@@ -209,9 +221,10 @@ create table public.departments (
   org_id uuid not null references public.orgs(id) on delete cascade,
   name text not null check (char_length(trim(name)) between 1 and 80),
   created_at timestamptz not null default now(),
-  unique (org_id, name),
   unique (id, org_id)
 );
+-- One department per name, whatever its capitals or stray spaces.
+create unique index departments_org_name_idx on public.departments (org_id, lower(trim(name)));
 
 -- ---- employees: the staff directory, readable by every member --------
 -- Nothing a colleague should not see belongs on this table. Pay, identity
@@ -371,8 +384,11 @@ create trigger org_members_link_employee after insert on public.org_members
 create or replace function private.unlink_employee_on_member_leave()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  -- Nothing to do when the whole workspace is being deleted: its employees go
+  -- with it, and touching them mid-delete would fail their workspace check.
   update public.employees set user_id = null
-  where org_id = old.org_id and user_id = old.user_id;
+  where org_id = old.org_id and user_id = old.user_id
+    and exists (select 1 from public.orgs o where o.id = old.org_id);
   return old;
 end; $$;
 revoke all on function private.unlink_employee_on_member_leave() from public, anon, authenticated;
@@ -383,7 +399,7 @@ create trigger org_members_unlink_employee after delete on public.org_members
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 11 tests (3 tables × 2 parameterised tests, plus 5).
+Expected: PASS, 13 tests (3 tables × 2 parameterised tests, plus 7).
 
 - [ ] **Step 5: Commit**
 
@@ -492,7 +508,7 @@ select private.people_secure_table('time_off_requests', 'personal');
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 17 tests.
+Expected: PASS, 19 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -581,7 +597,7 @@ select private.people_secure_table('overtime_records', 'personal');
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 21 tests.
+Expected: PASS, 23 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -690,7 +706,7 @@ select private.people_secure_table('public_holidays', 'shared');
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 29 tests.
+Expected: PASS, 31 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -807,7 +823,7 @@ select private.people_secure_table('payment_vouchers', 'hr');
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 36 tests.
+Expected: PASS, 38 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -936,7 +952,7 @@ select private.people_secure_table('training_enrolments', 'personal');
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 46 tests.
+Expected: PASS, 48 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1058,7 +1074,7 @@ select private.people_secure_table('people_settings', 'hr');
 - [ ] **Step 4: Run the test and watch it pass**
 
 Run: `pnpm vitest run --dir tests people-schema`
-Expected: PASS, 55 tests.
+Expected: PASS, 57 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1125,7 +1141,7 @@ describe('Lekiu demo seed', () => {
     const text = cron();
     expect(text).toContain('create extension if not exists pg_cron;');
     expect(text).toContain(
-      "select cron.schedule('reseed-demo-people', '15 * * * *', $$select private.reseed_demo_people()$$);",
+      "select cron.schedule('reseed-demo-people', '1 * * * *', $$select private.reseed_demo_people()$$);",
     );
   });
 
@@ -1507,9 +1523,10 @@ select private.reseed_demo_people();
 
 ```sql
 -- Keep the Lekiu demo fresh. Its own migration so a pg_cron problem can never
--- block the tables or the seed. Runs at :15, away from the reach reseed at :00.
+-- block the tables or the seed. Runs at :01, just after the reach reseed at :00,
+-- so the demo is at most a minute behind a new day in Malaysia.
 create extension if not exists pg_cron;
-select cron.schedule('reseed-demo-people', '15 * * * *', $$select private.reseed_demo_people()$$);
+select cron.schedule('reseed-demo-people', '1 * * * *', $$select private.reseed_demo_people()$$);
 ```
 
 - [ ] **Step 5: Run the test and watch it pass**
@@ -1785,7 +1802,7 @@ This is one `do` block. It first checks every table's read rule, policies and gr
 -- with RAISE, so every insert below is rolled back. Read the message:
 --   PEOPLE_RLS_CHECK PASSED ...   or   PEOPLE_RLS_CHECK FAILED: <what went wrong>
 -- It rebuilds the demo HR rows inside its transaction and holds them until the
--- rollback, so do not start it at minute 15 of the hour, when the scheduled
+-- rollback, so do not start it at minute 1 of the hour, when the scheduled
 -- demo reseed runs.
 do $$
 declare
@@ -1804,6 +1821,8 @@ declare
   t text;
   k text;
   q text;
+  ref text;
+  ref_rule text;
   core text[] := array['departments','employees','employee_private'];
   shared text[] := array['departments','public_holidays','trainings','announcements'];
   fails text[] := '{}';
@@ -1835,8 +1854,24 @@ begin
       fails := array_append(fails, format('%s should be HR only, its rule is: %s', t, q));
     end if;
 
+    -- The rule must be word for word the rule of the table of its kind whose
+    -- reads are tested as a member further down, so a rule that keeps every
+    -- expected term but adds a wider one cannot pass.
+    ref := case k when 'personal' then 'payslips' when 'hr' then 'payroll_runs' else 'departments' end;
+    select p.qual into ref_rule from pg_policies p
+    where p.schemaname = 'public' and p.tablename = ref and p.policyname = ref || '_select';
+    if q is distinct from ref_rule then
+      fails := array_append(fails, format('%s does not have the same read rule as %s: %s', t, ref, q));
+    end if;
+
     select count(*) into n from pg_policies p
-    where p.schemaname = 'public' and p.tablename = t and p.policyname = 'mfa_required' and p.permissive = 'RESTRICTIVE';
+    where p.schemaname = 'public' and p.tablename = t and p.policyname = t || '_select'
+      and p.permissive = 'PERMISSIVE' and p.roles = array['authenticated']::name[];
+    if n <> 1 then fails := array_append(fails, format('%s read policy is not for signed-in users only', t)); end if;
+
+    select count(*) into n from pg_policies p
+    where p.schemaname = 'public' and p.tablename = t and p.policyname = 'mfa_required'
+      and p.permissive = 'RESTRICTIVE' and p.cmd = 'ALL' and p.qual like '%mfa_ok()%';
     if n <> 1 then fails := array_append(fails, format('%s has no restrictive second-factor policy', t)); end if;
 
     select count(*) into n from pg_policies p
@@ -2026,7 +2061,7 @@ Expected on this machine, where the Supabase variables are in the shell environm
 - [ ] **Step 4: Run the rest of the suite**
 
 Run: `pnpm vitest run --dir tests --exclude '**/people.rls.test.ts'`
-Expected: everything passes, including `people-schema` (55) and `people-demo-seed` (6).
+Expected: everything passes, including `people-schema` (57) and `people-demo-seed` (6).
 
 - [ ] **Step 5: Commit**
 
@@ -2047,7 +2082,25 @@ git commit -m "test(people): live access tests and a self-rolling-back member-ti
 - Consumes: `mcp__openkuasa-supabase__list_migrations`, `apply_migration`, `execute_sql`, `get_advisors`.
 - Produces: the tables live; a passed access check; a PR.
 
+- [ ] **Step 0: Rebase and confirm two settings with the owner**
+
+Run `git fetch origin` and `git rebase origin/main`, then `pnpm vitest run --dir tests people-schema people-demo-seed` (expected: 57 and 6 passing).
+
+Ask the owner to confirm, in the Supabase dashboard under Authentication, that **Confirm email** and **Secure email change** are both on. Employee records link to users by a confirmed email address; with confirmation off, a member could set their sign-in email to a colleague's address and be linked to that colleague's record when HR adds it. If either is off, stop: it must be turned on before these tables hold real data.
+
+Apply Step 2's eight files in one sitting. Between the core tables and the first seed, a signed-in workspace owner could insert an employee carrying one of the demo's fixed ids and make the seed fail.
+
 - [ ] **Step 1: Check the starting point**
+
+Run this through `mcp__openkuasa-supabase__execute_sql` and expect no `table_clash` or `function_clash` rows, and only `viewer` among the demo roles (checked on 2026-10-10: clean, 2275 viewers):
+
+```sql
+select 'table_clash' as kind, tablename as name from pg_tables where schemaname = 'public' and tablename in ('departments','employees','employee_private','leave_requests','leave_balances','time_off_requests','claims','overtime_records','attendance_days','timesheet_entries','shifts','public_holidays','payroll_runs','payslips','payment_vouchers','goals','scorecards','reviews','trainings','training_enrolments','announcements','documents','letters','people_settings')
+union all
+select 'function_clash', p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'private' and (p.proname in ('is_demo_org','is_own_employee','reseed_demo_people','employee_link_guard','link_employee_on_member_join','unlink_employee_on_member_leave') or p.proname like 'people\_%')
+union all
+select 'demo_role', m.role || ' x ' || count(*) from public.org_members m where m.org_id = (select id from public.orgs where slug = 'rimba-ventures-demo') group by m.role;
+```
 
 Call `mcp__openkuasa-supabase__list_migrations`. Expected: no migration named `people_*`. Run `git fetch origin` then `git ls-tree --name-only origin/main supabase/migrations/` and confirm no file there starts with `20261013`. If one does, rename these nine files to the next free prefix, update the three filename constants in `tests/people-schema.test.ts` and the two in `tests/people-demo-seed.test.ts`, re-run both tests, and commit.
 
@@ -2093,6 +2146,8 @@ Expected: `orgs_left = 0`, `users_left = 0`.
 
 - [ ] **Step 4: Run the live tests**
 
+First make the API see the new tables: run `notify pgrst, 'reload schema';` through `execute_sql` and wait a few seconds. Do not run these tests between 00:00 and 00:02 Malaysia time, when the demo may still be anchored to yesterday.
+
 Run: `pnpm vitest run --dir tests people.rls`
 Expected: PASS, 7 tests. (If they were skipped in Task 9, the Supabase variables are missing: copy `.env.local` into the worktree, it is gitignored.)
 
@@ -2106,7 +2161,7 @@ Call `apply_migration` with `people_demo_cron`. Then:
 select jobname, schedule, active from cron.job where jobname = 'reseed-demo-people';
 ```
 
-Expected: one row, `15 * * * *`, `active = true`.
+Expected: one row, `1 * * * *`, `active = true`.
 
 Call `mcp__openkuasa-supabase__get_advisors` with type `security`. Expected: no new finding that names a `people`/HR table or one of the new `private.*` functions. A finding about a table without a policy, or a function with a mutable search path, must be fixed before the PR.
 
