@@ -250,11 +250,12 @@ export function createCrmTools(access: CrmAccess) {
           .eq('org_id', orgId);
         if (status) query = query.eq('status', status);
         const term = searchTerm(search);
-        if (term) {
-          const like = `%${term}%`;
+        // Every word must be found somewhere, so "Hana Lee" matches a first
+        // name of Hana and a last name of Lee.
+        for (const word of (term ?? '').split(' ').filter(Boolean).slice(0, 5)) {
           query = query.or(
             ['first_name', 'last_name', 'email', 'company']
-              .map((column) => `${column}.ilike.${like}`)
+              .map((column) => `${column}.ilike.%${word}%`)
               .join(','),
           );
         }
@@ -281,14 +282,14 @@ export function createCrmTools(access: CrmAccess) {
           listCrmDeals(client, orgId, 500),
           pipelines(),
         ]);
-        const term = searchTerm(search)?.toLowerCase();
+        // Every word must be found in the title, the contact or the company.
+        const words = (searchTerm(search)?.toLowerCase() ?? '').split(' ').filter(Boolean);
         const matching = deals
           .filter((d) => (status ? d.status === status : true))
-          .filter((d) =>
-            term
-              ? [d.title, d.contactName, d.company].some((v) => v?.toLowerCase().includes(term))
-              : true,
-          );
+          .filter((d) => {
+            const haystack = [d.title, d.contactName, d.company].join(' ').toLowerCase();
+            return words.every((word) => haystack.includes(word));
+          });
         const stages = stageNames(list);
         return {
           total_in_workspace: total,
