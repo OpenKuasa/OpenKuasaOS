@@ -1,6 +1,6 @@
 /** What a Kasturi form action hands back to the form that called it. */
 export type CrmFormState =
-  | { ok: true }
+  | { ok: true; message?: string }
   | { ok: false; error: string; values: Record<string, string> }
   | undefined;
 
@@ -16,4 +16,6 @@ export type CrmContactActions = {
   remove: CrmFormAction;
   addFollowUp: CrmFormAction;
   completeFollowUp: CrmFormAction;
+  /** Takes `payload`: JSON of `{ table, mapping }` from the import card. */
+  importContacts: CrmFormAction;
 };

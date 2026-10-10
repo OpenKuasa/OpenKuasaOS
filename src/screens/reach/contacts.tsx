@@ -1,19 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import {
-  BarChart3,
-  CalendarClock,
-  ChevronDown,
-  Columns3,
-  Filter,
-  PieChart,
-  Plus,
-  Tag,
-  Target,
-  TrendingUp,
-  Users,
-} from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { BarChart3, PieChart, Plus, Target, TrendingUp, Users } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
@@ -37,15 +25,30 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import {
+  DEFAULT_FILTERS,
+  filterContacts,
+  filterOptions,
+  type ContactFilters,
+} from '@/lib/crm/contact-filters';
 import type { CrmContact } from '@/lib/crm/contacts';
 import type { CrmFollowUp } from '@/lib/crm/follow-ups';
 import type { CrmContactActions } from '@/lib/crm/form-state';
+import { useHiddenColumns } from '@/screens/crm/contact-columns';
+import { ContactImportCard } from '@/screens/crm/contact-import';
 import {
   ContactFollowUps,
   ContactFormCard,
   ContactRowMenu,
+  ContactTags,
   DeleteContactRow,
 } from '@/screens/crm/contact-parts';
+import {
+  AddContactMenu,
+  ColumnsMenu,
+  ContactFilterPanel,
+  ContactsToolbar,
+} from '@/screens/crm/contact-toolbar';
 
 /* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
 
@@ -233,6 +236,9 @@ function StatusPill({ status }: { status: string | null }) {
   );
 }
 
+/** Rows put on screen at a time; "Show more" adds another lot. */
+const PAGE_SIZE = 50;
+
 type ContactsScreenProps = {
   /** Live contacts. Omitted on Jebat and when no database is configured. */
   contacts?: Contact[];
@@ -261,8 +267,29 @@ export default function ContactsScreen({
   const [editing, setEditing] = useState<Contact | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [followUpFor, setFollowUpFor] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
-  const columns = actions ? 10 : 9;
+
+  // Filtering, search and the view all work on the contacts already loaded.
+  const [filters, setFilterState] = useState<ContactFilters>(DEFAULT_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const { hidden, toggle: toggleColumn } = useHiddenColumns();
+  const setFilters = (next: ContactFilters) => {
+    setFilterState(next);
+    setPageSize(PAGE_SIZE);
+  };
+
+  const options = useMemo(() => filterOptions(rows), [rows]);
+  const filtered = useMemo(
+    () => filterContacts(rows, followUps ?? {}, filters),
+    [rows, followUps, filters],
+  );
+  const shown = filtered.slice(0, pageSize);
+  // Fewer contacts than were loaded means a view, filter or search is narrowing the list.
+  const narrowed = filtered.length < rows.length;
+  // Checkbox and Contact always show; the "⋯" column only for people who can edit.
+  const columns = 2 + (7 - hidden.size) + (actions ? 1 : 0);
 
   const focusForm = () => {
     // After the card has re-rendered for the contact that was picked.
@@ -274,18 +301,22 @@ export default function ContactsScreen({
   const startAdd = () => {
     setEditing(null);
     setDeletingId(null);
+    setImporting(false);
     focusForm();
   };
   const startEdit = (contact: Contact) => {
     setEditing(contact);
     setDeletingId(null);
     setFollowUpFor(null);
+    setImporting(false);
     focusForm();
   };
-  const allChecked = selected.length === rows.length && rows.length > 0;
+  // Ticks only count for contacts that are on screen.
+  const shownIds = new Set(shown.map((c) => c.id));
+  const selectedShown = selected.filter((id) => shownIds.has(id));
+  const allChecked = shown.length > 0 && selectedShown.length === shown.length;
 
-  const toggleAll = () =>
-    setSelected(allChecked ? [] : rows.map((c) => c.id));
+  const toggleAll = () => setSelected(allChecked ? [] : shown.map((c) => c.id));
   const toggle = (id: string) =>
     setSelected((s) =>
       s.includes(id) ? s.filter((x) => x !== id) : [...s, id],
@@ -299,19 +330,33 @@ export default function ContactsScreen({
         subtitle="All your leads and customers in one place, Saudara."
         actions={
           <>
-            <Button variant="outline" size="sm">
-              <Columns3 className="size-4" />
-              Columns
-            </Button>
-            <Button size="sm" onClick={actions ? startAdd : undefined}>
-              <Plus className="size-4" />
-              Add Contact
-            </Button>
+            <ColumnsMenu hidden={hidden} onToggle={toggleColumn} />
+            {actions ? (
+              <AddContactMenu
+                onAddOne={startAdd}
+                onImport={() => {
+                  setEditing(null);
+                  setImporting(true);
+                }}
+              />
+            ) : (
+              // Nothing to add to on the sample view.
+              <Button size="sm">
+                <Plus className="size-4" />
+                Add Contact
+              </Button>
+            )}
           </>
         }
       />
 
       <BentoGrid>
+        {actions && importing ? (
+          <ContactImportCard
+            action={actions.importContacts}
+            onClose={() => setImporting(false)}
+          />
+        ) : null}
         {actions ? (
           <ContactFormCard
             // A fresh form for each contact, and for adding.
@@ -404,24 +449,21 @@ export default function ContactsScreen({
           flush
           className="col-span-2 md:col-span-12"
         >
-          <div className="flex flex-wrap items-center gap-2 px-4">
-            <Button variant="outline" size="sm">
-              <Filter className="size-4" />
-              Filter
-            </Button>
-            <Button variant="outline" size="sm">
-              All Contacts
-              <ChevronDown className="size-4" />
-            </Button>
-            <Button variant="outline" size="sm">
-              <Tag className="size-4" />
-              Tags
-            </Button>
-            <Button variant="outline" size="sm">
-              <CalendarClock className="size-4" />
-              Follow-up
-            </Button>
-          </div>
+          <ContactsToolbar
+            filters={filters}
+            onChange={setFilters}
+            tags={options.tags}
+            filterOpen={filterOpen}
+            onToggleFilter={() => setFilterOpen((open) => !open)}
+          />
+          {filterOpen ? (
+            <ContactFilterPanel
+              filters={filters}
+              onChange={setFilters}
+              pics={options.pics}
+              countries={options.countries}
+            />
+          ) : null}
           <div className="mt-3 overflow-x-auto">
             <Table>
               <TableHeader>
@@ -434,13 +476,15 @@ export default function ContactsScreen({
                     />
                   </TableHead>
                   <TableHead>Contact</TableHead>
-                  <TableHead>First name</TableHead>
-                  <TableHead>Last name</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Country</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>PIC</TableHead>
-                  <TableHead>Last interaction</TableHead>
+                  {hidden.has('firstName') ? null : <TableHead>First name</TableHead>}
+                  {hidden.has('lastName') ? null : <TableHead>Last name</TableHead>}
+                  {hidden.has('phone') ? null : <TableHead>Phone</TableHead>}
+                  {hidden.has('country') ? null : <TableHead>Country</TableHead>}
+                  {hidden.has('status') ? null : <TableHead>Status</TableHead>}
+                  {hidden.has('pic') ? null : <TableHead>PIC</TableHead>}
+                  {hidden.has('lastInteraction') ? null : (
+                    <TableHead>Last interaction</TableHead>
+                  )}
                   {actions ? (
                     <TableHead className="w-10">
                       <span className="sr-only">Actions</span>
@@ -449,7 +493,7 @@ export default function ContactsScreen({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((c) =>
+                {shown.map((c) =>
                   actions && deletingId === c.id ? (
                     <DeleteContactRow
                       key={c.id}
@@ -477,6 +521,7 @@ export default function ContactsScreen({
                         <LeadScore value={c.score} />
                         <div className="min-w-0">
                           <p className="truncate font-medium">{c.email}</p>
+                          <ContactTags tags={c.tags ?? []} />
                           {live ? (
                             <ContactFollowUps
                               contactId={c.id}
@@ -498,21 +543,29 @@ export default function ContactsScreen({
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">{c.first}</TableCell>
-                    <TableCell className="whitespace-nowrap">{c.last}</TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {c.phone}
-                    </TableCell>
-                    <TableCell>{c.country}</TableCell>
-                    <TableCell>
-                      <StatusPill status={c.status} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {c.pic ?? '—'}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {c.lastInteraction ?? '—'}
-                    </TableCell>
+                    {hidden.has('firstName') ? null : (
+                      <TableCell className="whitespace-nowrap">{c.first}</TableCell>
+                    )}
+                    {hidden.has('lastName') ? null : (
+                      <TableCell className="whitespace-nowrap">{c.last}</TableCell>
+                    )}
+                    {hidden.has('phone') ? null : (
+                      <TableCell className="whitespace-nowrap tabular-nums">{c.phone}</TableCell>
+                    )}
+                    {hidden.has('country') ? null : <TableCell>{c.country}</TableCell>}
+                    {hidden.has('status') ? null : (
+                      <TableCell>
+                        <StatusPill status={c.status} />
+                      </TableCell>
+                    )}
+                    {hidden.has('pic') ? null : (
+                      <TableCell className="whitespace-nowrap">{c.pic ?? '—'}</TableCell>
+                    )}
+                    {hidden.has('lastInteraction') ? null : (
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {c.lastInteraction ?? '—'}
+                      </TableCell>
+                    )}
                     {actions ? (
                       <TableCell>
                         <ContactRowMenu
@@ -528,10 +581,12 @@ export default function ContactsScreen({
                   </TableRow>
                   ),
                 )}
-                {rows.length === 0 ? (
+                {shown.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={columns} className="py-10 text-center text-muted-foreground">
-                      No contacts yet.
+                      {rows.length === 0
+                        ? 'No contacts yet.'
+                        : 'No contacts match. Try another view or clear the filters.'}
                     </TableCell>
                   </TableRow>
                 ) : null}
@@ -540,11 +595,25 @@ export default function ContactsScreen({
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
             <span>
-              Showing {rows.length} of {total.toLocaleString()} contacts
+              Showing {shown.length} of {(narrowed ? filtered.length : total).toLocaleString()}{' '}
+              contacts
+              {narrowed ? ` (${total.toLocaleString()} in total)` : ''}
+              {live && total > rows.length
+                ? `. Views and filters cover the ${rows.length} most recent.`
+                : ''}
             </span>
-            {selected.length > 0 ? (
-              <span>{selected.length} selected</span>
-            ) : null}
+            <span className="flex items-center gap-3">
+              {selectedShown.length > 0 ? <span>{selectedShown.length} selected</span> : null}
+              {filtered.length > shown.length ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageSize((size) => size + PAGE_SIZE)}
+                >
+                  Show more
+                </Button>
+              ) : null}
+            </span>
           </div>
         </BentoCard>
 

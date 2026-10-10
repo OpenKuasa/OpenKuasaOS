@@ -148,7 +148,20 @@ export function ContactFormCard({
             defaultValue={v.leadScore || '0'}
           />
         </div>
-        <div className="flex flex-wrap items-end gap-3 md:col-span-6">
+        <div className="space-y-1.5 md:col-span-6">
+          <Label htmlFor="tags">Tags</Label>
+          <Input
+            id="tags"
+            name="tags"
+            placeholder="vip, wholesale, penang"
+            defaultValue={v.tags}
+            aria-describedby="tags-hint"
+          />
+          <p id="tags-hint" className="sr-only">
+            Separate tags with commas.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-3 md:col-span-12">
           <Button type="submit" className="w-full md:w-auto" disabled={pending}>
             {editing ? <Check className="size-4" /> : <Plus className="size-4" />}
             {pending ? 'Saving…' : editing ? 'Save changes' : 'Save contact'}
@@ -166,6 +179,23 @@ export function ContactFormCard({
         </div>
       </form>
     </BentoCard>
+  );
+}
+
+/** A contact's tags, shown under their email. */
+export function ContactTags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <ul className="mt-0.5 flex flex-wrap gap-1" aria-label="Tags">
+      {tags.map((tag) => (
+        <li
+          key={tag}
+          className="rounded-full bg-muted px-1.5 py-px text-[0.7rem] font-medium text-muted-foreground"
+        >
+          {tag}
+        </li>
+      ))}
+    </ul>
   );
 }
 

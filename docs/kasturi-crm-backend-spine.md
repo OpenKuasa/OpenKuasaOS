@@ -41,6 +41,14 @@ Money is stored in cents (`value_cents bigint`), the same as `campaigns.spend_ce
 
 Contact `status` values are `lead`, `contacted`, `qualified`, `customer` and `archived`. The screen labels them New Leads, Contacted, Qualified and Customer.
 
+## How the Contacts page finds and filters
+
+The page loads the 500 most recent contacts and their open follow-ups. Views, search, the lead score, person-in-charge, country and tag filters, and the follow-up filter all run in the browser over those rows (`src/lib/crm/contact-filters.ts`). This keeps the page quick while each database call is slow, and it works on the sample screens too.
+
+It stops being enough once a workspace has more than 500 contacts. The next step is to move search and filtering into the database with paging, backed by indexes: a trigram or full-text index for search, a GIN index on `tags`, and composite indexes on `(org_id, status)` and `(org_id, created_at)`.
+
+Import reads a CSV or Excel (`.xlsx`) file in the browser, lets the person match columns to fields, and sends only the matched columns. The server validates every row again, skips rows whose email is already in the workspace, and inserts the rest (`src/lib/crm/import.ts`). One file can bring in up to 500 rows.
+
 ## Consistency rules
 
 - Deals, activities, notes and attachments reference their contact or deal by `(id, org_id)`, so a row cannot point at another workspace's record.
