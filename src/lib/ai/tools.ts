@@ -195,7 +195,7 @@ export function filterUpcomingAppointments(
   limit = 5,
 ) {
   return appointments
-    .filter((a) => new Date(a.scheduled_at).getTime() >= now.getTime())
+    .filter((a) => a.status === 'scheduled' && new Date(a.scheduled_at).getTime() >= now.getTime())
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
     .slice(0, limit)
     .map((a) => ({

@@ -1,7 +1,9 @@
 import type { Lead } from '@/lib/reach/types';
 
 function cell(v: string): string {
-  return /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  // Neutralise spreadsheet formula injection (lead names are attacker-controllable).
+  const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 export function leadsToCsv(leads: Lead[]): string {

@@ -226,7 +226,7 @@ export async function deleteFormSubmissionAction(input: unknown) {
 
 // ─── appointments ────────────────────────────────────────────────────────────
 
-const APPOINTMENTS_PATHS = ['/reach/appointments'];
+const APPOINTMENTS_PATHS = ['/reach/appointments', '/crm/appointments'];
 
 /** Same shape as {@link runLeads}, refreshing the Appointments screen. */
 async function runAppointments<I, O>(

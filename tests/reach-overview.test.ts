@@ -29,7 +29,7 @@ describe('buildOverviewModel', () => {
     expect(m.kpis.spendRm).toBe('RM 5,007.58');       // == deriveAdsOverview total
     expect(m.funnel.find((f) => f.key === 'won')?.value).toBe(48);
     expect(m.topCampaigns[0].name).toBe('Lead Magnet — eBook'); // cheapest CPL first
-    expect(m.appointments).toHaveLength(3);
+    expect(m.appointments).toHaveLength(2);
   });
 
   it('marks an org with no rows empty and never divides by zero', async () => {

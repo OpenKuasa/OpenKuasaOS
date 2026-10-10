@@ -59,6 +59,7 @@ function formatWhen(iso: string): string {
         year: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
+        timeZone: 'Asia/Kuala_Lumpur',
       });
 }
 

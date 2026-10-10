@@ -131,7 +131,23 @@ describe('filterUpcomingAppointments', () => {
     };
     const upcoming = filterUpcomingAppointments([past, ...seedAppointments(NOW)], NOW);
     expect(upcoming.some((a) => a.contact_name === 'Ghani Omar')).toBe(false);
-    expect(upcoming).toHaveLength(3);
+    expect(upcoming).toHaveLength(2);
+  });
+});
+
+describe('filterUpcomingAppointments status', () => {
+  it('omits future appointments that are not scheduled', () => {
+    const cancelled: Appointment = {
+      id: 'c1',
+      contact_name: 'Cancelled Person',
+      kind: 'Call',
+      via: 'Call',
+      status: 'cancelled',
+      scheduled_at: new Date(NOW.getTime() + 3600_000).toISOString(),
+      created_at: NOW.toISOString(),
+    };
+    const upcoming = filterUpcomingAppointments([cancelled], NOW);
+    expect(upcoming).toHaveLength(0);
   });
 });
 
