@@ -31,7 +31,7 @@ export type Campaign = {
   leads_count: number;
   spend_cents: number;
   /** Cost per lead, in cents. */
-  cpl_cents: number;
+  cpl_cents: number | null;
   created_at: string;
 };
 

@@ -141,9 +141,9 @@ export function summarizeCampaigns(
       spend_cents: c.spend_cents,
       spend: rm(c.spend_cents),
       cpl_cents: c.cpl_cents,
-      cpl: rm(c.cpl_cents),
+      cpl: c.cpl_cents == null ? '—' : rm(c.cpl_cents),
     }))
-    .sort((a, b) => a.cpl_cents - b.cpl_cents);
+    .sort((a, b) => (a.cpl_cents ?? Infinity) - (b.cpl_cents ?? Infinity));
 }
 
 export function filterUpcomingAppointments(
