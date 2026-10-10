@@ -118,6 +118,18 @@ export function toPendingApproval(part: AnyPart): PendingApproval | null {
   };
 }
 
+/** How many changes in a conversation ran after the user approved them. */
+export function changesApplied(messages: { parts: AnyPart[] }[]): number {
+  let count = 0;
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (!toolName(part) || !('state' in part) || part.state !== 'output-available') continue;
+      if ((part as { approval?: { approved?: boolean } }).approval?.approved) count += 1;
+    }
+  }
+  return count;
+}
+
 /** Every tool result in a conversation, oldest first. */
 export function toolResults(messages: { parts: AnyPart[] }[]): ToolResult[] {
   const results: ToolResult[] = [];

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useChat } from '@ai-sdk/react';
 import { convertFileListToFileUIParts, type FileUIPart, type UIMessage } from 'ai';
 import {
@@ -62,6 +63,7 @@ import { screenFromPath, screenLabel } from '@/lib/chat/screen';
 import { SpecialistCard } from '@/components/chat/specialist-card';
 import { ApprovalCard, ToolStepCard } from '@/components/chat/tool-cards';
 import {
+  changesApplied,
   nameFinder,
   hasVisibleContent,
   isText,
@@ -756,6 +758,18 @@ function ChatPane({
   useEffect(() => {
     if (chatState === 'ready' || chatState === 'error') void refreshChatStatus();
   }, [chatState, refreshChatStatus]);
+
+  // A change that ran is shown by the screen behind the chat as well: its
+  // data is read again, without losing what the user has open on it.
+  const router = useRouter();
+  const applied = live ? changesApplied(chat.messages) : 0;
+  const appliedSeen = useRef({ chat: liveChat, count: applied });
+  useEffect(() => {
+    const seen = appliedSeen.current;
+    // Another thread's finished changes are history, not news.
+    if (seen.chat === liveChat && applied > seen.count) router.refresh();
+    appliedSeen.current = { chat: liveChat, count: applied };
+  }, [applied, liveChat, router]);
 
   // Tell the history list once per turn, after the answer (or refusal) lands.
   const turnOpen = useRef(false);
