@@ -144,7 +144,7 @@ function specialistTools(
               nameIn(results)(id, kind) ??
               (kind && typeof id === 'string' ? (team.names?.[`${kind}:${id}`] ?? null) : null),
           ),
-          detail: approvalDetail(name),
+          detail: approvalDetail(name, input),
         };
         team.proposals.set(proposal.id, proposal);
         prepared.push(proposal);

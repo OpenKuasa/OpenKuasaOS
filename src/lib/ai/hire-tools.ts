@@ -3,17 +3,30 @@
  * Lekir's lookup tools. Each reads through the {@link HireData} seam and calls
  * the same pure helpers the screens call, so a number in the chat is the number
  * on the screen. `org_id` is never taken from the model: isolation is the
- * provider's job. There are no change tools yet.
+ * provider's job. Change tools for jobs are added only for someone who may
+ * write, and each one only runs after the user approves it.
  */
 
 import { tool, type ToolSet } from 'ai';
 import { z } from 'zod';
+import {
+  type CapResult,
+  type HireWriteContext,
+  createJob,
+  createJobInput,
+  deleteJob,
+  deleteJobInput,
+  setJobStatus,
+  setJobStatusInput,
+  updateJob,
+  updateJobInput,
+} from '@/lib/hire/capabilities';
 import { formatWhen } from '@/lib/reach/overview';
 import { LOOKUP_MAX, limitSchema, rowLimit } from '@/lib/ai/limits';
 import { applicationLabel, funnelCounts, matchesText } from '@/lib/hire/applications-view';
 import { timeToHire } from '@/lib/hire/dashboard';
 import { applicantsByJob, overviewTotals, sourceBreakdown } from '@/lib/hire/overview';
-import { APPLICATION_STAGES, type HireData } from '@/lib/hire/types';
+import { APPLICATION_STAGES, type HireData, type Job } from '@/lib/hire/types';
 
 export const HIRE_TOOL_NAMES = [
   'getHiringOverview',
@@ -46,15 +59,26 @@ const includeContact = z
   .boolean()
   .optional()
   .describe('Set true only when the user asked for contact details (email or phone). Leave it out otherwise.');
+/** The first 160 characters of a description, or null when there is none. */
+function excerpt(text: string | null | undefined): string | null {
+  const t = text?.trim();
+  if (!t) return null;
+  return t.length > 160 ? `${t.slice(0, 160)}…` : t;
+}
+
 const limit = limitSchema(`How many rows to return, at most ${LOOKUP_MAX}.`);
+
+/** The date in Kuala Lumpur, as YYYY-MM-DD: the day a closing date is checked against. */
+const klToday = (now: Date) => now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
 
 export function createHireTools(
   data: HireData,
   nowArg: Date | (() => Date) = () => new Date(),
+  write?: { ctx: HireWriteContext; canWrite: boolean },
 ): ToolSet {
   const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
 
-  return {
+  const read: ToolSet = {
     getHiringOverview: tool({
       description:
         'Hiring at a glance: open jobs, all applications received, live applications, interviews scheduled in the next 7 days, ' +
@@ -72,7 +96,8 @@ export function createHireTools(
     listJobs: tool({
       description:
         'List the job openings with status, department, location and how many people applied. ' +
-        'Most applicants first. Optionally filter by status or department.',
+        'Most applicants first. Optionally filter by status or department. ' +
+        'Each job has an id to pass to a change tool, and says whether it has a description yet.',
       inputSchema: z.object({
         status: z.enum(['draft', 'open', 'paused', 'closed']).optional().describe('Only jobs with this status.'),
         department: z.string().optional().describe('Only this department. Part of the name is enough.'),
@@ -86,7 +111,12 @@ export function createHireTools(
           );
           return {
             total: rows.length,
+            // A closing date is an absolute date, so "in two weeks" needs a today to count from.
+            today_in_malaysia: klToday(now()),
             jobs: rows.slice(0, rowLimit(requested, LOOKUP_MAX)).map(({ job, applicants }) => ({
+              id: job.id,
+              // The approval titles read a row's name from `name`.
+              name: job.title,
               title: job.title,
               department: job.department,
               location: job.location,
@@ -94,6 +124,15 @@ export function createHireTools(
               status: job.status,
               applicants,
               opened_at: job.opened_at,
+              work_arrangement: job.work_arrangement,
+              headcount: job.headcount,
+              salary_min_cents: job.salary_min_cents,
+              salary_max_cents: job.salary_max_cents,
+              show_salary: job.show_salary,
+              closes_on: job.closes_on,
+              has_description: Boolean(job.description?.trim()),
+              // Not the whole description: 50 jobs of up to 10,000 characters would go to the model on every lookup.
+              description_excerpt: excerpt(job.description),
             })),
           };
         }),
@@ -260,6 +299,42 @@ export function createHireTools(
       inputSchema: z.object({}),
       execute: async () =>
         safe('getSourceBreakdown', async () => ({ sources: sourceBreakdown(await data.listApplications()) })),
+    }),
+  };
+  if (!write?.canWrite) return read;
+  const { ctx } = write;
+  // The approval titles learn a row's name from a `name` field; a job has `title`.
+  const named = (result: CapResult<Job>) =>
+    result.ok ? { ...result, data: { ...result.data, name: result.data.title } } : result;
+  // closes_on is an absolute date; without this the model has to guess the year.
+  const today = ` Today in Malaysia is ${klToday(now())}.`;
+  return {
+    ...read,
+    createJob: tool({
+      description:
+        'Create a job opening. It is always created as a draft: nothing is open until it is opened. ' +
+        'Only a title is needed; give the description when you have one.' +
+        today,
+      inputSchema: createJobInput,
+      execute: async (input) => named(await createJob(ctx, input, now())),
+    }),
+    updateJob: tool({
+      description:
+        "Change a job's details. Send only the fields that change. Does not change its status." + today,
+      inputSchema: updateJobInput,
+      execute: async (input) => named(await updateJob(ctx, input, now())),
+    }),
+    setJobStatus: tool({
+      description:
+        'Open, pause or close a job. A draft can be opened; an open job paused or closed; a paused job ' +
+        'opened or closed; a closed job reopened. Opening needs a description.',
+      inputSchema: setJobStatusInput,
+      execute: async (input) => named(await setJobStatus(ctx, input, now())),
+    }),
+    deleteJob: tool({
+      description: 'Delete a job for good. Only a job with no applications can be deleted; otherwise close it.',
+      inputSchema: deleteJobInput,
+      execute: async (input) => deleteJob(ctx, input),
     }),
   };
 }

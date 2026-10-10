@@ -2,7 +2,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HIRE_TOOL_NAMES, createHireTools } from '@/lib/ai/hire-tools';
 import { CRM_WRITE_TOOL_NAMES } from '@/lib/ai/crm-tools';
-import { REACH_WRITE_TOOL_NAMES } from '@/lib/ai/products';
+import { HIRE_WRITE_TOOL_NAMES, REACH_WRITE_TOOL_NAMES } from '@/lib/ai/products';
+import { createJobInput, deleteJobInput, setJobStatusInput, updateJobInput } from '@/lib/hire/capabilities';
 import { createReachTools } from '@/lib/ai/tools';
 import { toolMeta } from '@/components/chat/tool-parts';
 import { formatWhen } from '@/lib/reach/overview';
@@ -111,8 +112,9 @@ describe('hire tools', () => {
   });
 
   it('never lets the model choose the workspace', () => {
-    for (const name of HIRE_TOOL_NAMES) {
-      const shape = (tools[name] as unknown as { inputSchema: { shape: Record<string, unknown> } }).inputSchema.shape;
+    const withWrite = createHireTools(data, NOW, { ctx: { client: {} as never, orgId: 'org1' }, canWrite: true });
+    for (const name of [...HIRE_TOOL_NAMES, ...HIRE_WRITE_TOOL_NAMES]) {
+      const shape = (withWrite[name] as unknown as { inputSchema: { shape: Record<string, unknown> } }).inputSchema.shape;
       expect(Object.keys(shape).some((k) => /org|tenant|workspace/i.test(k)), name).toBe(false);
     }
   });
@@ -193,5 +195,53 @@ describe('hire tools', () => {
     expect(result).toEqual({ ok: false, error: 'Could not read hiring data.' });
     expect(log).toHaveBeenCalled();
     log.mockRestore();
+  });
+});
+
+describe('hire change tools', () => {
+  const ctx = { client: {} as never, orgId: 'org1' };
+  it('are offered only to someone who may write', () => {
+    const none = Object.keys(createHireTools(data, NOW));
+    const viewer = Object.keys(createHireTools(data, NOW, { ctx, canWrite: false }));
+    const member = Object.keys(createHireTools(data, NOW, { ctx, canWrite: true }));
+    for (const name of HIRE_WRITE_TOOL_NAMES) {
+      expect(none).not.toContain(name);
+      expect(viewer).not.toContain(name);
+      expect(member).toContain(name);
+    }
+    expect(HIRE_WRITE_TOOL_NAMES).toEqual(['createJob', 'updateJob', 'setJobStatus', 'deleteJob']);
+  });
+  it('gives a writer nothing beyond the lookups except the listed change tools, so each one needs approval', () => {
+    const writerTools = createHireTools(data, NOW, { ctx, canWrite: true });
+    const lookups: readonly string[] = HIRE_TOOL_NAMES;
+    const beyond = Object.keys(writerTools).filter((name) => !lookups.includes(name));
+    expect(new Set(beyond)).toEqual(new Set(HIRE_WRITE_TOOL_NAMES));
+    expect(beyond).toHaveLength(HIRE_WRITE_TOOL_NAMES.length);
+  });
+  it('tells the model today\'s date in Kuala Lumpur, for working out a closing date', async () => {
+    const lateUtc = new Date('2026-10-10T17:00:00Z'); // 01:00 on 11 Oct in Kuala Lumpur
+    const t = createHireTools(data, lateUtc, { ctx, canWrite: true }) as Record<
+      string,
+      { description: string; execute: (i: unknown, o: unknown) => Promise<Loose> }
+    >;
+    expect(t.createJob.description).toContain('Today in Malaysia is 2026-10-11.');
+    expect(t.updateJob.description).toContain('Today in Malaysia is 2026-10-11.');
+    const listed = await t.listJobs.execute({}, { toolCallId: 't', messages: [] });
+    expect(listed).toMatchObject({ total: 9, today_in_malaysia: '2026-10-11' });
+  });
+  it('take exactly the capability schemas as input', () => {
+    const t = createHireTools(data, NOW, { ctx, canWrite: true }) as Record<string, { inputSchema: unknown }>;
+    expect(t.createJob.inputSchema).toBe(createJobInput);
+    expect(t.updateJob.inputSchema).toBe(updateJobInput);
+    expect(t.setJobStatus.inputSchema).toBe(setJobStatusInput);
+    expect(t.deleteJob.inputSchema).toBe(deleteJobInput);
+  });
+  it('lets listJobs hand the model an id and the new fields', async () => {
+    const { jobs } = await run('listJobs')({ status: 'open' });
+    expect(jobs[0]).toMatchObject({ id: expect.any(String), name: expect.any(String), headcount: expect.any(Number), has_description: true });
+    // The whole description of every job would be thousands of characters per lookup.
+    expect(jobs[0]).not.toHaveProperty('description');
+    expect(jobs[0].description_excerpt.length).toBeLessThanOrEqual(161);
+    expect(jobs[0]).toHaveProperty('closes_on');
   });
 });

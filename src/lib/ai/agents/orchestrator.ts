@@ -87,7 +87,8 @@ export function runKasturi(
 
 /**
  * "Lekir, your hiring lead": the same single agent as Jebat, holding the
- * hiring lookups. It has no change tools yet, so nothing asks for approval.
+ * hiring lookups, plus (for someone who may write) job changes that each
+ * wait for the user's approval.
  */
 export function runLekir(
   messages: ModelMessage[],
@@ -116,13 +117,13 @@ const TEAM_AREA = {
   reach:
     'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
   crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact) and the calendar. A lead is not a contact yet: anything about a lead goes to Jebat',
-  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Lookups only for now. Existing staff, leave and payroll are not hiring',
+  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Job openings can be created, edited, opened, paused, closed and deleted. Existing staff, leave and payroll are not hiring',
 } as const;
 
 /**
  * Tuah, the cross-app assistant on the Command page and the floating button.
  * It has the marketing tools Jebat has, Kasturi's CRM tools (lookups, and
- * changes behind an approval) and Lekir's hiring lookups, runs on the model those rules were tuned on,
+ * changes behind an approval) and Lekir's hiring tools (lookups, and job changes behind an approval), runs on the model those rules were tuned on,
  * and says so rather than inventing data from the products it cannot see yet.
  */
 export function runTuah(
@@ -139,7 +140,11 @@ export function runTuah(
    * carries out what they prepare, instead of holding every tool itself.
    */
   team?: Omit<TeamContext, 'apiKey'> | null,
-  /** The workspace's hiring data. Lookups only, so it needs no workspace role. */
+  /**
+   * The workspace's hiring data. The lookups need no workspace role; the job
+   * change tools are added only when `hire.write.canWrite` is set, and each
+   * waits for the user's approval.
+   */
   hire?: HireAccess | null,
 ) {
   // Every product the user can reach: marketing always, the CRM in a workspace, hiring when passed.

@@ -21,6 +21,7 @@ import {
   type HireData,
   type InterviewKind,
   type InterviewStatus,
+  type Job,
   type JobStatus,
   type PoolStatus,
 } from './types';
@@ -67,7 +68,11 @@ const clock = (iso: string) =>
 
 export type JobsModel = {
   isEmpty: boolean;
-  rows: { id: string; title: string; dept: string; applicants: number; status: 'Open' | 'Paused' | 'Closed' | 'Draft'; posted: string }[];
+  rows: {
+    id: string; title: string; dept: string; applicants: number; status: 'Open' | 'Paused' | 'Closed' | 'Draft'; posted: string;
+    /** The whole job, for the edit form and the row's status buttons. */
+    job: Job;
+  }[];
   statusMix: { key: JobStatus; label: string; value: number }[];
   byJob: { label: string; applicants: number }[];
   totalApplicants: number;
@@ -86,6 +91,7 @@ export async function buildJobsModel(data: HireData, now: Date): Promise<JobsMod
       applicants,
       status: JOB_STATUS_LABEL[job.status],
       posted: job.opened_at ? `${ago(job.opened_at, now)} ago` : '—',
+      job,
     })),
     statusMix: JOB_STATUS_ORDER.map((key) => ({
       key,
@@ -103,13 +109,20 @@ export async function buildJobsModel(data: HireData, now: Date): Promise<JobsMod
 
 export type CareersModel = {
   isEmpty: boolean;
-  rows: { title: string; location: string; type: string; applicants: number; status: 'Published' | 'Closed' | 'Draft' }[];
+  rows: {
+    id: string; title: string; location: string; type: string; applicants: number;
+    status: 'Published' | 'Closed' | 'Draft';
+    /** The job's real status; `status` folds paused and draft into "Draft". */
+    jobStatus: JobStatus;
+  }[];
   openRoles: number;
 };
 
 export async function buildCareersModel(data: HireData): Promise<CareersModel> {
   const [jobs, apps] = await Promise.all([data.listJobs(), data.listApplications()]);
   const rows = applicantsByJob(jobs, apps).map(({ job, applicants }) => ({
+    id: job.id,
+    jobStatus: job.status,
     title: job.title,
     location: job.location ?? '—',
     type: TYPE_LABEL[job.employment_type],

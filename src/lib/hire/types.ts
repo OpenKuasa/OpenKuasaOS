@@ -6,6 +6,7 @@
 
 export type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'internship';
 export type JobStatus = 'draft' | 'open' | 'paused' | 'closed';
+export type WorkArrangement = 'onsite' | 'hybrid' | 'remote';
 
 export type Job = {
   id: string;
@@ -14,10 +15,27 @@ export type Job = {
   location: string | null;
   employment_type: EmploymentType;
   status: JobStatus;
+  /** Plain text. Needed before a job can be opened. */
+  description: string | null;
+  /** Monthly salary in sen. */
+  salary_min_cents: number | null;
+  salary_max_cents: number | null;
+  /** Whether a public page may show the salary range. */
+  show_salary: boolean;
+  /** Last day to apply, as YYYY-MM-DD. */
+  closes_on: string | null;
+  work_arrangement: WorkArrangement | null;
+  /** How many people are being hired for the role. */
+  headcount: number;
   opened_at: string | null;
   closed_at: string | null;
   created_at: string;
 };
+
+/** The columns of `hire_jobs` that make a {@link Job}, for selects. */
+export const JOB_COLUMNS =
+  'id,title,department,location,employment_type,status,description,salary_min_cents,' +
+  'salary_max_cents,show_salary,closes_on,work_arrangement,headcount,opened_at,closed_at,created_at';
 
 export type PoolStatus = 'none' | 'available' | 'passive' | 're_engaged';
 

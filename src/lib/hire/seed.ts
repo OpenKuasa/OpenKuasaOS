@@ -18,6 +18,7 @@ import type {
   Job,
   JobStatus,
   PoolStatus,
+  WorkArrangement,
 } from './types';
 
 const DAY = 86_400_000;
@@ -56,17 +57,20 @@ type JobSeed = {
   status: JobStatus; openedDaysAgo: number | null; closedDaysAgo: number | null;
   /** Applications 1..upTo (cumulative) belong to this job or an earlier one. */
   upTo: number;
+  work_arrangement: WorkArrangement; headcount: number;
+  /** Monthly range in whole ringgit. */
+  salary: [number, number] | null; show_salary: boolean; closesInDays: number | null;
 };
 export const JOB_SEEDS: JobSeed[] = [
-  { title: 'Software Engineer', department: 'Engineering', location: 'Kuala Lumpur', employment_type: 'full_time', status: 'open', openedDaysAgo: 62, closedDaysAgo: null, upTo: 56 },
-  { title: 'Sales Executive', department: 'Sales', location: 'Petaling Jaya', employment_type: 'full_time', status: 'open', openedDaysAgo: 61, closedDaysAgo: null, upTo: 98 },
-  { title: 'Account Manager', department: 'Sales', location: 'Shah Alam', employment_type: 'full_time', status: 'open', openedDaysAgo: 60, closedDaysAgo: null, upTo: 129 },
-  { title: 'Graphic Designer', department: 'Marketing', location: 'Kuala Lumpur', employment_type: 'contract', status: 'open', openedDaysAgo: 59, closedDaysAgo: null, upTo: 157 },
-  { title: 'Customer Support', department: 'Operations', location: 'Cyberjaya', employment_type: 'part_time', status: 'open', openedDaysAgo: 58, closedDaysAgo: null, upTo: 181 },
-  { title: 'Operations Executive', department: 'Operations', location: 'Klang', employment_type: 'full_time', status: 'open', openedDaysAgo: 57, closedDaysAgo: null, upTo: 203 },
-  { title: 'Content Writer', department: 'Marketing', location: 'Kuala Lumpur', employment_type: 'contract', status: 'closed', openedDaysAgo: 64, closedDaysAgo: 4, upTo: 230 },
-  { title: 'Accountant', department: 'Finance', location: 'Subang Jaya', employment_type: 'full_time', status: 'paused', openedDaysAgo: 63, closedDaysAgo: null, upTo: 248 },
-  { title: 'Marketing Lead', department: 'Marketing', location: 'Kuala Lumpur', employment_type: 'full_time', status: 'draft', openedDaysAgo: null, closedDaysAgo: null, upTo: 248 },
+  { title: 'Software Engineer', department: 'Engineering', location: 'Kuala Lumpur', employment_type: 'full_time', status: 'open', openedDaysAgo: 62, closedDaysAgo: null, upTo: 56, work_arrangement: 'hybrid', headcount: 2, salary: [5000, 8000], show_salary: true, closesInDays: 21 },
+  { title: 'Sales Executive', department: 'Sales', location: 'Petaling Jaya', employment_type: 'full_time', status: 'open', openedDaysAgo: 61, closedDaysAgo: null, upTo: 98, work_arrangement: 'onsite', headcount: 3, salary: [3000, 4500], show_salary: true, closesInDays: 14 },
+  { title: 'Account Manager', department: 'Sales', location: 'Shah Alam', employment_type: 'full_time', status: 'open', openedDaysAgo: 60, closedDaysAgo: null, upTo: 129, work_arrangement: 'hybrid', headcount: 1, salary: [4500, 6500], show_salary: true, closesInDays: null },
+  { title: 'Graphic Designer', department: 'Marketing', location: 'Kuala Lumpur', employment_type: 'contract', status: 'open', openedDaysAgo: 59, closedDaysAgo: null, upTo: 157, work_arrangement: 'remote', headcount: 1, salary: [3500, 5000], show_salary: true, closesInDays: 28 },
+  { title: 'Customer Support', department: 'Operations', location: 'Cyberjaya', employment_type: 'part_time', status: 'open', openedDaysAgo: 58, closedDaysAgo: null, upTo: 181, work_arrangement: 'onsite', headcount: 2, salary: [2200, 3000], show_salary: false, closesInDays: null },
+  { title: 'Operations Executive', department: 'Operations', location: 'Klang', employment_type: 'full_time', status: 'open', openedDaysAgo: 57, closedDaysAgo: null, upTo: 203, work_arrangement: 'onsite', headcount: 1, salary: [3000, 4000], show_salary: false, closesInDays: null },
+  { title: 'Content Writer', department: 'Marketing', location: 'Kuala Lumpur', employment_type: 'contract', status: 'closed', openedDaysAgo: 64, closedDaysAgo: 4, upTo: 230, work_arrangement: 'remote', headcount: 1, salary: null, show_salary: false, closesInDays: null },
+  { title: 'Accountant', department: 'Finance', location: 'Subang Jaya', employment_type: 'full_time', status: 'paused', openedDaysAgo: 63, closedDaysAgo: null, upTo: 248, work_arrangement: 'onsite', headcount: 1, salary: [4000, 5500], show_salary: false, closesInDays: null },
+  { title: 'Marketing Lead', department: 'Marketing', location: 'Kuala Lumpur', employment_type: 'full_time', status: 'draft', openedDaysAgo: null, closedDaysAgo: null, upTo: 248, work_arrangement: 'hybrid', headcount: 1, salary: null, show_salary: false, closesInDays: null },
 ];
 
 /** Applications received in each of the last 8 weeks, oldest first, as running totals. */
@@ -117,6 +121,24 @@ export function seedRow(i: number): SeedRow {
 }
 
 const iso = (ms: number) => new Date(ms).toISOString();
+const klDate = (ms: number) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+
+const describeJob = (title: string, department: string) =>
+  `Rimba Ventures is hiring for the role of ${title} in our ${department} team.\n\n` +
+  `You will own day-to-day ${department.toLowerCase()} work, report to the head of ${department}, ` +
+  `and work closely with the rest of the company.\n\n` +
+  `We are looking for relevant experience, clear communication in Bahasa Malaysia and English, ` +
+  `and someone who finishes what they start.`;
+
+/** The same instant moved to 09:00–17:00 in Kuala Lumpur, on the hour or half hour. */
+function workingTime(ms: number): number {
+  const KL = 8 * HOUR;
+  const local = new Date(ms + KL);
+  const dayStart = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate());
+  const minutes = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const clamped = Math.min(17 * 60, Math.max(9 * 60, Math.round(minutes / 30) * 30));
+  return dayStart + clamped * 60_000 - KL;
+}
 
 export function createSeedHireData(now: Date = new Date()): HireData {
   const t = now.getTime();
@@ -128,6 +150,13 @@ export function createSeedHireData(now: Date = new Date()): HireData {
     location: job.location,
     employment_type: job.employment_type,
     status: job.status,
+    description: job.status === 'draft' ? null : describeJob(job.title, job.department),
+    salary_min_cents: job.salary ? job.salary[0] * 100 : null,
+    salary_max_cents: job.salary ? job.salary[1] * 100 : null,
+    show_salary: job.show_salary,
+    closes_on: job.closesInDays === null ? null : klDate(t + job.closesInDays * DAY),
+    work_arrangement: job.work_arrangement,
+    headcount: job.headcount,
     opened_at: job.openedDaysAgo === null ? null : iso(t - job.openedDaysAgo * DAY),
     closed_at: job.closedDaysAgo === null ? null : iso(t - job.closedDaysAgo * DAY),
     created_at: iso(t - (job.openedDaysAgo ?? 2) * DAY),
@@ -176,12 +205,15 @@ export function createSeedHireData(now: Date = new Date()): HireData {
   const interviews: Interview[] = INTERVIEW_OFFSET_HOURS.map((hours, index) => {
     const application = byK.get(index + 4)!;
     const status: InterviewStatus = index < 6 ? 'scheduled' : index < 9 ? 'completed' : 'no_show';
+    let scheduled = workingTime(t + hours * HOUR);
+    // Snapping must not pull an upcoming interview back to now or earlier.
+    if (status === 'scheduled' && scheduled <= t) scheduled += DAY;
     return {
       id: `int-${index + 1}`,
       application_id: application.id,
       candidate_name: application.candidate_name,
       job_title: application.job_title,
-      scheduled_at: iso(t + hours * HOUR),
+      scheduled_at: iso(scheduled),
       kind: KINDS[index % 3],
       interviewer_name: INTERVIEWERS[index % 4],
       status,

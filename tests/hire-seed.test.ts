@@ -63,4 +63,71 @@ describe('hire seed', () => {
   it('seedRow is a pure rule: application 1', () => {
     expect(seedRow(1)).toMatchObject({ k: 37, jobIndex: 0, stage: 'interview', outcome: 'active' });
   });
+
+  it('gives every job the slice 2a fields', async () => {
+    const jobs = await data.listJobs();
+    for (const job of jobs) {
+      expect(job.headcount).toBeGreaterThanOrEqual(1);
+      expect(typeof job.show_salary).toBe('boolean');
+      expect(job).toHaveProperty('description');
+      expect(job).toHaveProperty('closes_on');
+      expect(job).toHaveProperty('work_arrangement');
+    }
+    // Every open job can be shown publicly later, so it has a description.
+    for (const job of jobs.filter((j) => j.status === 'open')) {
+      expect(job.description?.length ?? 0).toBeGreaterThan(40);
+    }
+    expect(jobs.filter((j) => j.show_salary)).toHaveLength(4);
+    for (const job of jobs) {
+      if (job.salary_min_cents !== null && job.salary_max_cents !== null) {
+        expect(job.salary_max_cents).toBeGreaterThanOrEqual(job.salary_min_cents);
+      }
+      if (job.closes_on) expect(job.closes_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  it('words each job description so it reads right whatever letter the title starts with', async () => {
+    const jobs = await data.listJobs();
+    const manager = jobs.find((j) => j.title === 'Account Manager');
+    expect(manager?.description?.startsWith('Rimba Ventures is hiring for the role of Account Manager in our Sales team.')).toBe(true);
+    const described = jobs.filter((j) => j.description !== null);
+    expect(described).toHaveLength(8);
+    for (const job of described) {
+      // "a Account Manager", "a Operations Executive", "a Engineering team".
+      for (const wrong of [' a A', ' a O', ' a E']) expect(job.description, job.title).not.toContain(wrong);
+    }
+  });
+
+  it('schedules interviews in working hours in Kuala Lumpur, on the hour or half hour', async () => {
+    for (const interview of await data.listInterviews()) {
+      const kl = new Date(new Date(interview.scheduled_at).getTime() + 8 * 3_600_000);
+      const minutes = kl.getUTCHours() * 60 + kl.getUTCMinutes();
+      expect(minutes, interview.scheduled_at).toBeGreaterThanOrEqual(9 * 60);
+      expect(minutes, interview.scheduled_at).toBeLessThanOrEqual(17 * 60);
+      expect(kl.getUTCMinutes() % 30).toBe(0);
+    }
+  });
+
+  it('moves an evening interview to the next day, so upcoming ones stay after now', async () => {
+    const eveningNow = new Date('2026-10-10T10:00:00Z'); // 18:00 in Kuala Lumpur
+    const interviews = await createSeedHireData(eveningNow).listInterviews();
+    const scheduled = interviews.filter((i) => i.status === 'scheduled');
+    expect(scheduled).toHaveLength(6);
+    for (const interview of scheduled) {
+      expect(new Date(interview.scheduled_at).getTime(), interview.scheduled_at).toBeGreaterThan(eveningNow.getTime());
+    }
+    expect(scheduled[0].scheduled_at).toBe('2026-10-11T09:00:00.000Z'); // 17:00 the next day
+    for (const interview of interviews) {
+      const kl = new Date(new Date(interview.scheduled_at).getTime() + 8 * 3_600_000);
+      const minutes = kl.getUTCHours() * 60 + kl.getUTCMinutes();
+      expect(minutes, interview.scheduled_at).toBeGreaterThanOrEqual(9 * 60);
+      expect(minutes, interview.scheduled_at).toBeLessThanOrEqual(17 * 60);
+      expect(kl.getUTCMinutes() % 30).toBe(0);
+    }
+    const done = interviews.filter((i) => i.status !== 'scheduled');
+    expect(done).toHaveLength(4);
+    for (const interview of done) {
+      expect(new Date(interview.scheduled_at).getTime(), interview.scheduled_at).toBeLessThan(eveningNow.getTime());
+    }
+  });
 });

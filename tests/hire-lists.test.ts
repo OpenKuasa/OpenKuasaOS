@@ -35,6 +35,8 @@ describe('jobs', () => {
   it('charts no bars for open jobs that have no applications', async () => {
     const job = (id: string): Job => ({
       id, title: id, department: null, location: null, employment_type: 'full_time', status: 'open',
+      description: null, salary_min_cents: null, salary_max_cents: null, show_salary: false, closes_on: null,
+      work_arrangement: null, headcount: 1,
       opened_at: '2026-09-01T00:00:00Z', closed_at: null, created_at: '2026-09-01T00:00:00Z',
     });
     const model = await buildJobsModel({ ...EMPTY, listJobs: async () => [job('j1'), job('j2')] }, NOW);
@@ -64,6 +66,12 @@ describe('careers page', () => {
     expect(model.rows.find((r) => r.title === 'Content Writer')?.status).toBe('Closed');
     expect(model.rows.find((r) => r.title === 'Accountant')?.status).toBe('Draft');
     expect(model.rows.find((r) => r.title === 'Customer Support')).toMatchObject({ type: 'Part-time', status: 'Published' });
+  });
+  it('carries the whole job for editing, and ids for the careers actions', async () => {
+    const jobs = await buildJobsModel(data, NOW);
+    expect(jobs.rows[0].job).toMatchObject({ id: jobs.rows[0].id, title: jobs.rows[0].title });
+    const careers = await buildCareersModel(data);
+    expect(careers.rows.every((r) => typeof r.id === 'string' && typeof r.jobStatus === 'string')).toBe(true);
   });
 });
 

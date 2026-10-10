@@ -89,6 +89,7 @@ vi.mock('@/lib/ai/provider', async (importOriginal) => {
 const SECRET = 'test-secret-for-sealing-workspace-keys-0123456789';
 const { encryptApiKey } = await import('@/lib/ai/key-crypto');
 const { HIRE_TOOL_NAMES } = await import('@/lib/ai/hire-tools');
+const { HIRE_WRITE_TOOL_NAMES } = await import('@/lib/ai/products');
 const { POST } = await import('@/app/api/hire/chat/route');
 
 function post(body: unknown): Request {
@@ -153,7 +154,7 @@ describe('POST /api/hire/chat gating', () => {
 });
 
 describe('POST /api/hire/chat happy path', () => {
-  it('answers as Lekir, with the hiring lookups and nothing else', async () => {
+  it('answers as Lekir, with the hiring lookups and job changes and nothing else', async () => {
     const res = await POST(post(validBody));
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('6 job');
@@ -161,7 +162,7 @@ describe('POST /api/hire/chat happy path', () => {
 
     const [call] = ctl.calls;
     expect(call.system).toMatch(/^You are Lekir/);
-    expect(call.tools.sort()).toEqual([...HIRE_TOOL_NAMES].sort());
+    expect(call.tools.sort()).toEqual([...HIRE_TOOL_NAMES, ...HIRE_WRITE_TOOL_NAMES].sort());
     expect(call.tools).not.toContain('getCampaigns');
     expect(call.tools).not.toContain('listDeals');
 
@@ -170,12 +171,13 @@ describe('POST /api/hire/chat happy path', () => {
     expect(ctl.tablesRead).toContain('hire_jobs');
   });
 
-  it('gives a viewer the same lookups: there is nothing to withhold yet', async () => {
+  it('gives a viewer the lookups and no change tools', async () => {
     ctl.org = { orgId: 'org1', role: 'viewer' };
     const res = await POST(post(validBody));
     expect(res.status).toBe(200);
     await res.text();
     expect(ctl.calls[0].tools.sort()).toEqual([...HIRE_TOOL_NAMES].sort());
+    for (const name of HIRE_WRITE_TOOL_NAMES) expect(ctl.calls[0].tools).not.toContain(name);
   });
 
   it('answers someone in no workspace from empty data, never the sample data', async () => {
@@ -190,6 +192,10 @@ describe('POST /api/hire/chat happy path', () => {
     expect(await data.listApplications()).toEqual([]);
     expect(await data.listInterviews()).toEqual([]);
     expect(ctl.tablesRead.filter((t) => t.startsWith('hire_'))).toEqual([]);
+    // Someone in no workspace may look things up but can change nothing.
+    const tools = ctl.calls[0].tools;
+    for (const name of HIRE_TOOL_NAMES) expect(tools).toContain(name);
+    for (const name of HIRE_WRITE_TOOL_NAMES) expect(tools).not.toContain(name);
   });
 
   it('runs on the workspace key without touching the free allowance', async () => {

@@ -93,4 +93,13 @@ describe('getHireData', () => {
     } as never;
     await expect((await getHireData(failing)).listJobs()).rejects.toThrow('boom');
   });
+
+  it('asks for the slice 2a job columns', async () => {
+    const data = await getHireData(fakeClient);
+    await data.listJobs();
+    const columns = asked.find((a) => a.table === 'hire_jobs')!.columns.split(',');
+    for (const column of ['description', 'salary_min_cents', 'salary_max_cents', 'show_salary', 'closes_on', 'work_arrangement', 'headcount']) {
+      expect(columns, column).toContain(column);
+    }
+  });
 });
