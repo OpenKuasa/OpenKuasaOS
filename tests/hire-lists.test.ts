@@ -76,6 +76,53 @@ describe('careers page', () => {
   });
 });
 
+describe('careers page: what the public board lists', () => {
+  const job = (id: string, over: Partial<Job>): Job => ({
+    id, title: id, department: null, location: null, employment_type: 'full_time', status: 'open',
+    description: 'What you will do.', salary_min_cents: null, salary_max_cents: null, show_salary: false, closes_on: null,
+    work_arrangement: null, headcount: 1,
+    opened_at: '2026-09-01T00:00:00Z', closed_at: null, created_at: '2026-09-01T00:00:00Z',
+    ...over,
+  });
+  const settings = { org_id: 'org-1', careers_enabled: true, careers_headline: 'Work with us', careers_tagline: null };
+
+  it('carries the settings from the provider', async () => {
+    const model = await buildCareersModel({ ...EMPTY, getSettings: async () => settings });
+    expect(model.settings).toEqual(settings);
+    expect((await buildCareersModel(EMPTY)).settings.careers_enabled).toBe(false);
+  });
+
+  it('shows open jobs with a description, newest opened first', async () => {
+    const jobs = [
+      job('Older', { opened_at: '2026-09-01T00:00:00Z', location: 'Shah Alam' }),
+      job('Draft', { status: 'draft', opened_at: null }),
+      job('Paused', { status: 'paused' }),
+      job('Blank', { description: '   \n ' }),
+      job('None', { description: null }),
+      job('Closed', { status: 'closed' }),
+      job('Newer', { opened_at: '2026-10-05T00:00:00Z' }),
+    ];
+    // The busiest job is not first: the order is by opening date, not by applicants.
+    const app = (id: string): Application => ({
+      id, candidate_id: id, job_id: 'Older', candidate_name: 'Aina', job_title: 'Older', stage: 'applied',
+      outcome: 'active', rating: null, source: null, applied_at: '2026-10-01T00:00:00Z', offered_at: null,
+      hired_at: null, created_at: '2026-10-01T00:00:00Z',
+    });
+    const model = await buildCareersModel({
+      ...EMPTY, listJobs: async () => jobs, listApplications: async () => [app('a1'), app('a2')],
+    });
+    expect(model.showing).toEqual([
+      { title: 'Newer', location: '' },
+      { title: 'Older', location: 'Shah Alam' },
+    ]);
+    expect(model.rows).toHaveLength(7);
+  });
+
+  it('lists nothing for a workspace with no jobs', async () => {
+    expect((await buildCareersModel(EMPTY)).showing).toEqual([]);
+  });
+});
+
 describe('candidates board', () => {
   it('puts live applications in their stage and counts the rest', async () => {
     const model = await buildBoardModel(data, NOW);

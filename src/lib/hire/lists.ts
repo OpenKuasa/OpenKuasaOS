@@ -19,12 +19,16 @@ import {
   type ApplicationStage,
   type EmploymentType,
   type HireData,
+  type HireSettings,
   type InterviewKind,
   type InterviewStatus,
   type Job,
   type JobStatus,
   type PoolStatus,
 } from './types';
+
+/** The branding form's checks live in a file of their own, so the client form can import them alone. */
+export { brandingErrors } from './careers-form';
 
 export const ROWS_SHOWN = 50;
 const TZ = 'Asia/Kuala_Lumpur';
@@ -116,10 +120,20 @@ export type CareersModel = {
     jobStatus: JobStatus;
   }[];
   openRoles: number;
+  settings: HireSettings;
+  /**
+   * What the public board lists, in its order: open jobs with a description,
+   * newest opened first. The same rule as the `get_public_careers` function.
+   */
+  showing: { title: string; location: string }[];
 };
 
 export async function buildCareersModel(data: HireData): Promise<CareersModel> {
-  const [jobs, apps] = await Promise.all([data.listJobs(), data.listApplications()]);
+  const [jobs, apps, settings] = await Promise.all([data.listJobs(), data.listApplications(), data.getSettings()]);
+  const showing = jobs
+    .filter((job) => job.status === 'open' && /\S/.test(job.description ?? ''))
+    .sort((a, b) => (b.opened_at ?? '').localeCompare(a.opened_at ?? '') || a.title.localeCompare(b.title))
+    .map((job) => ({ title: job.title, location: job.location ?? '' }));
   const rows = applicantsByJob(jobs, apps).map(({ job, applicants }) => ({
     id: job.id,
     jobStatus: job.status,
@@ -129,7 +143,13 @@ export async function buildCareersModel(data: HireData): Promise<CareersModel> {
     applicants,
     status: job.status === 'open' ? ('Published' as const) : job.status === 'closed' ? ('Closed' as const) : ('Draft' as const),
   }));
-  return { isEmpty: jobs.length === 0, rows, openRoles: rows.filter((r) => r.status === 'Published').length };
+  return {
+    isEmpty: jobs.length === 0,
+    rows,
+    openRoles: rows.filter((r) => r.status === 'Published').length,
+    settings,
+    showing,
+  };
 }
 
 export type BoardModel = {
