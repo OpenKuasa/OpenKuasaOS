@@ -64,13 +64,21 @@ const GROUP_LABELS = [
   'Older',
 ] as const;
 
-/** Buckets threads by calendar day in the viewer's time zone, newest first. */
-export function groupThreads(threads: ChatThread[], now: Date = new Date()): ThreadGroup[] {
-  const startOfToday = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).getTime();
+/**
+ * Buckets threads by calendar day, newest first. Days are the viewer's own
+ * (`local`) wherever the viewer's clock is known. `utc` gives the same answer
+ * on the server and in the browser, for the first paint of a list the page
+ * was sent with.
+ */
+export function groupThreads(
+  threads: ChatThread[],
+  now: Date = new Date(),
+  zone: 'local' | 'utc' = 'local',
+): ThreadGroup[] {
+  const startOfToday =
+    zone === 'utc'
+      ? Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+      : new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const buckets: ChatThread[][] = GROUP_LABELS.map(() => []);
 
   const sorted = [...threads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

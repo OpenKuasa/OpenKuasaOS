@@ -87,6 +87,21 @@ describe('groupThreads', () => {
       ['Older', ['long-ago']],
     ]);
   });
+
+  it('buckets by UTC day when asked, whatever zone it runs in', () => {
+    const groups = groupThreads(
+      [
+        thread('after-utc-midnight', '2026-10-10T00:30:00.000Z'),
+        thread('before-utc-midnight', '2026-10-09T23:30:00.000Z'),
+      ],
+      new Date('2026-10-10T01:00:00.000Z'),
+      'utc',
+    );
+    expect(groups.map((g) => [g.label, g.threads.map((t) => t.id)])).toEqual([
+      ['Today', ['after-utc-midnight']],
+      ['Yesterday', ['before-utc-midnight']],
+    ]);
+  });
 });
 
 describe('filterThreads', () => {
