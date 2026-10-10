@@ -186,33 +186,43 @@ export default async function CareersPageScreen() {
                 <span className="size-2 rounded-full bg-amber-400/70" />
                 <span className="size-2 rounded-full bg-emerald-400/70" />
                 <span className="ml-2 truncate text-[10px] text-muted-foreground">
-                  careers.openkuasa.com
+                  {isDemo ? 'careers.openkuasa.com' : 'Careers page'}
                 </span>
               </div>
               <div className="flex flex-col gap-2 bg-gradient-to-br from-primary/10 to-muted px-4 py-5">
-                <span className="w-fit rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                  Rimba Ventures
-                </span>
-                <p className="text-sm font-bold leading-tight">Join our team</p>
-                <p className="text-[10px] text-muted-foreground">
-                  Build the future with us
-                </p>
+                {isDemo && (
+                  <>
+                    <span className="w-fit rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                      Rimba Ventures
+                    </span>
+                    <p className="text-sm font-bold leading-tight">Join our team</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Build the future with us
+                    </p>
+                  </>
+                )}
                 <div className="mt-1 space-y-1.5">
-                  {published
-                    .slice(0, 3)
-                    .map((j, index) => (
-                      <div
-                        key={`${j.title}-${index}`}
-                        className="flex items-center justify-between rounded-md border bg-background/70 px-2 py-1"
-                      >
-                        <span className="truncate text-[10px] font-medium">
-                          {j.title}
-                        </span>
-                        <span className="shrink-0 text-[9px] text-muted-foreground">
-                          {j.location.split(' · ')[0]}
-                        </span>
-                      </div>
-                    ))}
+                  {!model ? LOAD_FAILED : published.length === 0 ? (
+                    <Muted>No published roles yet</Muted>
+                  ) : (
+                    <>
+                      {published
+                        .slice(0, 3)
+                        .map((j, index) => (
+                          <div
+                            key={`${j.title}-${index}`}
+                            className="flex items-center justify-between rounded-md border bg-background/70 px-2 py-1"
+                          >
+                            <span className="truncate text-[10px] font-medium">
+                              {j.title}
+                            </span>
+                            <span className="shrink-0 text-[9px] text-muted-foreground">
+                              {j.location.split(' · ')[0]}
+                            </span>
+                          </div>
+                        ))}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -265,20 +275,24 @@ export default async function CareersPageScreen() {
           icon={Palette}
           className="col-span-2 md:col-span-4"
         >
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="headline">Headline</Label>
-              <Input id="headline" disabled defaultValue="Join our team" />
+          {isDemo ? (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="headline">Headline</Label>
+                <Input id="headline" disabled defaultValue="Join our team" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="tagline">Tagline</Label>
+                <Input id="tagline" disabled defaultValue="Build the future with us" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="primary-colour">Primary colour</Label>
+                <Input id="primary-colour" disabled defaultValue="#2E8B57" />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="tagline">Tagline</Label>
-              <Input id="tagline" disabled defaultValue="Build the future with us" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="primary-colour">Primary colour</Label>
-              <Input id="primary-colour" disabled defaultValue="#2E8B57" />
-            </div>
-          </div>
+          ) : (
+            NOT_AVAILABLE
+          )}
         </BentoCard>
 
         {/* Job listings table */}

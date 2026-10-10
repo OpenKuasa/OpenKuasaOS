@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { buildHireDashboardModel } from '@/lib/hire/dashboard';
-import { FUNNEL_COLOR, LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire } from '@/screens/hire/parts';
+import { FUNNEL_COLOR, LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire, topSlices } from '@/screens/hire/parts';
 
 /* ---- static config ------------------------------------------------ */
 
@@ -47,12 +47,11 @@ const SOURCE_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'va
 export default async function DashboardScreen() {
   const { model } = await loadHire('dashboard', buildHireDashboardModel);
   const applications = model?.funnel[0]?.value ?? 0;
-  const sourceMix: Slice[] = (model?.hiresBySource ?? []).slice(0, 4).map((row, index) => ({
-    key: row.source,
-    label: row.source,
-    value: row.hires,
-    color: SOURCE_COLORS[index],
-  }));
+  const sourceMix: Slice[] = topSlices(
+    model?.hiresBySource ?? [],
+    (r) => r.hires,
+    (r) => r.source,
+  ).map((row, index) => ({ ...row, color: SOURCE_COLORS[index] }));
   const pipeline: Slice[] = (model?.funnel ?? []).map((f) => ({
     key: f.key,
     label: f.label,
@@ -67,14 +66,12 @@ export default async function DashboardScreen() {
         subtitle="Your recruiting performance, Saudara."
         actions={
           <>
-            <Select defaultValue="mtd" disabled>
+            <Select defaultValue="all" disabled>
               <SelectTrigger className="w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mtd">This month</SelectItem>
-                <SelectItem value="qtd">This quarter</SelectItem>
-                <SelectItem value="ytd">Financial year</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="sm" disabled>

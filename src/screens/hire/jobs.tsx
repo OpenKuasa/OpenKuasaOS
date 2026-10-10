@@ -61,6 +61,8 @@ export default async function JobsScreen() {
     color: STATUS_COLOR[s.key],
   }));
 
+  const departments = [...new Set((model?.rows ?? []).map((r) => r.dept))].filter((d) => d !== '—');
+
   return (
     <ScreenContainer>
       <PageHeader
@@ -145,23 +147,23 @@ export default async function JobsScreen() {
           <div className="flex flex-wrap items-center gap-2 px-4">
             <div className="relative min-w-0 flex-1 sm:max-w-xs">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search jobs…" className="pl-9" />
+              <Input placeholder="Search jobs…" className="pl-9" disabled title="Coming soon" />
             </div>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-44">
+            <Select defaultValue="all" disabled>
+              <SelectTrigger className="w-44" title="Coming soon">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Departments</SelectItem>
-                <SelectItem value="engineering">Engineering</SelectItem>
-                <SelectItem value="sales">Sales</SelectItem>
-                <SelectItem value="marketing">Marketing</SelectItem>
-                <SelectItem value="operations">Operations</SelectItem>
-                <SelectItem value="finance">Finance</SelectItem>
+                {departments.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <Select defaultValue="all">
-              <SelectTrigger className="w-40">
+            <Select defaultValue="all" disabled>
+              <SelectTrigger className="w-40" title="Coming soon">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

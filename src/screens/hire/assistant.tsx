@@ -20,7 +20,7 @@ import {
 import { LiveDot } from '@/components/ui/live-dot';
 import { buildHireOverviewModel } from '@/lib/hire/overview';
 import { AskLekirHero } from '@/screens/hire/ask-lekir-hero';
-import { FUNNEL_COLOR, LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire } from '@/screens/hire/parts';
+import { FUNNEL_COLOR, LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire, topSlices } from '@/screens/hire/parts';
 
 /* ---- static config ------------------------------------------------ */
 
@@ -46,16 +46,6 @@ const PROMPTS = [
   'Draft a JD for Software Engineer',
 ];
 
-type SourceRow = { source: string; applications: number };
-
-/** At most `max` slices: the biggest sources, with the rest folded into 'Other' so slices sum to the total. */
-function topSources(rows: SourceRow[], max: number): { key: string; label: string; value: number }[] {
-  const slices = rows.map((r) => ({ key: r.source, label: r.source, value: r.applications }));
-  if (slices.length <= max) return slices;
-  const rest = slices.slice(max - 1).reduce((sum, r) => sum + r.value, 0);
-  return [...slices.slice(0, max - 1), { key: 'other', label: 'Other', value: rest }];
-}
-
 const initials = (name: string) =>
   name
     .split(' ')
@@ -68,7 +58,11 @@ export default async function OverviewScreen() {
   const { model, isDemo } = await loadHire('overview', buildHireOverviewModel);
   const applications = model?.funnel[0]?.value ?? 0;
   const noApplications = applications === 0;
-  const sourceMix: Slice[] = topSources(model?.sources ?? [], 4).map((row, index) => ({
+  const sourceMix: Slice[] = topSlices(
+    model?.sources ?? [],
+    (r) => r.applications,
+    (r) => r.source,
+  ).map((row, index) => ({
     ...row,
     color: SOURCE_COLORS[index],
   }));

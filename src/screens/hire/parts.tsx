@@ -46,3 +46,16 @@ export async function loadHire<T>(
   }
   return { model, isDemo: !isLiveChatAllowed(user) };
 }
+
+/** At most `max` slices: the biggest rows, with the rest folded into 'Other' so the slices sum to the total. */
+export function topSlices<T>(
+  rows: T[],
+  valueOf: (row: T) => number,
+  labelOf: (row: T) => string,
+  max = 4,
+): { key: string; label: string; value: number }[] {
+  const slices = rows.map((r) => ({ key: labelOf(r), label: labelOf(r), value: valueOf(r) }));
+  if (slices.length <= max) return slices;
+  const rest = slices.slice(max - 1).reduce((sum, r) => sum + r.value, 0);
+  return [...slices.slice(0, max - 1), { key: 'other', label: 'Other', value: rest }];
+}
