@@ -30,6 +30,16 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   // is not a nav item, so the screen is served at /crm/reports.
   'crm/reports',
 
+  // Lekir (read-only for now; Settings joins in a later slice)
+  'hire/assistant',
+  'hire/dashboard',
+  'hire/jobs',
+  'hire/candidates',
+  'hire/applications',
+  'hire/interviews',
+  'hire/talent-pool',
+  'hire/careers-page',
+
   // Bendahara. Supplier Bills and Payments Out read the workspace's own data
   // but have no form to add to them yet.
   'finance/customers-suppliers',
