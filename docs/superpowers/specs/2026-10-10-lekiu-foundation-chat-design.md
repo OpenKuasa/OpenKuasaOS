@@ -293,8 +293,11 @@ to small client components under `src/components/people/`, as the reach screens 
 - **Empty states** for a workspace with no HR data: a line of text and, for HR, a link to
   add the first employee.
 - **Role-aware views.** Approvals, Employees management, Payroll, Payment Vouchers and
-  Settings are for HR; the nav hides them from members with `canSee(viewer, 'approve')`,
-  and the screens themselves render a "for HR admins" notice if reached directly. The
+  Settings are for HR. The product nav has no per-item permission today, so nav items gain
+  an optional `needs?: Capability` (the field the account sidebar already uses) and
+  `SecondaryNav` filters with `canSee(viewer, item.needs)`; those items get
+  `needs: 'approve'`. The screens themselves render a "for HR admins" notice if reached
+  directly. The
   team-wide screens (Timesheet, Shift Calendar, Overtime, Scorecard, Review Scores) show a
   member only their own rows, which is what RLS returns.
 - **Employees** gains add, edit, deactivate and delete, a department manager, and the
@@ -480,7 +483,8 @@ tests in §8.
 
 **Changed:** all 27 files in `src/screens/people/`, `src/lib/ai/products.ts`,
 `src/lib/ai/agents/orchestrator.ts`, `src/lib/ai/agents/prompts.ts`,
-`src/config/live-screens.ts`, the Lekiu nav items' visibility in `src/config/nav.ts`.
+`src/config/live-screens.ts`, `src/config/nav.ts` (the `needs` field and the HR-only
+items), `src/components/app/secondary-nav.tsx` (filtering by it).
 
 **Unchanged:** `src/components/chat/ask-hero.tsx`, `prepareChat`, `combineToolkits`, the
 Tuah agents and prompts, `accept_invite`.
