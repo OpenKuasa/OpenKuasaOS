@@ -58,13 +58,14 @@ export function createSupabaseHireData(client: SupabaseClient, orgId: string): H
         }),
       ),
     listInterviews: async () =>
-      (await rows<InterviewRow>('hire_interviews', INTERVIEW_COLUMNS, { col: 'scheduled_at', asc: true })).map(
-        ({ application, ...row }) => ({
+      // Read newest-first so the row ceiling drops the oldest interviews, then hand back soonest-first.
+      [...(await rows<InterviewRow>('hire_interviews', INTERVIEW_COLUMNS, { col: 'scheduled_at', asc: false }))]
+        .reverse()
+        .map(({ application, ...row }) => ({
           ...row,
           candidate_name: application?.candidate?.name ?? UNKNOWN,
           job_title: application?.job?.title ?? UNKNOWN,
-        }),
-      ),
+        })),
   };
 }
 
