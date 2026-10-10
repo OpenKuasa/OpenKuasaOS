@@ -55,6 +55,8 @@ const KIND_OF_TOOL: Record<string, ItemKind> = {
   createLead: 'lead',
   updateLead: 'lead',
   setLeadStage: 'lead',
+  // Its result is the contact it made.
+  promoteLeadToContact: 'contact',
   listCrmContacts: 'contact',
   createContact: 'contact',
   updateContact: 'contact',

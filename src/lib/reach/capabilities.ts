@@ -293,7 +293,7 @@ export const promoteLeadToContactInput = z.object({ id: z.string().uuid() });
 export async function promoteLeadToContact(
   ctx: ReachWriteContext,
   input: z.infer<typeof promoteLeadToContactInput>,
-): Promise<CapResult<{ contact_id: string }>> {
+): Promise<CapResult<{ contact_id: string; contact: { id: string; name: string } }>> {
   const { id } = promoteLeadToContactInput.parse(input);
   const { data: lead, error: readErr } = await ctx.client
     .from('leads')
@@ -345,7 +345,8 @@ export async function promoteLeadToContact(
     .eq('org_id', ctx.orgId);
   // The contact exists; a re-promote would duplicate it (rare, low-harm), so log and succeed.
   if (stampErr) console.error('[reach-capability] promoteLeadToContact.stamp failed:', stampErr);
-  return { ok: true, data: { contact_id: contactId } };
+  // The contact is returned by name too, so a later change to it can say who it is about.
+  return { ok: true, data: { contact_id: contactId, contact: { id: contactId, name: l.name.trim() } } };
 }
 
 const creativeType = z.enum(['image', 'video', 'copy']);
