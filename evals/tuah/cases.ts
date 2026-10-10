@@ -347,7 +347,7 @@ export const CASES: Case[] = [
       const turn = await new Conversation(ws).ask('How many job openings do we have right now?');
       return [
         check('asked Lekir', turn.asked.includes('Lekir'), `asked: ${turn.asked.join(', ') || 'nobody'}`),
-        check('says there are none', /\b(no|none|zero|0|not any|don't have|haven't)\b/i.test(turn.text), turn.text),
+        check('says there are none', /\b(no|none|zero|not any|don't have|do not have|haven't|aren't any|are no)\b[^.]*\b(job|opening|role|position|vacanc)/i.test(turn.text) || /\b0\b[^.]*\b(job|opening|role|position|vacanc)/i.test(turn.text), turn.text),
         check('proposed no change', turn.pending.length === 0),
       ];
     },

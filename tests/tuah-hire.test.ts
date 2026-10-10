@@ -86,6 +86,11 @@ describe('Tuah prompts and hiring', () => {
     expect(TUAH_SYSTEM).toContain('cannot see the rest of the workspace yet');
     expect(TUAH_SYSTEM).toMatch(/invoices and other finance records, payroll and staff/);
   });
+  it('offers a skills-based alternative when declining to rank by protected traits', () => {
+    const offer = 'offer to do it on skills and experience instead';
+    expect(TUAH_SYSTEM.toLowerCase()).toContain(offer);
+    expect(tuahTeamSystem([{ name: 'Lekir', area: 'hiring' }], true, null).toLowerCase()).toContain(offer);
+  });
   it('tells the single agent when to fetch contact details', () => {
     expect(TUAH_SYSTEM).toContain('includeContact');
   });
