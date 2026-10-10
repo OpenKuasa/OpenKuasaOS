@@ -34,7 +34,7 @@
 1. **Partial update of a salary pair.** Updating only `salary_min_cents` to a value above the stored max must be refused, with the stored max taken into account, not just the input. Pinned in Task 3.
 2. **Clearing a description on a live job.** `updateJob` with an empty or whitespace description on an open or paused job must be refused; on a draft or closed job it is allowed. Pinned in Task 3.
 3. **An id from another workspace.** Every capability must answer "That job could not be found." and write nothing, even though RLS would also stop it. Pinned in Task 3.
-4. **A double submit.** Clicking Save twice must create one job: the button is disabled while pending. Pinned in Task 8 (component test of the disabled state).
+4. **A double submit.** Clicking Save twice must create one job: every button that triggers an action is `disabled={pending}`. The repo has no component-test setup, so this is not pinned by an automated test: the Task 8 reviewer checks each action button for it, and Task 9's smoke step 1 double-clicks Save and counts the rows.
 5. **Deleting a whole workspace.** With the delete guard in place, deleting an org that has jobs with applications must still succeed. Pinned in Task 9 (live check in a rolled-back transaction).
 
 ---
@@ -195,7 +195,7 @@ git commit -m "feat(hire): jobs become writable (new fields, write policy, grant
 - Test: `tests/hire-seed.test.ts`, `tests/hire-provider.test.ts` (extend)
 
 **Interfaces:**
-- Produces: `WorkArrangement = 'onsite' | 'hybrid' | 'remote'`; `Job` with `description: string | null`, `salary_min_cents: number | null`, `salary_max_cents: number | null`, `show_salary: boolean`, `closes_on: string | null` (`YYYY-MM-DD`), `work_arrangement: WorkArrangement | null`, `headcount: number`; exported `JOB_COLUMNS` from `src/lib/hire/supabase.ts`.
+- Produces: `WorkArrangement = 'onsite' | 'hybrid' | 'remote'`; `Job` with `description: string | null`, `salary_min_cents: number | null`, `salary_max_cents: number | null`, `show_salary: boolean`, `closes_on: string | null` (`YYYY-MM-DD`), `work_arrangement: WorkArrangement | null`, `headcount: number`; exported `JOB_COLUMNS` from `src/lib/hire/types.ts`.
 
 - [ ] **Step 1: Add failing tests**
 
@@ -285,9 +285,10 @@ export type Job = {
 
 - [ ] **Step 4: Extend the provider**
 
-In `src/lib/hire/supabase.ts`, replace the `JOB_COLUMNS` line with an exported constant:
+Put the column list in `src/lib/hire/types.ts`, next to the `Job` type it mirrors, and import it in `src/lib/hire/supabase.ts` (delete the local `JOB_COLUMNS` there). It must not live in `supabase.ts`: Task 3's capability module needs it, and importing `supabase.ts` would drag `next/navigation` and the server Supabase client into a module the capability tests load without mocks. `src/lib/reach/capabilities.ts` keeps clear of `./supabase` for the same reason.
 
 ```ts
+/** The columns of `hire_jobs` that make a {@link Job}, for selects. */
 export const JOB_COLUMNS =
   'id,title,department,location,employment_type,status,description,salary_min_cents,' +
   'salary_max_cents,show_salary,closes_on,work_arrangement,headcount,opened_at,closed_at,created_at';
@@ -373,7 +374,7 @@ git commit -m "feat(hire): jobs carry description, salary, closing date, arrange
 - Test: `tests/hire-capabilities.test.ts`
 
 **Interfaces:**
-- Consumes: `Job`, `JobStatus` (Task 2); `JOB_COLUMNS` from `@/lib/hire/supabase`.
+- Consumes: `Job`, `JobStatus` and `JOB_COLUMNS` from `@/lib/hire/types` (Task 2). This module must not import `@/lib/hire/supabase`.
 - Produces:
 
 ```ts
@@ -621,8 +622,7 @@ Expected: FAIL, cannot resolve `@/lib/hire/capabilities`.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { JOB_COLUMNS } from './supabase';
-import type { Job, JobStatus } from './types';
+import { JOB_COLUMNS, type Job, type JobStatus } from './types';
 
 export type HireWriteContext = { client: SupabaseClient; orgId: string };
 export type CapResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -642,9 +642,14 @@ function writeFailed(fnName: string, error: unknown): { ok: false; error: string
 
 const employmentType = z.enum(['full_time', 'part_time', 'contract', 'internship']);
 const workArrangement = z.enum(['onsite', 'hybrid', 'remote']);
-/** Text that may be cleared: an empty or blank value is stored as null. */
-const optionalText = (max: number) =>
-  z.string().trim().max(max).nullable().optional().transform((v) => (v ? v : v === undefined ? undefined : null));
+/**
+ * Text that may be cleared. No transform here: these schemas are also the AI
+ * tools' input schemas, and a transform cannot be turned into JSON Schema. A
+ * blank value is turned into null by `blankToNull` in the functions below.
+ */
+const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
+/** '' becomes null; undefined ("not sent") stays undefined. */
+const blankToNull = (value: string | null | undefined) => (value === undefined ? undefined : value ? value : null);
 const cents = z.number().int().min(0).max(10_000_000_00).nullable().optional();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-10-31.').nullable().optional();
 
@@ -727,11 +732,11 @@ export async function createJob(
   if (!parsed.success) return invalid(parsed.error);
   const values = {
     title: parsed.data.title,
-    department: parsed.data.department ?? null,
-    location: parsed.data.location ?? null,
+    department: blankToNull(parsed.data.department) ?? null,
+    location: blankToNull(parsed.data.location) ?? null,
     employment_type: parsed.data.employment_type,
     work_arrangement: parsed.data.work_arrangement ?? null,
-    description: parsed.data.description ?? null,
+    description: blankToNull(parsed.data.description) ?? null,
     salary_min_cents: parsed.data.salary_min_cents ?? null,
     salary_max_cents: parsed.data.salary_max_cents ?? null,
     show_salary: parsed.data.show_salary,
@@ -757,7 +762,13 @@ export async function updateJob(
 ): Promise<CapResult<Job>> {
   const parsed = updateJobInput.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
-  const { id, ...given } = parsed.data;
+  const { id, ...sent } = parsed.data;
+  const given = {
+    ...sent,
+    department: blankToNull(sent.department),
+    location: blankToNull(sent.location),
+    description: blankToNull(sent.description),
+  };
   const current = await findJob(ctx, id);
   if (!current) return { ok: false, error: JOB_NOT_FOUND };
 
@@ -853,7 +864,7 @@ export async function deleteJob(
 - [ ] **Step 4: Run the tests**
 
 Run: `pnpm vitest run tests/hire-capabilities.test.ts && pnpm exec tsc --noEmit`
-Expected: PASS. If `optionalText`'s transform fights Zod 4's typing, replace it with `z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.string().trim().max(max).nullable().optional())` and keep the tests as they are: an empty string must become `null`, `undefined` must stay `undefined`.
+Expected: PASS. Do not add a `.transform()` or `z.preprocess()` to any of the four input schemas: they are handed to the model as tool input schemas in Task 6, and only plain validators convert to JSON Schema. An empty string must be stored as `null` and `undefined` must mean "not sent"; `blankToNull` does that.
 
 - [ ] **Step 5: Commit**
 
@@ -1206,8 +1217,10 @@ describe('hire change tools', () => {
   });
   it('lets listJobs hand the model an id and the new fields', async () => {
     const { jobs } = await run('listJobs')({ status: 'open' });
-    expect(jobs[0]).toMatchObject({ id: expect.any(String), name: expect.any(String), headcount: expect.any(Number) });
-    expect(jobs[0]).toHaveProperty('description');
+    expect(jobs[0]).toMatchObject({ id: expect.any(String), name: expect.any(String), headcount: expect.any(Number), has_description: true });
+    // The whole description of every job would be thousands of characters per lookup.
+    expect(jobs[0]).not.toHaveProperty('description');
+    expect(jobs[0].description_excerpt.length).toBeLessThanOrEqual(161);
     expect(jobs[0]).toHaveProperty('closes_on');
   });
 });
@@ -1271,6 +1284,9 @@ export function createHireTools(
   const read: ToolSet = { /* the eight existing lookups, unchanged except listJobs below */ };
   if (!write?.canWrite) return read;
   const { ctx } = write;
+  // The approval titles learn a row's name from a `name` field; a job has `title`.
+  const named = (result: CapResult<Job>) =>
+    result.ok ? { ...result, data: { ...result.data, name: result.data.title } } : result;
   return {
     ...read,
     createJob: tool({
@@ -1278,19 +1294,19 @@ export function createHireTools(
         'Create a job opening. It is always created as a draft: nothing is open until it is opened. ' +
         'Only a title is needed; give the description when you have one.',
       inputSchema: createJobInput,
-      execute: async (input) => createJob(ctx, input, now()),
+      execute: async (input) => named(await createJob(ctx, input, now())),
     }),
     updateJob: tool({
       description: 'Change a job\'s details. Send only the fields that change. Does not change its status.',
       inputSchema: updateJobInput,
-      execute: async (input) => updateJob(ctx, input, now()),
+      execute: async (input) => named(await updateJob(ctx, input, now())),
     }),
     setJobStatus: tool({
       description:
         'Open, pause or close a job. A draft can be opened; an open job paused or closed; a paused job ' +
         'opened or closed; a closed job reopened. Opening needs a description.',
       inputSchema: setJobStatusInput,
-      execute: async (input) => setJobStatus(ctx, input, now()),
+      execute: async (input) => named(await setJobStatus(ctx, input, now())),
     }),
     deleteJob: tool({
       description: 'Delete a job for good. Only a job with no applications can be deleted; otherwise close it.',
@@ -1301,7 +1317,7 @@ export function createHireTools(
 }
 ```
 
-- `listJobs` rows gain: `id: job.id`, `name: job.title` (the field the approval titles read), `description`, `work_arrangement`, `headcount`, `salary_min_cents`, `salary_max_cents`, `show_salary`, `closes_on`. Keep `title`. Extend its description: "Each job has an id to pass to a change tool."
+- `listJobs` rows gain: `id: job.id`, `name: job.title` (the field the approval titles read), `has_description: boolean`, `description_excerpt` (the first 160 characters, with `…` added when cut; `null` when there is none), `work_arrangement`, `headcount`, `salary_min_cents`, `salary_max_cents`, `show_salary`, `closes_on`. Keep `title`. Do not return the full description: up to 50 jobs of up to 10,000 characters each would go to the model on every lookup. Extend the tool's description: "Each job has an id to pass to a change tool, and says whether it has a description yet."
 
 - [ ] **Step 4: Wire the product**
 
@@ -1363,7 +1379,17 @@ In `src/lib/chat/change-titles.ts`:
 
 - Add `toolName === 'deleteJob'` to the list in `approvalDetail` that returns `'This cannot be undone.'`.
 
-A created or updated job's result has `title`, not `name`, so `gather` would not learn it. In the four change tools' `execute`, return the capability result with a `name` added when ok: wrap as `const named = (r: CapResult<Job>) => (r.ok ? { ...r, data: { ...r.data, name: r.data.title } } : r);` and use it for `createJob`, `updateJob` and `setJobStatus`.
+A created or updated job's result has `title`, not `name`, so `gather` would not learn it; that is what `named()` in Step 3 is for. Import the `CapResult` and `Job` types into `hire-tools.ts` for it.
+
+`approvalDetail` takes only the tool name today, so the spec's "changed fields as the detail line" for an edit needs the input too. Add an optional second parameter, `approvalDetail(toolName: string, input?: unknown)`, and for `updateJob` return `Changes: ` followed by the changed fields in words, from the keys of the input other than `id` (`title` → "title", `department` → "department", `location` → "location", `employment_type` → "employment type", `work_arrangement` → "work arrangement", `description` → "description", `salary_min_cents` or `salary_max_cents` → "salary" once, `show_salary` → "salary visibility", `closes_on` → "closing date", `headcount` → "headcount"), in that order, joined with commas; `null` when there are none. Find the callers of `approvalDetail` (`grep -rn "approvalDetail(" src`) and pass the tool's input where it is to hand; a caller that has no input keeps working. Add to `tests/hire-change-titles.test.ts`:
+
+```ts
+  it('lists what an edit changes', () => {
+    expect(approvalDetail('updateJob', { id: ID, title: 'x', salary_min_cents: 1, salary_max_cents: 2, closes_on: null }))
+      .toBe('Changes: title, salary, closing date');
+    expect(approvalDetail('updateJob', { id: ID })).toBeNull();
+  });
+```
 
 - [ ] **Step 7: Run the tests**
 
@@ -1789,10 +1815,11 @@ Behaviour to implement (write the component in full; these are its acceptance ru
 15. **Layout:** the table is inside `overflow-x-auto`; nothing scrolls the page sideways at 375 pixels; dialog content is `max-h-[85vh] overflow-y-auto`.
 16. **Motion:** only the transitions `radix-ui` and the existing dialog classes in `ad-studio-table.tsx` give; add `motion-reduce:transition-none motion-reduce:animate-none` to any animated class you copy.
 17. No colour is the only signal for anything; no purple or violet class.
+18. **Empty list:** with zero rows the component still renders the "Post a Job" button (when `canEdit`) and shows `No jobs yet` where the table would be; it does not render an empty table.
 
 - [ ] **Step 4: Use it in the Jobs screen**
 
-In `src/screens/hire/jobs.tsx`: read the viewer and compute `const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');` exactly as `src/screens/reach/ad-studio.tsx` does; compute `const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });`; replace the static table (and the disabled header button) with `<JobsTable rows={model.rows} canEdit={canEdit} today={today} />` inside the existing card, keeping the card's title, the failed-load state and the empty state ("No jobs yet", now with "Post a Job" beside it for someone who can edit). The search box and filters stay disabled. Remove imports that become unused.
+In `src/screens/hire/jobs.tsx`: read the viewer and compute `const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');` exactly as `src/screens/reach/ad-studio.tsx` does; compute `const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });`; replace the static table (and the disabled header button) with `<JobsTable rows={model.rows} canEdit={canEdit} today={today} />` inside the existing card, keeping the card's title and the failed-load state. Render `JobsTable` whenever the model loaded, including with zero rows: the "Post a Job" button lives inside it, so an empty workspace must still get it. `JobsTable` itself shows "No jobs yet" in place of the table when `rows` is empty (this is acceptance rule 18 of the component), so the screen's own empty-state branch for this card is removed. The search box and filters stay disabled. Remove imports that become unused.
 
 - [ ] **Step 5: Careers Page publish action**
 
@@ -1899,7 +1926,7 @@ Expected: all pass.
 
 Sign in through the loopback helper (never type the password into a tool call). On `/hire/jobs`:
 
-1. Post a job with only a title: it appears as Draft, and the notice says so.
+1. Post a job with only a title, double-clicking Save: exactly one job appears, as Draft, and the notice says so.
 2. Try to open it: refused, with "Add a description before opening this job."
 3. Edit it: add a description, a salary range with max below min (refused under the field), fix it, save.
 4. Open, pause, reopen, close it. The pill and the available buttons change each time.
