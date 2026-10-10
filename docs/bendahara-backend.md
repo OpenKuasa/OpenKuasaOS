@@ -19,8 +19,9 @@ sample data and no actions.
 
 ## Tables
 
-All finance tables carry `org_id`, use composite `(org_id, id)` foreign keys,
-and have member-read, writer-write RLS with the restrictive `mfa_required`
+Every finance table carries `org_id`. A table that other tables point at
+exposes a unique `(org_id, id)` and is referenced by that pair. All finance
+tables have member-read, writer-write RLS with the restrictive `mfa_required`
 policy.
 
 | Table | Holds |
@@ -48,4 +49,5 @@ number.
   paging through every open bill, 1,000 at a time, so it is never cut short.
 - Receivable is 0 until invoices exist.
 - Stock and revenue per item are not tracked.
-- A contact's Payable counts bills that are pending or overdue.
+- A contact's Payable counts bills that are pending or overdue, and the
+  Payable card is totalled from every open bill, not only the contacts loaded.
