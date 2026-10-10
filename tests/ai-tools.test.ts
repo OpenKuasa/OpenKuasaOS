@@ -193,8 +193,10 @@ describe('createReachTools', () => {
   it('exposes the full read-only tool set', () => {
     const tools = createReachTools(createSeedReachData(NOW), NOW);
     expect(Object.keys(tools).sort()).toEqual([
+      'getAdSettings',
       'getAdsOverview',
       'getCampaigns',
+      'getCreatives',
       'getLeadSummary',
       'getSpendByChannel',
       'getUpcomingAppointments',
