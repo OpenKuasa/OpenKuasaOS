@@ -18,10 +18,14 @@ vi.mock('@/lib/reach/capabilities', async (orig) => {
       ctl.created.push(input);
       return { ok: true, data: { id: 'c1' } };
     },
+    createLead: async (_ctx: unknown, input: unknown) => {
+      ctl.created.push(input);
+      return { ok: true, data: { id: 'l1' } };
+    },
   };
 });
 
-const { createCampaignAction } = await import('@/app/(app)/reach/actions');
+const { createCampaignAction, createLeadAction } = await import('@/app/(app)/reach/actions');
 
 beforeEach(() => {
   ctl.viewer = { userId: 'u1', orgId: 'org1', role: 'member', isDemo: false };
@@ -49,6 +53,27 @@ describe('createCampaignAction', () => {
   it('calls the capability for a member with valid input', async () => {
     const res = await createCampaignAction({ name: 'Promo', channel: 'facebook' });
     expect(res).toMatchObject({ ok: true });
+    expect(ctl.created).toHaveLength(1);
+  });
+});
+
+describe('createLeadAction', () => {
+  it('forbids a demo guest', async () => {
+    ctl.viewer = { ...ctl.viewer, isDemo: true };
+    expect(await createLeadAction({ name: 'x', channel: 'whatsapp' })).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('forbids a viewer', async () => {
+    ctl.viewer = { ...ctl.viewer, role: 'viewer' };
+    expect(await createLeadAction({ name: 'x', channel: 'whatsapp' })).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('rejects invalid input before calling the capability', async () => {
+    expect(await createLeadAction({ name: '', channel: 'nope' })).toMatchObject({ ok: false });
+    expect(ctl.created).toHaveLength(0);
+  });
+  it('calls the capability for a member with valid input', async () => {
+    expect(await createLeadAction({ name: 'Aisyah', channel: 'whatsapp' })).toMatchObject({ ok: true });
     expect(ctl.created).toHaveLength(1);
   });
 });

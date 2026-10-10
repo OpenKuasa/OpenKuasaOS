@@ -13,16 +13,22 @@ import {
   createCreativeInput,
   createForm,
   createFormInput,
+  createLead,
+  createLeadInput,
   deleteCampaign,
   deleteCampaignInput,
   deleteCreative,
   deleteCreativeInput,
   deleteForm,
   deleteFormInput,
+  deleteLead,
+  deleteLeadInput,
   setCampaignStatus,
   setCampaignStatusInput,
   setFormStatus,
   setFormStatusInput,
+  setLeadStage,
+  setLeadStageInput,
   updateAdSettings,
   updateAdSettingsInput,
   updateCampaign,
@@ -31,6 +37,8 @@ import {
   updateCreativeInput,
   updateForm,
   updateFormInput,
+  updateLead,
+  updateLeadInput,
 } from '@/lib/reach/capabilities';
 import type { ZodType } from 'zod';
 
@@ -127,4 +135,38 @@ export async function setFormStatusAction(input: unknown) {
 }
 export async function deleteFormAction(input: unknown) {
   return runForm(deleteFormInput, input, deleteForm);
+}
+
+// ─── leads ───────────────────────────────────────────────────────────────────
+
+const LEADS_PATHS = ['/reach/leads'];
+
+/** Same shape as {@link runForm}, refreshing the Leads screen. */
+async function runLeads<I, O>(
+  schema: ZodType<I>,
+  input: unknown,
+  fn: (ctx: ReachWriteContext, parsed: I) => Promise<CapResult<O>>,
+): Promise<CapResult<O>> {
+  const ctx = await writeCtx();
+  if (!ctx) return FORBIDDEN;
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'That input was not valid.' };
+  }
+  const result = await fn(ctx, parsed.data);
+  if (result.ok) for (const path of LEADS_PATHS) revalidatePath(path);
+  return result;
+}
+
+export async function createLeadAction(input: unknown) {
+  return runLeads(createLeadInput, input, createLead);
+}
+export async function updateLeadAction(input: unknown) {
+  return runLeads(updateLeadInput, input, updateLead);
+}
+export async function setLeadStageAction(input: unknown) {
+  return runLeads(setLeadStageInput, input, setLeadStage);
+}
+export async function deleteLeadAction(input: unknown) {
+  return runLeads(deleteLeadInput, input, deleteLead);
 }
