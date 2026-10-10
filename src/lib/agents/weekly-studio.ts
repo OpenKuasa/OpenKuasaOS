@@ -66,11 +66,16 @@ export async function runWeeklyStudio(
     status: 'done' | 'failed',
     patch: { digest_md?: string; cost_cents?: number; error?: string },
   ): Promise<WeeklyStudioResult> => {
-    await service
-      .from('agent_runs')
-      .update({ status, finished_at: new Date().toISOString(), ...patch })
-      .eq('org_id', orgId)
-      .eq('id', runId);
+    const base = { status, finished_at: new Date().toISOString(), ...patch };
+    const write = (row: Record<string, unknown>) =>
+      service.from('agent_runs').update(row).eq('org_id', orgId).eq('id', runId);
+    const { cost_cents: cost, ...withoutCost } = base;
+    const { error } = await write(
+      typeof cost === 'number' ? { ...withoutCost, cost_cents: Math.round(cost) } : withoutCost,
+    );
+    // supabase-js returns { error } rather than throwing. If the cost column write
+    // was rejected, retry without it so the run never stays stuck at 'running'.
+    if (error && typeof cost === 'number') await write(withoutCost);
     return { runId, status };
   };
 
@@ -119,13 +124,12 @@ export async function runWeeklyStudio(
       status: 'done' | 'failed',
       storage_path: string | null,
     ) => {
-      try {
-        await service
-          .from('agent_run_assets')
-          .insert({ org_id: orgId, run_id: runId, kind, status, storage_path });
-      } catch {
-        // Asset bookkeeping must never abort the run.
-      }
+      // supabase-js returns { error } rather than throwing; a failed write just
+      // means the asset is not recorded. Bookkeeping must never abort the run.
+      const { error } = await service
+        .from('agent_run_assets')
+        .insert({ org_id: orgId, run_id: runId, kind, status, storage_path });
+      void error;
     };
 
     for (const step of IMAGE_STEPS) {
@@ -154,13 +158,15 @@ export async function runWeeklyStudio(
           `A short, upbeat 6-second promotional clip for a small business's weekly marketing update, no text overlays. Business snapshot:\n${context}`,
         );
         cost += video.cost_cents;
-        await service.from('agent_run_assets').insert({
+        // A failed insert (returned as { error }) just means the clip is not tracked.
+        const { error: videoInsertErr } = await service.from('agent_run_assets').insert({
           org_id: orgId,
           run_id: runId,
           kind: 'video',
           status: 'pending',
           provider_job_id: video.jobId,
         });
+        void videoInsertErr;
       } catch {
         // Deliberately drop the exception: it may carry request details or a key.
       }

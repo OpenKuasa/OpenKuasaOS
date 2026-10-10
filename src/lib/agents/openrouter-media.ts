@@ -31,9 +31,9 @@ function provider(apiKey: string) {
   return createOpenRouter({ apiKey, appName: 'OpenKuasa OS', appUrl: 'https://openkuasa.com' });
 }
 
-/** OpenRouter reports cost in USD credits; convert to cents (0 when absent). */
+/** OpenRouter reports cost in USD credits; convert to whole cents, rounded up (0 when absent); agent_runs.cost_cents is INTEGER. */
 function usdToCents(usd: unknown): number {
-  return typeof usd === 'number' && Number.isFinite(usd) ? Math.round(usd * 100 * 10000) / 10000 : 0;
+  return typeof usd === 'number' && Number.isFinite(usd) ? Math.ceil(usd * 100) : 0;
 }
 
 function costFromMetadata(meta: unknown): number {

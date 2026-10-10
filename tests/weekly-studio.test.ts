@@ -125,6 +125,21 @@ describe('runWeeklyStudio', () => {
     expect(runs[0].finished_at).toBeTruthy();
   });
 
+  it('persists an INTEGER cost_cents even when a media call reports a fractional cost', async () => {
+    vi.mocked(webSearch).mockResolvedValue({ text: 'angle', cost_cents: 1.2 });
+    vi.mocked(writeDigest).mockResolvedValue({ text: '# Digest', cost_cents: 3.4 });
+    const { service, runs, calls } = fakeService({ ciphertext: 'abc' });
+    const res = await runWeeklyStudio(service, ORG, 'manual');
+    expect(res.status).toBe('done');
+    const finishes = calls.filter(
+      (c) => c.table === 'agent_runs' && c.op === 'update' && (c.payload as { status?: string }).status === 'done',
+    );
+    expect(finishes).toHaveLength(1);
+    const cents = (finishes[0].payload as { cost_cents: number }).cost_cents;
+    expect(Number.isInteger(cents)).toBe(true);
+    expect(runs[0]).toMatchObject({ status: 'done', digest_md: '# Digest' });
+  });
+
   it('marks the run failed with a safe error when a media call throws', async () => {
     vi.mocked(webSearch).mockRejectedValue(new Error('boom sk-or-secret'));
     const { service, runs } = fakeService({ ciphertext: 'abc' });
