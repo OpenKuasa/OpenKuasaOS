@@ -43,6 +43,13 @@ describe('TUAH_SYSTEM', () => {
     expect(t).toContain('only offer to do things you have a tool for');
   });
 
+  it('describes the lead and promote tools it can run', () => {
+    // Tuah shares Jebat's reach toolkit, so its prompt must name the lead
+    // and promote abilities it actually has, or it will wrongly deny them.
+    expect(t).toMatch(/move .*leads?|leads?.*funnel/);
+    expect(t).toContain('promote a lead to a crm contact');
+  });
+
   it('keeps the line before a lookup in the user’s language', () => {
     expect(t).toContain('in the language the user is writing in');
     expect(t).toContain('keep to that one language');
