@@ -103,6 +103,9 @@ describe('LEKIU_SYSTEM', () => {
     for (const word of ['race', 'religion', 'gender', 'age', 'pregnancy', 'disability']) expect(t, word).toContain(word);
   });
   it('keeps to HR and leaves hiring to Lekir', () => {
+    expect(t).toContain('adding an employee record for someone who is joining or has joined is yours');
+    expect(t).not.toContain('hiring new people belongs to lekir');
+    expect(t).toContain('if a lookup comes back with "ok": false');
     expect(LEKIU_SYSTEM).toContain('Lekir');
     expect(t).toContain('hr only');
   });
