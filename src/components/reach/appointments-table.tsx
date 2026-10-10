@@ -43,7 +43,7 @@ type FormValues = {
   contact_name: string;
   kind: string;
   scheduled_at: string;
-  via: string;
+  via?: string;
   status: AppointmentStatus;
 };
 
@@ -332,7 +332,8 @@ function AppointmentForm({
           kind,
           // datetime-local is zoneless local time; the server wants a Z-suffixed ISO string.
           scheduled_at: date.toISOString(),
-          via,
+          // Blank is omitted: the schema rejects '' (only undefined skips .optional()).
+          via: via.trim() || undefined,
           status,
         });
       }}
