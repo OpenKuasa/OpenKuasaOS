@@ -31,7 +31,7 @@ vi.mock('@/lib/supabase/anonymous', () => ({ createAnonymousClient: () => ({ ano
 
 import BoardPage, { generateMetadata as boardMetadata } from '@/app/careers/[orgId]/page';
 import JobPage, { generateMetadata as jobMetadata } from '@/app/careers/[orgId]/[jobId]/page';
-import CareersNotFound from '@/app/careers/[orgId]/not-found';
+import CareersNotFound, { metadata as notFoundMetadata } from '@/app/careers/[orgId]/not-found';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
 const JOB_A = '22222222-2222-4222-8222-222222222222';
@@ -246,6 +246,14 @@ describe('the page for a link with nothing behind it', () => {
     expect(html).toContain('The role may have been filled or the link may be out of date.');
     expect(count(html, /<main[^>]*id="main"/g)).toBe(1);
     expect(html).toContain('Powered by OpenKuasa');
+  });
+  it('carries its own title and asks not to be indexed, since a not-found response takes its head from here', () => {
+    expect(notFoundMetadata).toMatchObject({
+      title: 'Page not available',
+      description: null,
+      robots: { index: false, follow: false },
+      openGraph: { title: 'Page not available' },
+    });
   });
 });
 

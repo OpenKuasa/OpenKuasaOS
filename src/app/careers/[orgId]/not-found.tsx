@@ -1,4 +1,20 @@
+import type { Metadata } from 'next';
 import { PublicCareersShell } from '@/components/hire/public-careers-shell';
+
+const TITLE = 'Page not available';
+
+/**
+ * A not-found response takes its head from here, not from the page that
+ * called notFound(): without this a missing board would carry the site's own
+ * title and share text.
+ */
+export const metadata: Metadata = {
+  title: TITLE,
+  description: null,
+  robots: { index: false, follow: false },
+  openGraph: { title: TITLE },
+  twitter: { card: 'summary', title: TITLE },
+};
 
 /**
  * A careers link with nothing to show behind it: no such workspace, a board
