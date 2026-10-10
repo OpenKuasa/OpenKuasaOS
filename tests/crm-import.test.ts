@@ -31,7 +31,7 @@ describe('IMPORT_FIELDS', () => {
       'Email',
       'Phone',
       'Company',
-      'Country code',
+      'Country',
       'Status',
       'Lead score',
       'Tags',
@@ -301,7 +301,7 @@ describe('planImport', () => {
         HEADERS,
         ['', 'Rahim', 'a@example.com'],
         ['Faiz', 'Hakim', 'not-an-email'],
-        ['Mei', 'Ling', 'mei@example.com', '', '', 'Malaysia'],
+        ['Mei', 'Ling', 'mei@example.com', '', '', ' Atlantis '],
         ['Tag', 'Heavy', 'tags@example.com', '', '', '', '', '', 'x'.repeat(31)],
         ['Many', 'Tags', 'many@example.com', '', '', '', '', '', 'a,b,c,d,e,f,g,h,i,j,k'],
         [],
@@ -313,12 +313,88 @@ describe('planImport', () => {
     expect(plan.skipped).toEqual([
       { line: 2, reason: 'Enter a first name.' },
       { line: 3, reason: 'Enter a valid email.' },
-      { line: 4, reason: 'Use a two-letter country code, such as MY.' },
+      {
+        line: 4,
+        reason:
+          'Country "Atlantis" is not recognised. Use a name such as Malaysia or a two-letter code such as MY.',
+      },
       { line: 5, reason: 'Keep each tag to 30 characters or fewer.' },
       { line: 6, reason: 'Use at most 10 tags per contact.' },
       { line: 7, reason: 'Enter a first name.' },
     ]);
     expect(plan.rows.map((row) => row.email)).toEqual(['good@example.com']);
+  });
+
+  describe('country column', () => {
+    const mapping: ImportMapping = { ...UNMAPPED, firstName: 0, email: 1, country: 2 };
+    const countries = (cells: string[]) =>
+      planImport(
+        [['Name', 'Email', 'Country'], ...cells.map((cell, i) => [`P${i}`, `p${i}@example.com`, cell])],
+        mapping,
+      );
+
+    test('stores the code for a country name', () => {
+      const plan = countries(['Malaysia']);
+
+      expect(plan.skipped).toEqual([]);
+      expect(plan.rows[0]).toMatchObject({ email: 'p0@example.com', country: 'MY' });
+    });
+
+    test('accepts a name or a code in any case', () => {
+      const plan = countries(['singapore', 'SG', 'sg', ' United Kingdom ', 'U.S.A.']);
+
+      expect(plan.skipped).toEqual([]);
+      expect(plan.rows.map((row) => row.country)).toEqual(['SG', 'SG', 'SG', 'GB', 'US']);
+    });
+
+    test('skips a country it does not recognise, quoting the cell', () => {
+      const plan = countries(['Malaysia', 'Narnia', 'XX', 'Thailand']);
+
+      expect(plan.skipped).toEqual([
+        {
+          line: 3,
+          reason:
+            'Country "Narnia" is not recognised. Use a name such as Malaysia or a two-letter code such as MY.',
+        },
+        {
+          line: 4,
+          reason:
+            'Country "XX" is not recognised. Use a name such as Malaysia or a two-letter code such as MY.',
+        },
+      ]);
+      expect(plan.rows.map((row) => row.country)).toEqual(['MY', 'TH']);
+    });
+
+    test('reports the country before any other problem with the row', () => {
+      const plan = planImport(
+        [
+          ['Name', 'Email', 'Country'],
+          ['', 'not-an-email', 'Narnia'],
+        ],
+        mapping,
+      );
+
+      expect(plan.skipped).toEqual([
+        {
+          line: 2,
+          reason:
+            'Country "Narnia" is not recognised. Use a name such as Malaysia or a two-letter code such as MY.',
+        },
+      ]);
+    });
+
+    test('defaults an empty or unmapped country to MY', () => {
+      expect(countries(['', '   ']).rows.map((row) => row.country)).toEqual(['MY', 'MY']);
+
+      const unmapped = planImport(
+        [
+          ['Name', 'Email', 'Country'],
+          ['A', 'a@example.com', 'Singapore'],
+        ],
+        { ...mapping, country: null },
+      );
+      expect(unmapped.rows[0].country).toBe('MY');
+    });
   });
 
   test('skips an email already accepted earlier in the file', () => {

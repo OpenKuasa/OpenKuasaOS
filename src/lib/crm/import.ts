@@ -5,6 +5,7 @@ import {
   type CrmContactFields,
   type CrmContactInsert,
 } from './contacts';
+import { countryCode } from './countries';
 
 /** Rows of data accepted per file (the header row is not counted). */
 export const IMPORT_LIMIT = 500;
@@ -27,7 +28,7 @@ export const IMPORT_FIELDS: { key: ImportFieldKey; label: string; required: bool
   { key: 'email', label: 'Email', required: true },
   { key: 'phone', label: 'Phone', required: false },
   { key: 'company', label: 'Company', required: false },
-  { key: 'country', label: 'Country code', required: false },
+  { key: 'country', label: 'Country', required: false },
   { key: 'status', label: 'Status', required: false },
   { key: 'leadScore', label: 'Lead score', required: false },
   { key: 'tags', label: 'Tags', required: false },
@@ -174,6 +175,11 @@ function readCell(row: string[], index: number | null) {
 /**
  * Validates a table (row 0 = headers) against a mapping. Pure; used in the
  * browser for the preview and again on the server.
+ *
+ * The country cell may hold a two-letter code or a country name in English
+ * or Malay ("SG", "Singapore", "Singapura"); either is stored as the code.
+ * An empty cell defaults to MY, and a row whose country is not recognised is
+ * skipped.
  */
 export function planImport(table: string[][], mapping: ImportMapping): ImportPlan {
   if (mapping.firstName === null || mapping.email === null) {
@@ -204,13 +210,24 @@ export function planImport(table: string[][], mapping: ImportMapping): ImportPla
       }
     }
 
+    // A name or a code; an empty cell is left for the validator to default.
+    const countryCell = readCell(row, mapping.country);
+    const country = countryCell === '' ? '' : countryCode(countryCell);
+    if (country === null) {
+      plan.skipped.push({
+        line,
+        reason: `Country "${countryCell}" is not recognised. Use a name such as Malaysia or a two-letter code such as MY.`,
+      });
+      continue;
+    }
+
     const formData = new FormData();
     formData.set('firstName', firstName);
     formData.set('lastName', lastName);
     formData.set('email', readCell(row, mapping.email));
     formData.set('phone', readCell(row, mapping.phone));
     formData.set('company', readCell(row, mapping.company));
-    formData.set('country', readCell(row, mapping.country).toUpperCase());
+    formData.set('country', country);
     formData.set('status', readCell(row, mapping.status));
     formData.set('leadScore', readCell(row, mapping.leadScore));
     formData.set('tags', readCell(row, mapping.tags));
