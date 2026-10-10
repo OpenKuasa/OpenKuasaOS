@@ -329,9 +329,12 @@ export function ColumnsMenu({
 export function AddContactMenu({
   onAddOne,
   onImport,
+  onClosed,
 }: {
   onAddOne: () => void;
   onImport: () => void;
+  /** Called once the menu has gone, when focus is free to move. */
+  onClosed: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -344,7 +347,10 @@ export function AddContactMenu({
         align="end"
         className="w-56"
         // Focus goes to what the choice opened, not back to this button.
-        onCloseAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onClosed();
+        }}
       >
         <DropdownMenuItem onSelect={onAddOne}>
           <UserPlus />

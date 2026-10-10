@@ -268,6 +268,8 @@ export default function ContactsScreen({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [followUpFor, setFollowUpFor] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  // The add form stays out of the way until Add Contact asks for it.
+  const [adding, setAdding] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
   // Filtering, search and the view all work on the contacts already loaded.
@@ -291,25 +293,31 @@ export default function ContactsScreen({
   // Checkbox and Contact always show; the "⋯" column only for people who can edit.
   const columns = 2 + (7 - hidden.size) + (actions ? 1 : 0);
 
-  const focusForm = () => {
-    // After the card has re-rendered for the contact that was picked.
-    requestAnimationFrame(() => {
-      firstFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      firstFieldRef.current?.focus({ preventScroll: true });
-    });
+  // A menu holds on to focus until it has closed, so the form is focused then.
+  const focusFormOnClose = useRef(false);
+  const menuClosed = () => {
+    if (!focusFormOnClose.current) return;
+    focusFormOnClose.current = false;
+    firstFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    firstFieldRef.current?.focus({ preventScroll: true });
   };
   const startAdd = () => {
+    setAdding(true);
     setEditing(null);
     setDeletingId(null);
     setImporting(false);
-    focusForm();
+    focusFormOnClose.current = true;
+  };
+  const closeForm = () => {
+    setAdding(false);
+    setEditing(null);
   };
   const startEdit = (contact: Contact) => {
     setEditing(contact);
     setDeletingId(null);
     setFollowUpFor(null);
     setImporting(false);
-    focusForm();
+    focusFormOnClose.current = true;
   };
   // Ticks only count for contacts that are on screen.
   const shownIds = new Set(shown.map((c) => c.id));
@@ -334,8 +342,9 @@ export default function ContactsScreen({
             {actions ? (
               <AddContactMenu
                 onAddOne={startAdd}
+                onClosed={menuClosed}
                 onImport={() => {
-                  setEditing(null);
+                  closeForm();
                   setImporting(true);
                 }}
               />
@@ -357,13 +366,18 @@ export default function ContactsScreen({
             onClose={() => setImporting(false)}
           />
         ) : null}
-        {actions ? (
+        {actions && (adding || editing) ? (
           <ContactFormCard
             // A fresh form for each contact, and for adding.
             key={editing?.id ?? 'new'}
             action={actions.save}
             editing={editing}
-            onDone={() => setEditing(null)}
+            // An edit is finished once saved. After adding, the cleared form
+            // stays for the next contact until it is closed.
+            onSaved={() => {
+              if (editing) closeForm();
+            }}
+            onClose={closeForm}
             firstFieldRef={firstFieldRef}
           />
         ) : null}
@@ -571,6 +585,7 @@ export default function ContactsScreen({
                         <ContactRowMenu
                           label={c.email || c.first}
                           onEdit={() => startEdit(c)}
+                          onClosed={menuClosed}
                           onDelete={() => {
                             setDeletingId(c.id);
                             setEditing((e) => (e?.id === c.id ? null : e));

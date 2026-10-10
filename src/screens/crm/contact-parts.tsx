@@ -44,17 +44,22 @@ const SELECT_CLASS =
 export function ContactFormCard({
   action,
   editing,
-  onDone,
+  onSaved,
+  onClose,
   firstFieldRef,
 }: {
   action: CrmFormAction;
   /** The contact being edited; null to add a new one. */
   editing: CrmContact | null;
-  onDone: () => void;
+  /** Called after a save has gone through. */
+  onSaved: () => void;
+  /** Cancel when editing, Close when adding. */
+  onClose: () => void;
   firstFieldRef: RefObject<HTMLInputElement | null>;
 }) {
-  const { formAction, pending, error, values } = useCrmForm(action, onDone);
+  const { formAction, pending, error, values } = useCrmForm(action, onSaved);
   const v = values ?? editing?.form ?? {};
+
 
   return (
     <BentoCard
@@ -166,11 +171,9 @@ export function ContactFormCard({
             {editing ? <Check className="size-4" /> : <Plus className="size-4" />}
             {pending ? 'Saving…' : editing ? 'Save changes' : 'Save contact'}
           </Button>
-          {editing ? (
-            <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
-              Cancel
-            </Button>
-          ) : null}
+          <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+            {editing ? 'Cancel' : 'Close'}
+          </Button>
           {error ? (
             <p role="alert" className="pb-2 text-sm text-destructive">
               {error}
@@ -204,10 +207,13 @@ export function ContactRowMenu({
   label,
   onEdit,
   onDelete,
+  onClosed,
 }: {
   label: string;
   onEdit: () => void;
   onDelete: () => void;
+  /** Called once the menu has gone, when focus is free to move. */
+  onClosed: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -221,7 +227,10 @@ export function ContactRowMenu({
       <DropdownMenuContent
         align="end"
         className="w-36"
-        onCloseAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onClosed();
+        }}
       >
         <DropdownMenuItem onSelect={onEdit}>
           <Pencil />
