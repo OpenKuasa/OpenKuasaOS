@@ -73,6 +73,7 @@ export function CareersHeaderControls({
   }, [pending]);
 
   function change(next: boolean) {
+    if (pending) return;
     // Cleared first, so the same message twice in a row is announced twice.
     setNotice(null);
     setError(null);
@@ -173,6 +174,14 @@ export function CareersHeaderControls({
       {reason && (
         <p id={reasonId} className="text-xs font-medium text-muted-foreground sm:text-right">
           {reason}
+        </p>
+      )}
+      {/* In words: a disabled button shows no tooltip and cannot be focused or touched. */}
+      {!enabled && mode !== 'demo' && (
+        <p className="text-xs text-muted-foreground sm:text-right">
+          {mode === 'edit'
+            ? 'Turn the careers page on to preview it or copy the link.'
+            : 'The careers page is off, so there is nothing to preview or share yet.'}
         </p>
       )}
       {error && (
@@ -352,7 +361,8 @@ export function CareersBrandingForm({
         }}
         className={FIELD_HEIGHT}
         value={values[field]}
-        readOnly={!canEdit}
+        // Also while saving: what is typed then would be replaced by what was saved.
+        readOnly={!canEdit || pending}
         placeholder={field === 'headline' ? defaultHeadline : undefined}
         onChange={(event) => set(field, event.target.value)}
         onBlur={() => blur(field)}
