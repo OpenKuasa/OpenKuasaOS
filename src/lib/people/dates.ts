@@ -4,16 +4,27 @@
  * every comparison starts from {@link todayInMalaysia} and stays in strings.
  */
 
-const TZ = 'Asia/Kuala_Lumpur';
+/** Malaysia is UTC+8 all year, with no daylight saving, so no locale data is needed. */
+const MALAYSIA_OFFSET = 8 * 3_600_000;
 const DAY = 86_400_000;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const ms = (date: string) => Date.parse(`${date}T00:00:00Z`);
 const iso = (time: number) => new Date(time).toISOString().slice(0, 10);
 
 /** Today's date in Kuala Lumpur. */
 export function todayInMalaysia(now: Date): string {
-  return now.toLocaleDateString('en-CA', { timeZone: TZ });
+  return iso(now.getTime() + MALAYSIA_OFFSET);
+}
+
+/** The `YYYY-MM-DD` an instant falls on in Malaysia. */
+export function malaysiaDate(instant: string): string {
+  return iso(Date.parse(instant) + MALAYSIA_OFFSET);
 }
 
 export function addDays(date: string, days: number): string {
@@ -54,4 +65,55 @@ export function formatDay(date: string): string {
 
 export function monthLabel(date: string): string {
   return MONTHS[Number(date.slice(5, 7)) - 1];
+}
+
+/** `09 Oct 2026`. */
+export function formatDate(date: string): string {
+  return `${formatDay(date)} ${date.slice(0, 4)}`;
+}
+
+/** `October 2026`. */
+export function monthYearLabel(date: string): string {
+  return `${MONTH_NAMES[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}`;
+}
+
+/** `Friday`. */
+export function weekdayName(date: string): string {
+  return WEEKDAY_NAMES[new Date(ms(date)).getUTCDay()];
+}
+
+/** `08:59`, on the Malaysian clock. */
+export function clockTime(instant: string): string {
+  return new Date(Date.parse(instant) + MALAYSIA_OFFSET).toISOString().slice(11, 16);
+}
+
+/** Hours between two instants, to 1 decimal; 0 when the end is not after the start. */
+export function hoursBetween(startIso: string, endIso: string): number {
+  const span = Date.parse(endIso) - Date.parse(startIso);
+  if (!(span > 0)) return 0;
+  return Math.round(span / 360_000) / 10;
+}
+
+const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+
+/** Hours between two `HH:MM[:SS]` times of one day, to 2 decimals; 0 when the end is not after the start. */
+export function hoursBetweenTimes(start: string, end: string): number {
+  const span = minutesOf(end) - minutesOf(start);
+  if (!(span > 0)) return 0;
+  return Math.round((span / 60) * 100) / 100;
+}
+
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
+
+/** `just now`, `5 minutes ago`, `2 hours ago`, `yesterday`, `3 days ago`, `2 weeks ago`, then the date. */
+export function relativeTime(instant: string, now: Date): string {
+  const seconds = Math.floor((now.getTime() - Date.parse(instant)) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return plural(Math.floor(seconds / 60), 'minute');
+  if (seconds < 86_400) return plural(Math.floor(seconds / 3600), 'hour');
+  const days = Math.floor(seconds / 86_400);
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return plural(Math.floor(days / 7), 'week');
+  return formatDate(malaysiaDate(instant));
 }

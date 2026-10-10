@@ -35,7 +35,7 @@ async function readAll(data: PeopleData) {
   const [
     departments, employees, employeePrivate, leave, balances, timeOff, claims, overtime,
     attendance, timesheet, shifts, holidays, runs, payslips, goals, scorecards, reviews,
-    trainings, enrolments, announcements,
+    trainings, enrolments, announcements, documents, letters, vouchers, settings,
   ] = await Promise.all([
     data.listDepartments(),
     data.listEmployees(),
@@ -57,17 +57,21 @@ async function readAll(data: PeopleData) {
     data.listTrainings(),
     data.listTrainingEnrolments(),
     data.listAnnouncements(),
+    data.listDocuments(),
+    data.listLetters(),
+    data.listPaymentVouchers(),
+    data.getSettings(),
   ]);
   return {
     today, departments, employees, employeePrivate, leave, balances, timeOff, claims, overtime,
     attendance, timesheet, shifts, holidays, runs, payslips, goals, scorecards, reviews,
-    trainings, enrolments, announcements,
+    trainings, enrolments, announcements, documents, letters, vouchers, settings,
   };
 }
 
 testWithSupabase('reads every HR table through the PeopleData provider as a demo guest', async () => {
   const data = createSupabasePeopleData(c, demoId);
-  const r = await readAll(data); // none of the 20 methods may throw
+  const r = await readAll(data); // none of the 24 methods may throw
 
   // The demo's promised shape.
   expect(r.employees).toHaveLength(20);
@@ -87,6 +91,15 @@ testWithSupabase('reads every HR table through the PeopleData provider as a demo
     reviews: r.reviews, trainings: r.trainings, enrolments: r.enrolments, announcements: r.announcements,
   })) {
     expect(rows.length, name).toBeGreaterThan(0);
+  }
+
+  // The four reads added for the remaining screens, with the demo's counts.
+  expect(r.documents).toHaveLength(26);
+  expect(r.letters).toHaveLength(5);
+  expect(r.vouchers).toHaveLength(6);
+  expect(r.settings.notifications).toMatchObject({ leave_requests: true, birthdays: false });
+  for (const [name, rows] of Object.entries({ documents: r.documents, letters: r.letters })) {
+    expect(rows.filter((x) => x.employee_name === 'Unknown'), name).toHaveLength(0);
   }
 
   // Joined names resolved.

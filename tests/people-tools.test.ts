@@ -9,7 +9,7 @@ import { buildPeopleOverviewModel } from '@/lib/people/overview';
 import { createSeedPeopleData } from '@/lib/people/seed';
 import { asMember } from './setup/people-member-view';
 import { createSeedReachData } from '@/lib/reach/seed';
-import type { PeopleData, PeopleViewer } from '@/lib/people/types';
+import { DEFAULT_PEOPLE_SETTINGS, type PeopleData, type PeopleViewer } from '@/lib/people/types';
 
 // A Friday in Kuala Lumpur.
 const NOW = new Date('2026-10-09T04:00:00Z');
@@ -37,6 +37,8 @@ const EMPTY: PeopleData = {
   listPayrollRuns: async () => [], listPayslips: async () => [], listGoals: async () => [],
   listScorecards: async () => [], listReviews: async () => [], listTrainings: async () => [],
   listTrainingEnrolments: async () => [], listAnnouncements: async () => [],
+  listDocuments: async () => [], listLetters: async () => [], listPaymentVouchers: async () => [],
+  getSettings: async () => DEFAULT_PEOPLE_SETTINGS,
 };
 
 describe('people tools', () => {

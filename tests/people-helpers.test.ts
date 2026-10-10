@@ -22,7 +22,7 @@ import {
   timesheetByEmployee,
 } from '@/lib/people/summaries';
 import { createSeedPeopleData } from '@/lib/people/seed';
-import type { Employee, LeaveRequest, PeopleData, TimesheetEntry } from '@/lib/people/types';
+import { DEFAULT_PEOPLE_SETTINGS, type Employee, type LeaveRequest, type PeopleData, type TimesheetEntry } from '@/lib/people/types';
 
 // A Friday, so there is attendance for "today".
 const NOW = new Date('2026-10-09T04:00:00Z');
@@ -37,6 +37,8 @@ const EMPTY: PeopleData = {
   listPayrollRuns: async () => [], listPayslips: async () => [], listGoals: async () => [],
   listScorecards: async () => [], listReviews: async () => [], listTrainings: async () => [],
   listTrainingEnrolments: async () => [], listAnnouncements: async () => [],
+  listDocuments: async () => [], listLetters: async () => [], listPaymentVouchers: async () => [],
+  getSettings: async () => DEFAULT_PEOPLE_SETTINGS,
 };
 
 describe('overview helpers', () => {

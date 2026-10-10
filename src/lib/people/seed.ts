@@ -18,13 +18,17 @@ import {
   type EmployeePrivate,
   type EmploymentType,
   type Goal,
+  type HrDocument,
   type LeaveBalance,
   type LeaveRequest,
   type LeaveType,
+  type Letter,
   type OvertimeRecord,
   type PayrollRun,
   type Payslip,
+  type PaymentVoucher,
   type PeopleData,
+  type PeopleSettings,
   type PublicHoliday,
   type RequestStatus,
   type Review,
@@ -158,6 +162,43 @@ const ANNOUNCEMENTS: [string, string, Announcement['category'], number][] = [
   ['Updated leave policy', 'Annual leave may now be carried forward up to five days.', 'policy', 21],
   ['Second-half priorities', 'Leadership has shared the three priorities for the second half.', 'strategy', 34],
 ];
+
+/** title, document type, status, issued day from today, expiry day from today. All employee 1's, as in the demo. */
+const OWN_DOCUMENTS: [string, HrDocument['doc_type'], HrDocument['status'], number, number | null][] = [
+  ['Payslip, last month', 'payslip', 'available', -8, null],
+  ['Payslip, two months ago', 'payslip', 'available', -38, null],
+  ['Payslip, three months ago', 'payslip', 'available', -69, null],
+  ['EA form', 'tax', 'available', -150, null],
+  ['Confirmation letter', 'letter', 'pending_signature', -2, null],
+  ['Medical card', 'benefits', 'expiring', -340, 25],
+];
+
+/** employee, type, title, status, issued day from today. */
+const LETTERS: [number, string, string, Letter['status'], number][] = [
+  [1, 'Confirmation', 'Confirmation of employment', 'issued', -2],
+  [13, 'Offer', 'Offer of employment', 'issued', -330],
+  [10, 'Warning', 'Late attendance reminder', 'draft', 0],
+  [9, 'Promotion', 'Promotion to Content Lead', 'issued', -120],
+  [16, 'Contract renewal', 'Contract renewal', 'draft', 0],
+];
+
+/** number, payee, type, amount in cents, day from today, status. */
+const VOUCHERS: [number, string, string, number, number, PaymentVoucher['status']][] = [
+  [1041, 'Aisyah Rahim', 'Claim reimbursement', 32000, -10, 'paid'],
+  [1042, 'Tan Mei Ling', 'Claim reimbursement', 129000, -24, 'paid'],
+  [1043, 'Lembaga Hasil Dalam Negeri', 'Statutory payment', 412000, -18, 'paid'],
+  [1044, 'KWSP', 'Statutory payment', 1986000, -18, 'paid'],
+  [1045, 'Farid Ismail', 'Advance', 150000, -3, 'issued'],
+  [1046, 'Daniel Wong', 'Overtime payout', 37500, 0, 'draft'],
+];
+
+/** The demo workspace's one settings row: only the notifications are set. */
+const SETTINGS: PeopleSettings = {
+  work_week: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  default_annual_leave_days: 14,
+  overtime_rates: { weekday: 1.5, rest_day: 2, public_holiday: 3 },
+  notifications: { leave_requests: true, payslip_ready: true, document_expiry: true, birthdays: false },
+};
 
 const DAY = 86_400_000;
 const pad = (n: number, width: number) => String(n).padStart(width, '0');
@@ -462,6 +503,50 @@ export function createSeedPeopleData(now: Date = new Date()): PeopleData {
     author_name: 'Siti Lestari',
   }));
 
+  const documents: HrDocument[] = [
+    ...employees.map((e, index): HrDocument => ({
+      id: `seed-doc-contract-${index + 1}`,
+      employee_id: e.id,
+      employee_name: e.name,
+      title: 'Employment contract',
+      doc_type: 'contract',
+      status: 'signed',
+      issued_on: e.join_date,
+      expires_on: null,
+    })),
+    ...OWN_DOCUMENTS.map(([title, doc_type, status, issued, expires], index): HrDocument => ({
+      id: `seed-doc-own-${index + 1}`,
+      employee_id: employeeId(1),
+      employee_name: nameOf.get(1)!,
+      title,
+      doc_type,
+      status,
+      issued_on: addDays(today, issued),
+      expires_on: expires === null ? null : addDays(today, expires),
+    })),
+  ].sort((a, b) => (b.issued_on ?? '').localeCompare(a.issued_on ?? ''));
+
+  const letters: Letter[] = LETTERS.map(([n, letter_type, title, status, day], index) => ({
+    id: `seed-letter-${index + 1}`,
+    employee_id: employeeId(n),
+    employee_name: nameOf.get(n)!,
+    letter_type,
+    title,
+    status,
+    issued_on: status === 'issued' ? addDays(today, day) : null,
+    created_at: ago(-day),
+  }));
+
+  const vouchers: PaymentVoucher[] = VOUCHERS.map(([no, payee, voucher_type, amount_cents, day, status]) => ({
+    id: `seed-voucher-${no}`,
+    voucher_no: `PV-${no}`,
+    payee,
+    voucher_type,
+    amount_cents,
+    issued_date: addDays(today, day),
+    status,
+  })).sort((a, b) => b.issued_date.localeCompare(a.issued_date) || b.voucher_no.localeCompare(a.voucher_no));
+
   const newestFirst = <T extends { created_at: string }>(rows: T[]) =>
     [...rows].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
@@ -486,5 +571,9 @@ export function createSeedPeopleData(now: Date = new Date()): PeopleData {
     listTrainings: async () => trainings,
     listTrainingEnrolments: async () => enrolments,
     listAnnouncements: async () => announcements,
+    listDocuments: async () => documents,
+    listLetters: async () => newestFirst(letters),
+    listPaymentVouchers: async () => vouchers,
+    getSettings: async () => structuredClone(SETTINGS),
   };
 }
