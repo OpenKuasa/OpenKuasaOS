@@ -7,7 +7,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { createCrmContact, type CrmContactInsert } from '@/lib/crm/contacts';
-import type { AdSettings, Campaign, Creative, Form, Lead } from './types';
+import type { AdSettings, Appointment, Campaign, Creative, Form, Lead } from './types';
 import {
   FORM_CATEGORY_MAX,
   FORM_COLUMNS,
@@ -185,6 +185,87 @@ export async function deleteLead(
     .maybeSingle();
   if (error) return writeFailed('deleteLead', error);
   if (!data) return { ok: false, error: 'That lead was not found.' };
+  return { ok: true, data: { id: data.id } };
+}
+
+// ---- Appointments ---------------------------------------------------------
+const appointmentStatus = z.enum(['scheduled', 'completed', 'cancelled', 'no_show']);
+const APPOINTMENT_COLS = 'id,contact_name,kind,scheduled_at,via,status,created_at';
+
+export const createAppointmentInput = z.object({
+  contact_name: z.string().trim().min(1).max(120),
+  kind: z.string().trim().min(1).max(120),
+  scheduled_at: z.string().datetime(),
+  via: z.string().trim().min(1).max(80).optional(),
+  status: appointmentStatus.default('scheduled'),
+});
+export const updateAppointmentInput = z.object({
+  id: z.string().uuid(),
+  contact_name: z.string().trim().min(1).max(120).optional(),
+  kind: z.string().trim().min(1).max(120).optional(),
+  scheduled_at: z.string().datetime().optional(),
+  via: z.string().trim().min(1).max(80).optional(),
+  status: appointmentStatus.optional(),
+});
+export const setAppointmentStatusInput = z.object({ id: z.string().uuid(), status: appointmentStatus });
+export const deleteAppointmentInput = z.object({ id: z.string().uuid() });
+
+export async function createAppointment(
+  ctx: ReachWriteContext,
+  input: z.input<typeof createAppointmentInput>,
+): Promise<CapResult<Appointment>> {
+  const values = createAppointmentInput.parse(input);
+  const { data, error } = await ctx.client
+    .from('appointments')
+    .insert({ ...values, org_id: ctx.orgId })
+    .select(APPOINTMENT_COLS)
+    .single();
+  if (error || !data) return writeFailed('createAppointment', error);
+  return { ok: true, data: data as unknown as Appointment };
+}
+
+export async function updateAppointment(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof updateAppointmentInput>,
+): Promise<CapResult<Appointment>> {
+  const { id, ...fields } = updateAppointmentInput.parse(input);
+  if (Object.values(fields).every((v) => v === undefined)) {
+    return { ok: false, error: 'Nothing to update.' };
+  }
+  const { data, error } = await ctx.client
+    .from('appointments')
+    .update(fields)
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select(APPOINTMENT_COLS)
+    .maybeSingle();
+  if (error) return writeFailed('updateAppointment', error);
+  if (!data) return { ok: false, error: 'That appointment was not found.' };
+  return { ok: true, data: data as unknown as Appointment };
+}
+
+export async function setAppointmentStatus(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof setAppointmentStatusInput>,
+): Promise<CapResult<Appointment>> {
+  const { id, status } = setAppointmentStatusInput.parse(input);
+  return updateAppointment(ctx, { id, status });
+}
+
+export async function deleteAppointment(
+  ctx: ReachWriteContext,
+  input: z.infer<typeof deleteAppointmentInput>,
+): Promise<CapResult<{ id: string }>> {
+  const { id } = deleteAppointmentInput.parse(input);
+  const { data, error } = await ctx.client
+    .from('appointments')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', ctx.orgId)
+    .select('id')
+    .maybeSingle();
+  if (error) return writeFailed('deleteAppointment', error);
+  if (!data) return { ok: false, error: 'That appointment was not found.' };
   return { ok: true, data: { id: data.id } };
 }
 
