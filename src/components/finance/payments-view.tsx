@@ -102,6 +102,8 @@ export function PaymentsView({
   const shown = showAll ? matching : matching.slice(0, LATEST_ROWS);
   const columns = writer ? 9 : 8;
   const asking = open && open.kind !== 'form' ? open : null;
+  // The form holds what was typed, so nothing else opens over it: it is closed with its own Cancel first.
+  const locked = confirm.pending || open?.kind === 'form';
   // A row that is gone after a refresh takes its question with it; the message still has to be seen.
   const askingInView = asking ? shown.some((r) => r.allocation_id === asking.row.allocation_id) : false;
 
@@ -234,7 +236,7 @@ export function PaymentsView({
             <Button
               size="sm"
               aria-expanded={open?.kind === 'form'}
-              disabled={confirm.pending}
+              disabled={locked}
               onClick={() => ask({ kind: 'form', today: localIsoDate(new Date()) })}
             >
               <Plus className="size-4" />
@@ -267,7 +269,11 @@ export function PaymentsView({
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <AreaTrend data={view.trend} series={PAID_SERIES} height={240} showLegend />
+          {view.trend.every((month) => month.electronic === 0 && month.cash === 0) ? (
+            <p className="grid h-60 place-items-center text-sm text-muted-foreground">No payments yet.</p>
+          ) : (
+            <AreaTrend data={view.trend} series={PAID_SERIES} height={240} showLegend />
+          )}
         </BentoCard>
         <BentoCard title="Paid by method" subtitle="Month to date · RM" icon={PieChart} className="col-span-2 md:col-span-4">
           {view.byMethod.every((slice) => slice.value === 0) ? (
@@ -406,8 +412,8 @@ export function PaymentsView({
                       {writer ? (
                         <TableCell>
                           {items.length ? (
-                            // RowMenu has no disabled prop; an inert wrapper keeps its button from being used while an action runs.
-                            <span inert={confirm.pending} className={cn(confirm.pending && 'opacity-50')}>
+                            // RowMenu has no disabled prop; an inert wrapper keeps its button from being used while an action runs or the form is open.
+                            <span inert={locked} className={cn(locked && 'opacity-50')}>
                               <RowMenu label={`${p.number ?? 'the scheduled payment'} to ${p.supplier_name}`} items={items} />
                             </span>
                           ) : null}

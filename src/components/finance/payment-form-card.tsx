@@ -160,6 +160,10 @@ export function PaymentFormCard({
                           aria-label={`Amount to pay on ${b.bill_no}`}
                           className="w-32 text-right tabular-nums"
                           onWheel={(e) => e.currentTarget.blur()}
+                          // Enter in an amount box does not record the payment half typed.
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.preventDefault();
+                          }}
                           value={form.amounts[b.id]}
                           onChange={(e) => setForm((f) => ({ ...f, amounts: { ...f.amounts, [b.id]: e.target.value } }))}
                         />

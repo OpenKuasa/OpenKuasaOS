@@ -205,7 +205,7 @@ export function BillFormCard({
           <Button type="button" size="sm" disabled={save.pending} onClick={() => send(true)}>
             {save.pending && posting ? 'Posting…' : 'Save and post'}
           </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={save.pending}>
+          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={save.pending}>
             Cancel
           </Button>
           {save.error ? (

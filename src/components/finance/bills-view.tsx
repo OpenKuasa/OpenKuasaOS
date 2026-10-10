@@ -75,6 +75,7 @@ type Open =
   /** `detail` is null while the draft's lines are being read. */
   | { kind: 'edit'; bill: BillListRow; detail: BillDetail | null; today: string }
   | { kind: 'pay'; bill: BillListRow; today: string }
+  | { kind: 'post'; bill: BillListRow }
   | { kind: 'void'; bill: BillListRow }
   | { kind: 'delete'; bill: BillListRow }
   | null;
@@ -98,7 +99,6 @@ export function BillsView({
   const [filter, setFilter] = useState<BillFilter>('open');
   const [showAll, setShowAll] = useState(false);
   const [open, setOpen] = useState<Open>(null);
-  const rowAction = useFinanceAction();
   const confirm = useFinanceAction();
   const loader = useFinanceAction();
 
@@ -107,21 +107,21 @@ export function BillsView({
   const columns = writer ? 8 : 7;
   const billCount = view.byStatus.reduce((n, s) => n + s.value, 0);
   const payable = writer ? payableBills(rows, writer.payments) : [];
-  const asking = open && (open.kind === 'void' || open.kind === 'delete') ? open : null;
+  const asking = open && (open.kind === 'post' || open.kind === 'void' || open.kind === 'delete') ? open : null;
+  // A form holds what was typed, so nothing else opens over it: it is closed with its own Cancel first.
+  const formOpen = open !== null && !asking;
   // A row that is gone after a refresh takes its question with it; the message still has to be seen.
   const askingInView = asking ? shown.some((b) => b.id === asking.bill.id) : false;
-  const busy = confirm.pending || rowAction.pending;
+  const locked = confirm.pending || formOpen;
   const now = () => localIsoDate(new Date());
   /** Opens one thing, dropping whatever message the last question left behind. */
   const ask = (next: Exclude<Open, null>) => {
     confirm.clear();
-    rowAction.clear();
     setOpen(next);
   };
   /** Closes whatever is open, and the message that went with it. */
   const close = () => {
     confirm.clear();
-    rowAction.clear();
     setOpen(null);
   };
 
@@ -140,8 +140,6 @@ export function BillsView({
           icon: Pencil,
           opens: true,
           onSelect: () => {
-            // Already editing this draft: keep what has been typed.
-            if (open?.kind === 'edit' && open.bill.id === bill.id && open.detail) return;
             loader.clear();
             ask({ kind: 'edit', bill, detail: null, today: now() });
             loader.run(
@@ -154,11 +152,8 @@ export function BillsView({
         {
           label: 'Post',
           icon: FileCheck,
-          onSelect: () => {
-            if (rowAction.pending) return;
-            close();
-            rowAction.run(() => actions.post({ id: bill.id }));
-          },
+          opens: true,
+          onSelect: () => ask({ kind: 'post', bill }),
         },
         {
           label: 'Delete',
@@ -187,6 +182,25 @@ export function BillsView({
   const question = (bill: BillListRow) => {
     if (!writer || !asking || asking.bill.id !== bill.id) return null;
     const { actions } = writer;
+    if (asking.kind === 'post') {
+      return (
+        <ConfirmRow
+          key={bill.id}
+          colSpan={columns}
+          tone="default"
+          icon={FileCheck}
+          label={`Post ${billName(bill)}`}
+          confirmLabel="Post"
+          pendingLabel="Posting…"
+          pending={confirm.pending}
+          error={confirm.error}
+          onConfirm={() => confirm.run(() => actions.post({ id: bill.id }), close)}
+          onCancel={close}
+        >
+          Post this bill? It gets its number and can no longer be edited, only voided.
+        </ConfirmRow>
+      );
+    }
     if (asking.kind === 'void') {
       return (
         <ConfirmRow
@@ -289,8 +303,7 @@ export function BillsView({
   };
 
   // The question's own message shows in its row; beside the filters only while its row is out of view.
-  const confirmError = confirm.error && asking && !askingInView ? confirm.error : null;
-  const tableError = rowAction.error ?? confirmError;
+  const tableError = confirm.error && asking && !askingInView ? confirm.error : null;
 
   return (
     <ScreenContainer>
@@ -302,7 +315,7 @@ export function BillsView({
             <Button
               size="sm"
               aria-expanded={open?.kind === 'new'}
-              disabled={busy}
+              disabled={locked}
               onClick={() => ask({ kind: 'new', today: now(), nonce: Date.now() })}
             >
               <Plus className="size-4" />
@@ -389,11 +402,6 @@ export function BillsView({
               <Download className="size-4" />
               Export
             </Button>
-            {rowAction.pending ? (
-              <p role="status" className="text-sm text-muted-foreground">
-                Posting…
-              </p>
-            ) : null}
             {tableError ? (
               <p role="alert" className="text-sm text-destructive">
                 {tableError}
@@ -464,8 +472,8 @@ export function BillsView({
                       {writer ? (
                         <TableCell>
                           {items.length ? (
-                            // RowMenu has no disabled prop; an inert wrapper keeps its button from being used while an action runs.
-                            <span inert={busy} className={cn(busy && 'opacity-50')}>
+                            // RowMenu has no disabled prop; an inert wrapper keeps its button from being used while an action runs or a form is open.
+                            <span inert={locked} className={cn(locked && 'opacity-50')}>
                               <RowMenu label={billName(b)} items={items} />
                             </span>
                           ) : null}
