@@ -31,19 +31,33 @@ itSb('createCampaign writes to the caller org and ignores an input org_id', asyn
   const c: Sb = createSb(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  await c.auth.signInAnonymously();
-  const { data: orgId } = await c.rpc('create_org_for_current_user', { org_name: 'Cap IT Sdn Bhd' });
+  const signIn = await c.auth.signInAnonymously();
+  expect(signIn.error).toBeNull();
+  const { data: orgId, error: orgError } = await c.rpc('create_org_for_current_user', { org_name: 'Cap IT Sdn Bhd' });
+  expect(orgError).toBeNull();
+  expect(orgId).toBeTruthy();
   const ctx: ReachWriteContext = { client: c, orgId: orgId as string };
-  // Pass a bogus org_id in the input; the capability must ignore it and use ctx.orgId.
-  const res = await createCampaign(ctx, {
-    name: 'From capability', channel: 'facebook', status: 'active', spend_cents: 2000, leads_count: 4,
-    // @ts-expect-error — org_id is not part of the input type; prove it's ignored even if present.
-    org_id: '00000000-0000-0000-0000-000000000000',
-  });
-  expect(res.ok).toBe(true);
-  if (res.ok) {
-    expect(res.data.cpl_cents).toBe(500);
-    await deleteCampaign(ctx, { id: res.data.id });
+  let createdId: string | null = null;
+  try {
+    // Pass a bogus org_id in the input; the capability must ignore it and use ctx.orgId.
+    const res = await createCampaign(ctx, {
+      name: 'From capability', channel: 'facebook', status: 'active', spend_cents: 2000, leads_count: 4,
+      // @ts-expect-error — org_id is not part of the input type; prove it's ignored even if present.
+      org_id: '00000000-0000-0000-0000-000000000000',
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      createdId = res.data.id;
+      expect(res.data.cpl_cents).toBe(500);
+      const row = await c.from('campaigns').select('org_id').eq('id', res.data.id).single();
+      expect(row.error).toBeNull();
+      expect(row.data?.org_id).toBe(orgId);
+    }
+  } finally {
+    if (createdId) {
+      const del = await deleteCampaign(ctx, { id: createdId });
+      expect(del.ok).toBe(true);
+    }
+    await c.auth.signOut();
   }
-  await c.auth.signOut();
 });

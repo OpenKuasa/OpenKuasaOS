@@ -38,9 +38,10 @@ export async function createCampaign(
   ctx: ReachWriteContext,
   input: z.infer<typeof createCampaignInput>,
 ): Promise<CapResult<Campaign>> {
+  const values = createCampaignInput.parse(input);
   const { data, error } = await ctx.client
     .from('campaigns')
-    .insert({ ...input, org_id: ctx.orgId })
+    .insert({ ...values, org_id: ctx.orgId })
     .select('id,name,channel,status,leads_count,spend_cents,cpl_cents,created_at')
     .single();
   if (error || !data) return { ok: false, error: WRITE_FAILED };
@@ -51,7 +52,10 @@ export async function updateCampaign(
   ctx: ReachWriteContext,
   input: z.infer<typeof updateCampaignInput>,
 ): Promise<CapResult<Campaign>> {
-  const { id, ...fields } = input;
+  const { id, ...fields } = updateCampaignInput.parse(input);
+  if (Object.values(fields).every((v) => v === undefined)) {
+    return { ok: false, error: 'Nothing to update.' };
+  }
   const { data, error } = await ctx.client
     .from('campaigns')
     .update(fields)
@@ -68,17 +72,19 @@ export async function setCampaignStatus(
   ctx: ReachWriteContext,
   input: z.infer<typeof setCampaignStatusInput>,
 ): Promise<CapResult<Campaign>> {
-  return updateCampaign(ctx, { id: input.id, status: input.status });
+  const { id, status } = setCampaignStatusInput.parse(input);
+  return updateCampaign(ctx, { id, status });
 }
 
 export async function deleteCampaign(
   ctx: ReachWriteContext,
   input: z.infer<typeof deleteCampaignInput>,
 ): Promise<CapResult<{ id: string }>> {
+  const { id } = deleteCampaignInput.parse(input);
   const { data, error } = await ctx.client
     .from('campaigns')
     .delete()
-    .eq('id', input.id)
+    .eq('id', id)
     .eq('org_id', ctx.orgId)
     .select('id')
     .maybeSingle();
