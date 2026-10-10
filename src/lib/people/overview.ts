@@ -5,6 +5,7 @@
  */
 
 import { rm } from '@/lib/reach/format';
+import { attendanceCounts } from './summaries';
 import { addDays, addMonths, daysBetween, formatDay, monthLabel, monthStart, todayInMalaysia } from './dates';
 import type {
   AttendanceDay,
@@ -131,23 +132,33 @@ export function approvalsHeading(isHr: boolean): { title: string; subtitle: stri
     : { title: 'Your requests', subtitle: 'Waiting for approval', empty: 'You have no requests waiting' };
 }
 
-/** Approved leave days that start in the month beginning `monthStartDate`, most days first. */
+/**
+ * Approved leave days that fall in the month beginning `monthStartDate`, split by
+ * calendar days when a request crosses a month end. Most days first.
+ */
 export function leaveDaysByType(leave: LeaveRequest[], monthStartDate: string): { label: string; days: number }[] {
   const next = addMonths(monthStartDate, 1);
   const days = new Map<LeaveType, number>();
   for (const r of leave) {
-    if (r.status !== 'approved' || r.start_date < monthStartDate || r.start_date >= next) continue;
-    days.set(r.leave_type, (days.get(r.leave_type) ?? 0) + r.days);
+    if (r.status !== 'approved') continue;
+    const from = r.start_date > monthStartDate ? r.start_date : monthStartDate;
+    const lastDay = addDays(next, -1);
+    const to = r.end_date < lastDay ? r.end_date : lastDay;
+    if (from > to) continue;
+    const total = daysBetween(r.start_date, r.end_date) + 1;
+    const inside = daysBetween(from, to) + 1;
+    days.set(r.leave_type, (days.get(r.leave_type) ?? 0) + (r.days * inside) / total);
   }
   return [...days]
-    .map(([type, total]) => ({ label: leaveLabel(type), days: total }))
+    .map(([type, total]) => ({ label: leaveLabel(type), days: Math.round(total * 10) / 10 }))
     .sort((a, b) => b.days - a.days || a.label.localeCompare(b.label));
 }
 
 /**
- * Headcount at the end of each of the last `months` months (today, for the
- * current one), from join dates. The tables hold no leaving date yet, so this
- * counts today's active staff by when they joined.
+ * Today's active staff counted by when they joined, at the end of each of the
+ * last `months` months (today, for the current one). It is not a record of past
+ * headcount: the tables hold no leaving date, so anyone who has left is missing
+ * from every month.
  */
 export function headcountTrend(employees: Employee[], today: string, months = 8): { label: string; headcount: number }[] {
   const first = monthStart(today);
@@ -219,18 +230,14 @@ export type AttendanceCounts = {
 };
 
 export function attendanceOn(days: AttendanceDay[], date: string): AttendanceCounts {
-  const count = (status: AttendanceDay['status']) => days.filter((d) => d.work_date === date && d.status === status).length;
-  const present = count('present');
-  const late = count('late');
-  const absent = count('absent');
-  const expected = present + late + absent;
+  const counts = attendanceCounts(days.filter((d) => d.work_date === date));
   return {
-    present,
-    late,
-    absent,
-    on_leave: count('on_leave'),
-    at_work: present + late,
-    rate_pct: expected === 0 ? null : Math.round(((present + late) / expected) * 100),
+    present: counts.present,
+    late: counts.late,
+    absent: counts.absent,
+    on_leave: counts.on_leave,
+    at_work: counts.present + counts.late,
+    rate_pct: counts.rate_pct,
   };
 }
 

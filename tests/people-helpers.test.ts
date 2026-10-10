@@ -22,7 +22,7 @@ import {
   timesheetByEmployee,
 } from '@/lib/people/summaries';
 import { createSeedPeopleData } from '@/lib/people/seed';
-import type { Employee, PeopleData } from '@/lib/people/types';
+import type { Employee, LeaveRequest, PeopleData, TimesheetEntry } from '@/lib/people/types';
 
 // A Friday, so there is attendance for "today".
 const NOW = new Date('2026-10-09T04:00:00Z');
@@ -98,6 +98,23 @@ describe('overview helpers', () => {
       { label: 'Medical leave', days: 1 },
     ]);
     expect(leaveLabel('unpaid')).toBe('Unpaid leave');
+  });
+
+  it('splits leave days across months by calendar days', () => {
+    const req = (start: string, end: string, days: number, status: LeaveRequest['status'] = 'approved'): LeaveRequest =>
+      ({ leave_type: 'annual', start_date: start, end_date: end, days, status }) as LeaveRequest;
+    const across = [req('2026-10-29', '2026-11-03', 6)];
+    expect(leaveDaysByType(across, '2026-10-01')).toEqual([{ label: 'Annual leave', days: 3 }]);
+    expect(leaveDaysByType(across, '2026-11-01')).toEqual([{ label: 'Annual leave', days: 3 }]);
+    const newYear = [req('2026-12-30', '2027-01-02', 4)];
+    expect(leaveDaysByType(newYear, '2026-12-01')).toEqual([{ label: 'Annual leave', days: 2 }]);
+    expect(leaveDaysByType(newYear, '2027-01-01')).toEqual([{ label: 'Annual leave', days: 2 }]);
+    expect(leaveDaysByType([req('2026-10-05', '2026-10-05', 0.5)], '2026-10-01')).toEqual([
+      { label: 'Annual leave', days: 0.5 },
+    ]);
+    expect(leaveDaysByType([req('2026-10-05', '2026-10-06', 2, 'pending'), req('2026-10-05', '2026-10-06', 2, 'rejected')], '2026-10-01')).toEqual([]);
+    expect(leaveDaysByType(across, '2026-09-01')).toEqual([]);
+    expect(leaveDaysByType(across, '2026-12-01')).toEqual([]);
   });
 
   it('gives headcount for each of the last eight months from join dates', async () => {
@@ -186,6 +203,13 @@ describe('summaries', () => {
     expect(rows).toHaveLength(17);
     expect(rows.every((r) => r.billable_hours <= r.hours)).toBe(true);
     expect(rows.reduce((sum, r) => sum + r.hours, 0)).toBe(entries.reduce((sum, e) => sum + e.hours, 0));
+  });
+
+  it('rounds hour totals so float steps do not leak', () => {
+    const entry = (hours: number): TimesheetEntry =>
+      ({ employee_id: 'e1', hours, billable_hours: hours }) as TimesheetEntry;
+    const rows = timesheetByEmployee([entry(0.1), entry(0.2)], [{ id: 'e1', name: 'A' } as Employee]);
+    expect(rows).toEqual([{ employee: 'A', hours: 0.3, billable_hours: 0.3 }]);
   });
 
   it('summarises goals, scores and ratings', async () => {

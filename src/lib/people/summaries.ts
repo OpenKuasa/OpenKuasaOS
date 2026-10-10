@@ -15,6 +15,7 @@ import type {
 
 const UNKNOWN = 'Unknown';
 const names = (employees: Employee[]) => new Map(employees.map((e) => [e.id, e.name]));
+const twoDecimals = (n: number) => Math.round(n * 100) / 100;
 const oneDecimal = (n: number) => Math.round(n * 10) / 10;
 
 export type PayrollRunTotals = {
@@ -85,7 +86,11 @@ export function timesheetByEmployee(
     totals.set(entry.employee_id, row);
   }
   return [...totals]
-    .map(([id, row]) => ({ employee: name.get(id) ?? UNKNOWN, ...row }))
+    .map(([id, row]) => ({
+      employee: name.get(id) ?? UNKNOWN,
+      hours: twoDecimals(row.hours),
+      billable_hours: twoDecimals(row.billable_hours),
+    }))
     .sort((a, b) => b.hours - a.hours || a.employee.localeCompare(b.employee));
 }
 
