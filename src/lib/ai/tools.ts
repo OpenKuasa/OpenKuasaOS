@@ -10,6 +10,7 @@
  */
 
 import { tool } from 'ai';
+import { limitSchema, rowLimit } from '@/lib/ai/limits';
 import { rm } from '@/lib/reach/format';
 import { z } from 'zod';
 import {
@@ -311,8 +312,6 @@ export function summarizeCreatives(
     .map((c) => ({ id: c.id, name: c.name, type: c.type, channel: c.channel, status: c.status, ctr: c.ctr }));
 }
 
-const limitSchema = (describe: string) =>
-  z.number().int().positive().max(50).optional().describe(describe);
 
 /**
  * Build all Jebat read-only data tools over a {@link ReachData} provider. `now`
@@ -363,10 +362,10 @@ export function createReachTools(
     getUpcomingAppointments: tool({
       description: 'The org’s upcoming appointments (discovery calls, demos, follow-ups), soonest first.',
       inputSchema: z.object({
-        limit: z.number().int().positive().max(20).optional().describe('Max appointments to return (default 5).'),
+        limit: limitSchema('Max appointments to return (default 5, at most 20).'),
       }),
       execute: async ({ limit }) =>
-        filterUpcomingAppointments(await data.listAppointments(), now(), limit ?? 5),
+        filterUpcomingAppointments(await data.listAppointments(), now(), rowLimit(limit, 5, 20)),
     }),
 
     getAdsOverview: tool({
@@ -382,38 +381,39 @@ export function createReachTools(
       inputSchema: z.object({
         stage: z.enum(LEAD_STAGES as [LeadStage, ...LeadStage[]]).optional().describe('Only contacts at this stage.'),
         channel: z.enum(['whatsapp', 'facebook', 'instagram', 'tiktok']).optional().describe('Only contacts from this channel.'),
-        limit: limitSchema('Max contacts to return (default 10).'),
+        limit: limitSchema('Max contacts to return (default 10, at most 50).'),
       }),
       execute: async ({ stage, channel, limit }) =>
-        deriveContacts(await data.listLeads(), { stage, channel, limit }),
+        deriveContacts(await data.listLeads(), { stage, channel, limit: rowLimit(limit, 10) }),
     }),
 
     listForms: tool({
       description:
         'Lead-capture forms with id, category, link (slug), status, views and submissions count, most submissions first.',
-      inputSchema: z.object({ limit: limitSchema('Max forms to return (default 10).') }),
-      execute: async ({ limit }) => summarizeForms(await data.listForms(), limit),
+      inputSchema: z.object({ limit: limitSchema('Max forms to return (default 10, at most 50).') }),
+      execute: async ({ limit }) => summarizeForms(await data.listForms(), rowLimit(limit, 10)),
     }),
 
     listBroadcasts: tool({
       description: 'Email / WhatsApp broadcasts with sent, opened, clicked counts and sent date, newest first.',
-      inputSchema: z.object({ limit: limitSchema('Max broadcasts to return (default 10).') }),
-      execute: async ({ limit }) => summarizeBroadcasts(await data.listBroadcasts(), limit),
+      inputSchema: z.object({ limit: limitSchema('Max broadcasts to return (default 10, at most 50).') }),
+      execute: async ({ limit }) => summarizeBroadcasts(await data.listBroadcasts(), rowLimit(limit, 10)),
     }),
 
     listAutomations: tool({
       description: 'Automation workflows with trigger, status and number of runs, most runs first.',
-      inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10).') }),
-      execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), limit),
+      inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10, at most 50).') }),
+      execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), rowLimit(limit, 10)),
     }),
 
     getCreatives: tool({
       description: 'List the org’s ad creatives (image/video/copy) with channel, status and CTR. Optionally filter by type.',
       inputSchema: z.object({
         type: z.enum(['image', 'video', 'copy']).optional().describe('Only return creatives of this type.'),
-        limit: limitSchema('Max creatives to return (default 20).'),
+        limit: limitSchema('Max creatives to return (default 20, at most 50).'),
       }),
-      execute: async ({ type, limit }) => summarizeCreatives(await data.listCreatives(), { type, limit }),
+      execute: async ({ type, limit }) =>
+        summarizeCreatives(await data.listCreatives(), { type, limit: rowLimit(limit, 20) }),
     }),
 
     getAdSettings: tool({

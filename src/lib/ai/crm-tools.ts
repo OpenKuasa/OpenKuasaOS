@@ -34,6 +34,7 @@ import {
   needsDefaultPipeline,
   type CrmPipeline,
 } from '@/lib/crm/pipelines';
+import { limitSchema, rowLimit } from '@/lib/ai/limits';
 import { rm } from '@/lib/reach/format';
 
 /** Who is asking and where, and whether they may change anything. */
@@ -241,7 +242,7 @@ export function createCrmTools(access: CrmAccess) {
       inputSchema: z.object({
         search: z.string().optional().describe('Part of a name, email or company.'),
         status: z.enum(CONTACT_STATUSES).optional(),
-        limit: z.number().int().positive().max(50).optional().describe('Default 20.'),
+        limit: limitSchema('Max rows to return (default 20, at most 50).'),
       }),
       execute: async ({ search, status, limit }) => {
         let query = client
@@ -261,7 +262,7 @@ export function createCrmTools(access: CrmAccess) {
         }
         const { data, count, error } = await query
           .order('created_at', { ascending: false })
-          .limit(limit ?? 20);
+          .limit(rowLimit(limit, 20));
         if (error) throw error;
         const rows = (data ?? []) as unknown as ContactRow[];
         return { total_matching: count ?? rows.length, contacts: rows.map(contactOut) };
@@ -275,7 +276,7 @@ export function createCrmTools(access: CrmAccess) {
       inputSchema: z.object({
         status: z.enum(['open', 'won', 'lost']).optional(),
         search: z.string().optional().describe('Part of a title, contact name or company.'),
-        limit: z.number().int().positive().max(50).optional().describe('Default 20.'),
+        limit: limitSchema('Max rows to return (default 20, at most 50).'),
       }),
       execute: async ({ status, search, limit }) => {
         const [{ deals, total }, list] = await Promise.all([
@@ -294,7 +295,7 @@ export function createCrmTools(access: CrmAccess) {
         return {
           total_in_workspace: total,
           total_matching: matching.length,
-          deals: matching.slice(0, limit ?? 20).map((d) => dealOut(d, stages)),
+          deals: matching.slice(0, rowLimit(limit, 20)).map((d) => dealOut(d, stages)),
         };
       },
     }),
