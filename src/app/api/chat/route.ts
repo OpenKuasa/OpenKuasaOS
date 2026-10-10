@@ -4,8 +4,9 @@
  * Same gate as Ask-Jebat (see `prepareChat`): a workspace key if one is set,
  * otherwise one of the user's free weekly questions on the platform key.
  *
- * Tuah reads and changes marketing data through the same tools as Ask-Jebat:
- * lookups run on their own, changes wait for the user's approval.
+ * Tuah reads and changes marketing data through the same tools as Ask-Jebat,
+ * and CRM contacts and deals through Kasturi's: lookups run on their own,
+ * changes wait for the user's approval.
  *
  * A turn that gets past the gate is saved to the user's chat history; a
  * refused one leaves no trace.
@@ -45,6 +46,14 @@ export async function POST(request: Request) {
     org && org.role !== 'viewer'
       ? { ctx: { client: supabase, orgId: org.orgId }, canWrite: true }
       : undefined;
+  const crm = org
+    ? {
+        client: supabase,
+        orgId: org.orgId,
+        userId: chat.userId,
+        canWrite: org.role !== 'viewer',
+      }
+    : null;
 
   // The answer does not depend on anyone watching it arrive: closing the tab
   // or opening another chat must not cut it short, so the model is bounded by
@@ -55,6 +64,7 @@ export async function POST(request: Request) {
     AbortSignal.timeout(ANSWER_TIMEOUT_MS),
     chat.apiKey,
     chat.screen,
+    crm,
   );
   void result.consumeStream();
 

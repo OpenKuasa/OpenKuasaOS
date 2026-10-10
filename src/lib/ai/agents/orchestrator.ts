@@ -7,6 +7,7 @@
 
 import { type ModelMessage, stepCountIs, streamText } from 'ai';
 import { getModel } from '@/lib/ai/provider';
+import { CRM_WRITE_TOOL_NAMES, createCrmTools, type CrmAccess } from '@/lib/ai/crm-tools';
 import { createReachTools } from '@/lib/ai/tools';
 import type { ReachWriteContext } from '@/lib/reach/capabilities';
 import type { ReachData } from '@/lib/reach/types';
@@ -69,10 +70,30 @@ export function runJebat(
 }
 
 /**
+ * Tuah's tools for one request: Jebat's marketing toolkit, plus Kasturi's CRM
+ * tools when the user is in a workspace. Every change tool that is present is
+ * mapped to an approval, whichever product it belongs to.
+ */
+function tuahToolkit(reach: ReachAccess, crm?: CrmAccess | null) {
+  const marketing = reachToolkit(reach);
+  if (!crm) return marketing;
+
+  const crmTools = createCrmTools(crm);
+  const crmApproval = Object.fromEntries(
+    CRM_WRITE_TOOL_NAMES.filter((n) => n in crmTools).map((n) => [n, 'user-approval' as const]),
+  );
+  const toolApproval = { ...marketing.toolApproval, ...crmApproval };
+  return {
+    tools: { ...marketing.tools, ...crmTools },
+    toolApproval: Object.keys(toolApproval).length > 0 ? toolApproval : undefined,
+  };
+}
+
+/**
  * Tuah, the cross-app assistant on the Command page and the floating button.
- * It has the marketing tools Jebat has (lookups, and changes behind an
- * approval), runs on the same model those tools were tuned on, and says so
- * rather than inventing data from the products it cannot see yet.
+ * It has the marketing tools Jebat has and Kasturi's CRM tools (lookups, and
+ * changes behind an approval), runs on the model those rules were tuned on,
+ * and says so rather than inventing data from the products it cannot see yet.
  */
 export function runTuah(
   messages: ModelMessage[],
@@ -81,15 +102,18 @@ export function runTuah(
   apiKey?: string,
   /** The screen the question was asked from, if it came from the floating assistant. */
   screen?: Screen | null,
+  /** The workspace's CRM, when the user is in one. */
+  crm?: CrmAccess | null,
 ) {
-  const { tools, toolApproval } = reachToolkit(reach);
+  const { tools, toolApproval } = tuahToolkit(reach, crm);
   return streamText({
     model: getModel('orchestrator', apiKey),
     system: tuahSystem(screen),
     messages,
     tools,
     toolApproval,
-    stopWhen: stepCountIs(8),
+    // A CRM change often needs two lookups first (the contact, then the stage).
+    stopWhen: stepCountIs(10),
     maxOutputTokens: 1000,
     abortSignal,
   });
