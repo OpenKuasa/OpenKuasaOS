@@ -12,7 +12,7 @@ import {
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
-import { BarGroup, Sparkline, type Series } from '@/components/charts';
+import { BarGroup, type Series } from '@/components/charts';
 import { LiveDot } from '@/components/ui/live-dot';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,64 +25,27 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { ROWS_SHOWN, buildInterviewsModel, type InterviewsModel } from '@/lib/hire/lists';
+import { LOAD_FAILED, Muted, loadHire } from '@/screens/hire/parts';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd — interviews) ------------- */
+type Interview = InterviewsModel['rows'][number];
 
-type Status = 'Scheduled' | 'Completed' | 'No-show';
-type InterviewType = 'Video' | 'Onsite' | 'Phone';
-
-const STATUS_STYLES: Record<Status, string> = {
+const STATUS_STYLES: Record<Interview['status'], string> = {
   Scheduled: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
   Completed: 'bg-muted text-muted-foreground',
+  Cancelled: 'bg-red-500/15 text-red-600 dark:text-red-400',
   'No-show': 'bg-red-500/15 text-red-600 dark:text-red-400',
 };
 
-const TYPE_ICONS: Record<InterviewType, LucideIcon> = {
+const TYPE_ICONS: Record<Interview['type'], LucideIcon> = {
   Video,
   Onsite: MapPin,
   Phone,
 };
 
-type Interview = {
-  id: string;
-  name: string;
-  role: string;
-  date: string;
-  time: string;
-  interviewer: string;
-  type: InterviewType;
-  status: Status;
-};
-
-const ROWS: Interview[] = [
-  { id: 'i1', name: 'Lim Wei Jie', role: 'Operations', date: '09 Oct', time: '10:00', interviewer: 'Ahmad Zaki', type: 'Onsite', status: 'Scheduled' },
-  { id: 'i2', name: 'Nabila Idris', role: 'Product Designer', date: '09 Oct', time: '14:00', interviewer: 'Faiz Hakim', type: 'Video', status: 'Scheduled' },
-  { id: 'i3', name: 'Nurul Huda', role: 'Account Manager', date: '10 Oct', time: '11:30', interviewer: 'Siti Aminah', type: 'Video', status: 'Scheduled' },
-  { id: 'i4', name: 'Hafiz Omar', role: 'Sales Executive', date: '10 Oct', time: '16:00', interviewer: 'Aisyah Rahim', type: 'Onsite', status: 'Scheduled' },
-  { id: 'i5', name: 'Chong Ai Wei', role: 'Account Manager', date: '13 Oct', time: '09:00', interviewer: 'Saudara', type: 'Video', status: 'Scheduled' },
-  { id: 'i6', name: 'Rajesh Nair', role: 'Sales Executive', date: '14 Oct', time: '15:30', interviewer: 'Nurul Huda', type: 'Onsite', status: 'Scheduled' },
-  { id: 'i7', name: 'Rajesh Kumar', role: 'Software Engineer', date: '07 Oct', time: '11:00', interviewer: 'Saudara', type: 'Video', status: 'Completed' },
-  { id: 'i8', name: 'Wong Li Fen', role: 'Customer Support', date: '06 Oct', time: '15:00', interviewer: 'Aisyah Rahim', type: 'Onsite', status: 'Completed' },
-  { id: 'i9', name: 'Siti Aminah', role: 'Customer Support', date: '06 Oct', time: '09:30', interviewer: 'Faiz Hakim', type: 'Phone', status: 'Completed' },
-  { id: 'i10', name: 'Ahmad Zaki', role: 'Operations', date: '03 Oct', time: '14:00', interviewer: 'Nurul Huda', type: 'Video', status: 'No-show' },
-];
-
-/* Interviews booked per weekday — current week (Mon–Fri). */
-const WEEK_LOAD = [
-  { label: 'Mon', count: 2 },
-  { label: 'Tue', count: 1 },
-  { label: 'Wed', count: 0 },
-  { label: 'Thu', count: 2 },
-  { label: 'Fri', count: 2 },
-];
 const WEEK_SERIES: Series[] = [
   { key: 'count', label: 'Interviews', color: 'var(--chart-1)' },
 ];
-
-const scheduled = ROWS.filter((r) => r.status === 'Scheduled');
-const completedCount = ROWS.filter((r) => r.status === 'Completed').length;
-const noShowCount = ROWS.filter((r) => r.status === 'No-show').length;
-const thisWeek = WEEK_LOAD.reduce((sum, d) => sum + d.count, 0);
 
 function UpcomingRow({ interview }: { interview: Interview }) {
   const TypeIcon = TYPE_ICONS[interview.type];
@@ -118,14 +81,17 @@ function UpcomingRow({ interview }: { interview: Interview }) {
   );
 }
 
-export default function InterviewsScreen() {
+export default async function InterviewsScreen() {
+  const { model } = await loadHire('interviews', buildInterviewsModel);
+  const upcoming = model?.rows.filter((r) => r.status === 'Scheduled') ?? [];
+
   return (
     <ScreenContainer>
       <PageHeader
         title="Interviews"
         subtitle="Your upcoming and recent interviews, Saudara."
         actions={
-          <Button size="sm">
+          <Button size="sm" disabled title="Coming soon">
             <Plus className="size-4" />
             Schedule Interview
           </Button>
@@ -133,88 +99,48 @@ export default function InterviewsScreen() {
       />
 
       <BentoGrid>
-        {/* KPI row */}
+        {/* KPI row: headline figures only, the tables hold no history to chart */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Scheduled"
-            value={scheduled.length}
-            delta="+3"
-            onPrimary
-            chart={
-              <Sparkline
-                data={[2, 3, 3, 4, 4, 5, 5, scheduled.length]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
-            }
-          />
+          <BentoStat label="Scheduled" value={model ? model.scheduled : '—'} onPrimary />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="This week"
-            value={thisWeek}
-            delta="+2"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[3, 4, 4, 5, 6, 6, 7, thisWeek]}
-                color="var(--chart-1)"
-                height={36}
-              />
-            }
-          />
+          <BentoStat label="Next 7 days" value={model ? model.next7Days : '—'} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Completed"
-            value={completedCount}
-            delta="+1"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[1, 1, 2, 2, 2, 3, 3, completedCount]}
-                color="var(--chart-2)"
-                height={36}
-              />
-            }
-          />
+          <BentoStat label="Completed" value={model ? model.completed : '—'} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="No-shows"
-            value={noShowCount}
-            delta="0"
-            deltaTone="flat"
-            chart={
-              <Sparkline
-                data={[1, 0, 1, 0, 0, 1, 0, noShowCount]}
-                color="var(--chart-4)"
-                height={36}
-              />
-            }
-          />
+          <BentoStat label="No-shows" value={model ? model.noShow : '—'} />
         </BentoCard>
 
         {/* Upcoming list + week load */}
         <BentoCard
           title="Upcoming interviews"
-          subtitle={`${scheduled.length} scheduled`}
+          subtitle={model ? `${model.scheduled} scheduled` : undefined}
           icon={CalendarClock}
           className="col-span-2 md:col-span-8"
         >
-          <ul className="space-y-2">
-            {scheduled.map((interview) => (
-              <UpcomingRow key={interview.id} interview={interview} />
-            ))}
-          </ul>
+          {!model ? LOAD_FAILED : upcoming.length === 0 ? (
+            <Muted>No interviews scheduled</Muted>
+          ) : (
+            <ul className="space-y-2">
+              {upcoming.map((interview) => (
+                <UpcomingRow key={interview.id} interview={interview} />
+              ))}
+            </ul>
+          )}
         </BentoCard>
         <BentoCard
-          title="This week"
-          subtitle="Interviews by day"
+          title="Next 7 days"
+          subtitle="Interviews by weekday (Mon–Fri)"
           icon={BarChart3}
           className="col-span-2 md:col-span-4"
         >
-          <BarGroup data={WEEK_LOAD} series={WEEK_SERIES} height={240} />
+          {!model ? LOAD_FAILED : model.next7Days === 0 ? (
+            <Muted>No interviews in the next 7 days</Muted>
+          ) : (
+            <BarGroup data={model.weekLoad} series={WEEK_SERIES} height={240} />
+          )}
         </BentoCard>
 
         {/* All interviews table */}
@@ -225,6 +151,10 @@ export default function InterviewsScreen() {
           flush
           className="col-span-2 md:col-span-12"
         >
+          {!model ? LOAD_FAILED : model.rows.length === 0 ? (
+            <Muted>No interviews yet</Muted>
+          ) : (
+          <>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -239,7 +169,7 @@ export default function InterviewsScreen() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ROWS.map((r) => (
+                {model.rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -279,12 +209,18 @@ export default function InterviewsScreen() {
             </Table>
           </div>
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>Showing {ROWS.length} interviews</span>
+            <span>
+              {model.rows.length >= ROWS_SHOWN
+                ? `Showing the first ${model.rows.length} interviews`
+                : `Showing ${model.rows.length} interviews`}
+            </span>
             <span className="flex items-center gap-2">
               <CalendarCheck className="size-4" />
-              {completedCount} completed
+              {model.completed} completed
             </span>
           </div>
+          </>
+          )}
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
