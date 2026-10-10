@@ -93,7 +93,7 @@ export const PRODUCTS: Product[] = [
       {
         label: 'Leads',
         items: [
-          { label: 'Contacts', slug: 'contacts', icon: Users },
+          { label: 'Lead Funnel', slug: 'leads', icon: Users },
           { label: 'Lead Forms', slug: 'lead-forms', icon: ClipboardList },
         ],
       },
