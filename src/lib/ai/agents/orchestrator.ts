@@ -13,18 +13,26 @@ import {
   REACH_WRITE_TOOL_NAMES,
   combineToolkits,
   crmProduct,
+  hireProduct,
   kasturiSharedProduct,
   reachProduct,
+  type HireAccess,
   type ReachAccess,
 } from '@/lib/ai/products';
-import { JEBAT_SYSTEM, kasturiSystem, tuahSystem, tuahTeamSystem } from '@/lib/ai/agents/prompts';
+import {
+  JEBAT_SYSTEM,
+  LEKIR_SYSTEM,
+  kasturiSystem,
+  tuahSystem,
+  tuahTeamSystem,
+} from '@/lib/ai/agents/prompts';
 import { createTeamTools, type TeamContext } from '@/lib/ai/agents/specialists';
 import type { Screen } from '@/lib/chat/screen';
 
 /** Tools that change data: each one pauses for the owner's approval before running. */
 export const WRITE_TOOL_NAMES = REACH_WRITE_TOOL_NAMES;
 
-export type { ReachAccess };
+export type { HireAccess, ReachAccess };
 
 export function runJebat(
   messages: ModelMessage[],
@@ -77,11 +85,38 @@ export function runKasturi(
   });
 }
 
+/**
+ * "Lekir, your hiring lead": the same single agent as Jebat, holding the
+ * hiring lookups. It has no change tools yet, so nothing asks for approval.
+ */
+export function runLekir(
+  messages: ModelMessage[],
+  hire: HireAccess,
+  abortSignal?: AbortSignal,
+  /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
+  apiKey?: string,
+) {
+  const { tools, toolApproval } = combineToolkits([hireProduct(hire)]);
+  return streamText({
+    model: getModel('orchestrator', apiKey),
+    system: LEKIR_SYSTEM,
+    messages,
+    tools,
+    toolApproval,
+    onLanguageModelCallEnd: logModelCall('lekir', pickModelId('orchestrator')),
+    stopWhen: stepCountIs(8),
+    // A drafted job description runs longer than a data answer.
+    maxOutputTokens: 1400,
+    abortSignal,
+  });
+}
+
 /** What each specialist is for, as Tuah's instructions put it. */
 const TEAM_AREA = {
   reach:
     'marketing: ads and campaigns, spend, leads (finding, adding and editing them, and promoting a lead to a CRM contact), lead forms, creatives, appointments and ad settings',
   crm: 'the CRM: contacts, deals, pipelines and their stages, follow-ups (reminders to get back to a contact) and the calendar. A lead is not a contact yet: anything about a lead goes to Jebat',
+  hire: 'hiring: job openings, candidates and their applications, the hiring funnel, interviews, the talent pool and time to hire. Lookups only for now. Existing staff, leave and payroll are not hiring',
 } as const;
 
 /**
