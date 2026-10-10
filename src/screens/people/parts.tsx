@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ReactNode } from 'react';
 import { isLiveChatAllowed } from '@/lib/ai/access';
 import { getCurrentOrg } from '@/lib/auth/current-org';
@@ -19,6 +20,12 @@ export const LOAD_FAILED = <Muted>Couldn&apos;t load your HR data — please ref
 export const HR_ONLY = <Muted>Shown to HR admins</Muted>;
 export const NOT_AVAILABLE = <Muted>Not available yet</Muted>;
 
+/** The one palette for a department's slice, shared by the Overview and Employees charts. No purple. */
+export const DEPARTMENT_COLORS = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-3)', 'var(--chart-4)', 'var(--muted-foreground)'];
+
+/** What a screen's builder is told besides the data: the session, the workspace and who is looking. */
+export type PeopleLoadContext = { client: SupabaseClient; orgId: string | null; viewer: PeopleViewer };
+
 /**
  * Loads one Lekiu screen's model for the signed-in viewer. `model` is null
  * when the read failed, so the screen can say so on its cards instead of
@@ -29,7 +36,7 @@ export const NOT_AVAILABLE = <Muted>Not available yet</Muted>;
  */
 export async function loadPeople<T>(
   tag: string,
-  build: (data: PeopleData, now: Date) => Promise<T>,
+  build: (data: PeopleData, now: Date, ctx: PeopleLoadContext) => Promise<T>,
 ): Promise<{ model: T | null; viewer: PeopleViewer; chatDemo: boolean; hasWorkspace: boolean }> {
   const supabase = await createClient();
   const {
@@ -45,7 +52,7 @@ export async function loadPeople<T>(
     hasWorkspace = org !== null || !hasSupabaseEnv();
     const data = org ? createSupabasePeopleData(supabase, org.orgId) : await getPeopleData(supabase);
     viewer = await getPeopleViewer(supabase, org);
-    model = await build(data, new Date());
+    model = await build(data, new Date(), { client: supabase, orgId: org?.orgId ?? null, viewer });
   } catch (error) {
     console.error(`[people/${tag}] data error:`, error);
   }

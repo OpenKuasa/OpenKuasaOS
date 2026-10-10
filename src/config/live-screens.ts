@@ -40,8 +40,9 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   'hire/talent-pool',
   'hire/careers-page',
 
-  // Lekiu (the Overview only; the other screens join in later slices)
+  // Lekiu (the Overview and Employees; the other screens join in later slices)
   'people/assistant',
+  'people/employees',
 
   // Bendahara. Supplier Bills and Payments Out read the workspace's own data
   // but have no form to add to them yet.
