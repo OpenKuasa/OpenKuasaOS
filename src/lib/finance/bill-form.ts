@@ -8,6 +8,7 @@ import { addDaysIso, billTotals, type LineNumbers } from './bill-math';
 import { type BillDetail, BILL_MESSAGES, isIsoDate, saveBillInput } from './bills';
 import { typedNumber } from './format';
 import type { FinanceProduct } from './products';
+import { WRITE_FAILED } from './result';
 
 export type LineDraft = {
   /** Stable for React while the form is open; never sent. */
@@ -162,4 +163,10 @@ export function billFormError(form: BillForm, posting = false): string | null {
   if (!parsed.success) return parsed.error.issues[0]?.message ?? BILL_MESSAGES.lines;
   if (posting && billTotals(form.lines.map(lineNumbers)).total <= 0) return BILL_MESSAGES.empty;
   return null;
+}
+
+/** What the form says when the bill was saved as a draft but posting it was refused. */
+export function savedNotPosted(error: string): string {
+  if (error === WRITE_FAILED) return 'The bill was saved as a draft, but posting it failed. Please try again.';
+  return `The bill was saved as a draft, but it was not posted. ${error}`;
 }

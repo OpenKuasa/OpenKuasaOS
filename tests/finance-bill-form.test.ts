@@ -8,13 +8,15 @@ import {
   emptyLine,
   lineNumbers,
   newBillForm,
+  savedNotPosted,
   withBillDate,
   withDueDate,
   withProduct,
   withSupplier,
 } from '@/lib/finance/bill-form';
 import { billTotals } from '@/lib/finance/bill-math';
-import { type BillDetail, saveBillInput } from '@/lib/finance/bills';
+import { WRITE_FAILED } from '@/lib/finance/result';
+import { BILL_MESSAGES, type BillDetail, saveBillInput } from '@/lib/finance/bills';
 import type { FinanceProduct } from '@/lib/finance/products';
 
 const BILL = '33333333-3333-4333-8333-333333333333';
@@ -237,5 +239,19 @@ describe('billFormFromDetail', () => {
       { product_id: null, description: 'Delivery', quantity: 1, uom: null, pack_size: null, unit_price: 0, sst_rate: 0 },
     ]);
     expect(billTotals(form.lines.map(lineNumbers))).toEqual({ subtotal: 125, sst: 7.5, total: 132.5 });
+  });
+});
+
+describe('savedNotPosted', () => {
+  it('says plainly that the draft was saved when the failure was the general one', () => {
+    const text = savedNotPosted(WRITE_FAILED);
+    expect(text).toBe('The bill was saved as a draft, but posting it failed. Please try again.');
+    expect(text).not.toContain('could not be saved');
+  });
+
+  it('puts the reason after the fact that the draft was saved', () => {
+    const text = savedNotPosted(BILL_MESSAGES.lines);
+    expect(text).toBe(`The bill was saved as a draft, but it was not posted. ${BILL_MESSAGES.lines}`);
+    expect(text).not.toContain('could not be saved');
   });
 });

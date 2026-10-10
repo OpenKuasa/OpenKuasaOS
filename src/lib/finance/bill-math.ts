@@ -12,7 +12,8 @@ export type BillTotals = { subtotal: number; sst: number; total: number };
 /** A whole number of 10^-places units; 0 for anything that is not a number above 0. */
 function units(value: number, places: number): bigint {
   if (!Number.isFinite(value) || value <= 0) return BigInt(0);
-  return BigInt(Math.round(value * 10 ** places));
+  const scaled = Math.round(value * 10 ** places);
+  return Number.isFinite(scaled) ? BigInt(scaled) : BigInt(0);
 }
 
 /** Divides and rounds half up, as Postgres rounds a numeric. Both numbers are 0 or more. */
@@ -56,6 +57,7 @@ export function addDaysIso(iso: string, days: number): string {
   if (!isIsoDate(iso) || !Number.isFinite(days)) return iso;
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + Math.trunc(days));
+  if (Number.isNaN(d.getTime())) return iso;
   return d.toISOString().slice(0, 10);
 }
 

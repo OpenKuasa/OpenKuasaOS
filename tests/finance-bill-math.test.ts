@@ -80,3 +80,15 @@ describe('localIsoDate', () => {
     expect(localIsoDate(new Date(2027, 0, 5, 23, 59))).toBe('2027-01-05');
   });
 });
+
+describe('absurd input', () => {
+  it('treats a quantity too large to scale as unusable instead of throwing', () => {
+    const line = { quantity: 1e306, unit_price: 1, sst_rate: 0 };
+    expect(lineAmounts(line)).toEqual({ amount: 0, sst: 0 });
+    expect(billTotals([line])).toEqual({ subtotal: 0, sst: 0, total: 0 });
+  });
+
+  it('leaves a date alone when adding days leaves the calendar', () => {
+    expect(addDaysIso('2026-10-10', 1e12)).toBe('2026-10-10');
+  });
+});
