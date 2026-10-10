@@ -39,6 +39,15 @@ describe('TUAH_SYSTEM', () => {
     expect(t).toContain('never a permissions problem');
   });
 
+  it('offers only what it has a tool for', () => {
+    expect(t).toContain('only offer to do things you have a tool for');
+  });
+
+  it('keeps the line before a lookup in the user’s language', () => {
+    expect(t).toContain('in the language the user is writing in');
+    expect(t).toContain('keep to that one language');
+  });
+
   it('gets ids from a listing instead of asking for them', () => {
     expect(t).toContain('to get its id');
     expect(t).toContain('never ask the user for an id');
