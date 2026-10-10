@@ -59,9 +59,8 @@ const text = z
   .nullable();
 const amount = z
   .number({ error: M.amount })
-  .gt(0, M.amount)
-  .max(999_999_999_999.99, M.amount)
-  .transform((v) => Math.round(v * 100) / 100);
+  .transform((v) => Math.round(v * 100) / 100)
+  .pipe(z.number().gt(0, M.amount).max(999_999_999_999.99, M.amount));
 const id = z.string({ error: M.gone }).uuid(M.gone);
 
 export const recordPaymentOutInput = z.object({

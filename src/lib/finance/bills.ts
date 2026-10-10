@@ -65,7 +65,7 @@ const optionalId = z
 const line = z.object({
   product_id: optionalId.default(null),
   description: z.string({ error: M.description }).trim().min(1, M.description).max(200, M.tooLong),
-  quantity: z.number({ error: M.quantity }).gt(0, M.quantity).max(99_999_999, M.quantity).transform(round(3)),
+  quantity: z.number({ error: M.quantity }).transform(round(3)).pipe(z.number().gt(0, M.quantity).max(99_999_999, M.quantity)),
   uom: text.default(null),
   pack_size: text.default(null),
   unit_price: z.number({ error: M.price }).min(0, M.price).max(999_999_999, M.price).transform(round(4)),

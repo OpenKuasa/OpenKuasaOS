@@ -70,6 +70,14 @@ describe('recordPaymentOutInput', () => {
   });
 });
 
+describe('recordPaymentOutInput rounding', () => {
+  it('refuses an amount that rounds to 0 and rounds a half cent up', () => {
+    expect(first({ ...valid, allocations: [{ bill_id: BILL_1, amount: 0.004 }] })).toBe('Enter an amount above 0.');
+    expect(recordPaymentOutInput.parse({ ...valid, allocations: [{ bill_id: BILL_1, amount: 0.005 }] }).allocations)
+      .toEqual([{ bill_id: BILL_1, amount: 0.01 }]);
+  });
+});
+
 describe('payment writes', () => {
   it('records through the database function, in the caller’s workspace', async () => {
     const { ctx, calls } = fakeClient({ data: TXN, error: null });

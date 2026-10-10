@@ -73,6 +73,13 @@ describe('saveBillInput', () => {
   });
 });
 
+describe('saveBillInput quantity rounding', () => {
+  it('refuses a quantity that rounds to 0 and rounds a half step up', () => {
+    expect(first({ ...valid, lines: [{ ...line, quantity: 0.0004 }] })).toBe('Enter a quantity above 0.');
+    expect(saveBillInput.parse({ ...valid, lines: [{ ...line, quantity: 0.0005 }] }).lines[0].quantity).toBe(0.001);
+  });
+});
+
 describe('bill writes', () => {
   it('saves through the database function, in the caller’s workspace', async () => {
     const { ctx, calls } = fakeClient({ data: ID, error: null });

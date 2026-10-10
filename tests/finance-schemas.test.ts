@@ -24,6 +24,14 @@ const cases: [string, { parse: (v: unknown) => unknown }, unknown][] = [
     account_id: ID, txn_date: '2026-10-05', method: 'fpx', reference: ' ',
     allocations: [{ bill_id: ID, amount: 32.506 }],
   }],
+  ['saveBillInput (smallest quantity)', saveBillInput, {
+    supplier_id: ID, bill_date: '2026-10-01', due_date: '2026-10-31', supplier_ref: ' ', notes: '',
+    lines: [{ description: ' Gloves ', quantity: 0.0005, unit_price: 0.123456, uom: '', product_id: '' }],
+  }],
+  ['recordPaymentOutInput (smallest amount)', recordPaymentOutInput, {
+    account_id: ID, txn_date: '2026-10-05', method: 'fpx', reference: ' ',
+    allocations: [{ bill_id: ID, amount: 0.005 }],
+  }],
   ['markPaymentPaidInput', markPaymentPaidInput, { id: ID, paid_on: '2026-10-09' }],
 ];
 
