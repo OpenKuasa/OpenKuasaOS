@@ -12,6 +12,17 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import {
+  type ReachWriteContext,
+  createCampaign as capCreateCampaign,
+  createCampaignInput,
+  deleteCampaign as capDeleteCampaign,
+  deleteCampaignInput,
+  setCampaignStatus as capSetCampaignStatus,
+  setCampaignStatusInput,
+  updateCampaign as capUpdateCampaign,
+  updateCampaignInput,
+} from '@/lib/reach/capabilities';
+import {
   type Appointment,
   type Automation,
   type Broadcast,
@@ -256,9 +267,13 @@ const limitSchema = (describe: string) =>
  * Build all Jebat read-only data tools over a {@link ReachData} provider. `now`
  * (a Date or a clock function) is injectable for tests; the route uses the real clock.
  */
-export function createReachTools(data: ReachData, nowArg: Date | (() => Date) = () => new Date()) {
+export function createReachTools(
+  data: ReachData,
+  nowArg: Date | (() => Date) = () => new Date(),
+  write?: { ctx: ReachWriteContext; canWrite: boolean },
+) {
   const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
-  return {
+  const read = {
     getCampaigns: tool({
       description:
         'List the org’s ad campaigns with leads, spend and cost-per-lead (RM). ' +
@@ -338,6 +353,35 @@ export function createReachTools(data: ReachData, nowArg: Date | (() => Date) = 
       description: 'Automation workflows with trigger, status and number of runs, most runs first.',
       inputSchema: z.object({ limit: limitSchema('Max automations to return (default 10).') }),
       execute: async ({ limit }) => summarizeAutomations(await data.listAutomations(), limit),
+    }),
+  };
+
+  // A caller who cannot write gets no write tools at all (not merely gated ones).
+  if (!write?.canWrite) return read;
+  const ctx = write.ctx;
+
+  return {
+    ...read,
+    createCampaign: tool({
+      description: 'Create a new ad campaign. Needs the owner’s approval before it is saved.',
+      inputSchema: createCampaignInput,
+      execute: async (input) => capCreateCampaign(ctx, input),
+    }),
+    updateCampaign: tool({
+      description:
+        'Edit an existing campaign by id (name, channel, status, spend or leads). Needs approval.',
+      inputSchema: updateCampaignInput,
+      execute: async (input) => capUpdateCampaign(ctx, input),
+    }),
+    setCampaignStatus: tool({
+      description: 'Pause or resume a campaign by id. Needs approval.',
+      inputSchema: setCampaignStatusInput,
+      execute: async (input) => capSetCampaignStatus(ctx, input),
+    }),
+    deleteCampaign: tool({
+      description: 'Delete a campaign by id. This cannot be undone and needs approval.',
+      inputSchema: deleteCampaignInput,
+      execute: async (input) => capDeleteCampaign(ctx, input),
     }),
   };
 }

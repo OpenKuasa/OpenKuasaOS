@@ -29,6 +29,9 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+// The route also resolves the caller's org for write tools; the fake client has no tables.
+vi.mock('@/lib/auth/current-org', () => ({ getCurrentOrg: async () => null }));
+
 vi.mock('@/lib/reach/supabase', () => ({
   getReachData: async () => {
     const { createSeedReachData } = await import('@/lib/reach/seed');

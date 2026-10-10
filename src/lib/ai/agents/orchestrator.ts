@@ -8,21 +8,38 @@
 import { type ModelMessage, stepCountIs, streamText } from 'ai';
 import { getModel } from '@/lib/ai/provider';
 import { createReachTools } from '@/lib/ai/tools';
+import type { ReachWriteContext } from '@/lib/reach/capabilities';
 import type { ReachData } from '@/lib/reach/types';
 import { JEBAT_SYSTEM, TUAH_SYSTEM } from '@/lib/ai/agents/prompts';
 
+/** Tools that change data: each one pauses for the owner's approval before running. */
+const WRITE_TOOL_NAMES = [
+  'createCampaign',
+  'updateCampaign',
+  'setCampaignStatus',
+  'deleteCampaign',
+] as const;
+
 export function runJebat(
   messages: ModelMessage[],
-  data: ReachData,
+  reach: { data: ReachData; write?: { ctx: ReachWriteContext; canWrite: boolean } },
   abortSignal?: AbortSignal,
   /** A workspace's own OpenRouter key; omitted for platform-paid turns. */
   apiKey?: string,
 ) {
+  const tools = createReachTools(reach.data, () => new Date(), reach.write);
+  // Read tools auto-run; every write tool actually present requires approval.
+  const toolApproval = reach.write?.canWrite
+    ? Object.fromEntries(
+        WRITE_TOOL_NAMES.filter((n) => n in tools).map((n) => [n, 'user-approval' as const]),
+      )
+    : undefined;
   return streamText({
     model: getModel('orchestrator', apiKey),
     system: JEBAT_SYSTEM,
     messages,
-    tools: createReachTools(data),
+    tools,
+    toolApproval,
     stopWhen: stepCountIs(8),
     maxOutputTokens: 1000,
     // Stop in-flight model/tool work if the client disconnects.
