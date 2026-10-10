@@ -172,7 +172,8 @@ describe('people tools', () => {
   it('adds up timesheet hours', async () => {
     const result = await run('getTimesheet')({ days: 1 });
     expect(result.by_employee).toHaveLength(17);
-    expect(result.total_hours).toBe(result.by_employee.reduce((s: number, r: { hours: number }) => s + r.hours, 0));
+    const sum = result.by_employee.reduce((s: number, r: { hours: number }) => s + r.hours, 0);
+    expect(result.total_hours).toBe(Math.round(sum * 100) / 100);
     expect((await run('getTimesheet')({ days: 1, employee: 'aisyah' })).by_employee).toHaveLength(1);
   });
 
@@ -205,6 +206,7 @@ describe('people tools', () => {
     const trainings = await run('listTrainings')({});
     expect(trainings.trainings).toHaveLength(5);
     expect(trainings.trainings.every((t: { enrolled: number }) => t.enrolled > 0)).toBe(true);
+    expect(trainings).not.toHaveProperty('scope');
     expect((await run('listTrainings')({ status: 'upcoming' })).trainings).toHaveLength(2);
     expect((await run('listAnnouncements')({ limit: 2 })).announcements).toHaveLength(2);
   });
@@ -224,9 +226,15 @@ describe('people tools', () => {
 
   it('answers from an empty workspace without NaN', async () => {
     const empty = runner(EMPTY);
+    const badNumbers = (value: unknown): unknown[] => {
+      if (typeof value === 'number') return Number.isNaN(value) || !Number.isFinite(value) ? [value] : [];
+      if (Array.isArray(value)) return value.flatMap(badNumbers);
+      if (value && typeof value === 'object') return Object.values(value).flatMap(badNumbers);
+      return [];
+    };
     for (const name of PEOPLE_TOOL_NAMES) {
       const result = await empty(name)(name === 'getEmployee' ? { employee: 'aisyah' } : {});
-      expect(JSON.stringify(result), name).not.toContain('NaN');
+      expect(badNumbers(result), name).toEqual([]);
       expect(result.ok, name).not.toBe(false);
     }
     expect((await empty('getPeopleOverview')({})).attendance_rate_pct).toBeNull();
@@ -245,5 +253,96 @@ describe('people tools', () => {
     expect(JSON.stringify(result)).not.toContain('hr_employees');
     expect(log).toHaveBeenCalled();
     log.mockRestore();
+  });
+
+  it('gives a member the team headcount and their own requests, not team-wide figures', async () => {
+    const member = await runner(data, MEMBER)('getPeopleOverview')({});
+    expect(member).toMatchObject({
+      date: '2026-10-09', headcount: 20, departments: 5, scope: 'your own records only',
+      team_figures: 'On-leave, attendance and approval figures for the whole team are visible to HR admins only.',
+    });
+    expect(member).toHaveProperty('your_pending_requests');
+    for (const key of ['on_leave_today', 'at_work_today', 'attendance_rate_pct', 'pending_approvals']) {
+      expect(member, key).not.toHaveProperty(key);
+    }
+    const hr = await run('getPeopleOverview')({});
+    expect(hr).not.toHaveProperty('your_pending_requests');
+    expect(hr).not.toHaveProperty('team_figures');
+  });
+
+  it('says a member sees only their own leave, and HR is not told that', async () => {
+    const member = await runner(data, MEMBER)('listWhoIsOnLeave')({});
+    expect(member.covers).toBe('Only your own leave. Who else is on leave is visible to HR admins only.');
+    expect(member).toMatchObject({ date: '2026-10-09', scope: 'your own records only' });
+    expect(await run('listWhoIsOnLeave')({})).not.toHaveProperty('covers');
+  });
+
+  it('explains "scope" in exactly the tools that return it', async () => {
+    const sentence =
+      ' The result says whose records it covers in "scope": for someone who is not an HR admin that is their own records only, so never present it as the whole team.';
+    const tools = createPeopleTools(data, HR, NOW);
+    for (const name of PEOPLE_TOOL_NAMES) {
+      const description = (tools[name] as unknown as { description: string }).description;
+      const result = await run(name)(name === 'getEmployee' ? { employee: 'aisyah' } : {});
+      expect(description.includes(sentence), `${name} description`).toBe('scope' in result);
+    }
+  });
+
+  it('tells a member whether they themselves are enrolled, not how many are', async () => {
+    const member = await runner(data, MEMBER)('listTrainings')({});
+    expect(member.trainings).toHaveLength(5);
+    expect(member).not.toHaveProperty('scope');
+    for (const t of member.trainings) {
+      expect(typeof t.you_are_enrolled).toBe('boolean');
+      expect(t).not.toHaveProperty('enrolled');
+    }
+    const none = await runner({ ...data, listTrainingEnrolments: async () => [] }, MEMBER)('listTrainings')({});
+    expect(none.trainings.every((t: { you_are_enrolled: boolean }) => t.you_are_enrolled === false)).toBe(true);
+  });
+
+  it('rounds hour totals so float noise does not show', async () => {
+    const [base] = await data.listOvertime();
+    const overtime = runner({
+      ...data,
+      listOvertime: async () => [
+        { ...base, id: 'a', hours: 0.1 },
+        { ...base, id: 'b', hours: 0.2 },
+      ],
+    });
+    expect((await overtime('listOvertime')({})).total_hours).toBe(0.3);
+    const [entry] = await data.listTimesheet('2026-10-09', '2026-10-09');
+    const sheet = runner({
+      ...data,
+      listTimesheet: async () => [
+        { ...entry, id: 'a', hours: 0.1, billable_hours: 0.1 },
+        { ...entry, id: 'b', hours: 0.2, billable_hours: 0.2 },
+      ],
+    });
+    const result = await sheet('getTimesheet')({ days: 1 });
+    expect(result.total_hours).toBe(0.3);
+    expect(result.billable_hours).toBe(0.3);
+  });
+
+  it('lists who a name filter matched, so a shared first name is not merged silently', async () => {
+    // LEAVE has Siti Aminah (employee 5, annual leave 60 days ago) and Siti Lestari (employee 7, annual leave from 2 days ago).
+    const siti = await run('listLeaveRequests')({ employee: 'siti' });
+    expect(siti.matched_employees).toEqual(['Siti Aminah', 'Siti Lestari']);
+    expect((await run('listLeaveRequests')({ employee: 'aisyah' })).matched_employees).toEqual(['Aisyah Rahim']);
+    expect(await run('listLeaveRequests')({})).not.toHaveProperty('matched_employees');
+    expect(await run('listLeaveRequests')({ employee: '  ' })).not.toHaveProperty('matched_employees');
+    expect((await run('listClaims')({ employee: 'aisyah' })).matched_employees).toEqual(['Aisyah Rahim']);
+    expect((await run('listOvertime')({ employee: 'aisyah' })).matched_employees).toEqual(['Aisyah Rahim']);
+    expect((await run('listPayslips')({ employee: 'aisyah' })).matched_employees).toEqual(['Aisyah Rahim']);
+    expect((await run('getLeaveBalances')({ employee: 'aisyah' })).matched_employees).toEqual(['Aisyah Rahim']);
+    expect((await run('getTimesheet')({ employee: 'aisyah' })).matched_employees).toEqual(['Aisyah Rahim']);
+    expect(await run('getTimesheet')({})).not.toHaveProperty('matched_employees');
+  });
+
+  it('says payroll is for HR admins only instead of an empty list that reads as no payroll', async () => {
+    const member = await runner(data, MEMBER)('getPayrollSummary')({});
+    expect(member).toEqual({ runs: [], visible_to: 'HR admins only' });
+    const hr = await run('getPayrollSummary')({});
+    expect(hr.runs).toHaveLength(3);
+    expect(hr.scope).toBe('everyone in the workspace');
   });
 });

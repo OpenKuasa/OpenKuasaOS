@@ -69,13 +69,26 @@ async function safe<T>(name: string, read: () => Promise<T>): Promise<T | typeof
 const employee = z
   .string()
   .optional()
-  .describe('Only this employee, by name. Part of the name is enough, in any letter case.');
+  .describe(
+    'Only this employee, by name. Part of the name is enough, in any letter case. ' +
+      'If the result lists more than one person in matched_employees, ask the user which one they mean before answering.',
+  );
 const requestStatus = z
   .enum(['pending', 'approved', 'rejected', 'cancelled'])
   .optional()
   .describe('Only requests with this status.');
 const limit = limitSchema(`How many rows to return, at most ${LOOKUP_MAX}.`);
 const days = z.number().optional().describe('How many days back to cover, counting today. 7 if left out, at most 31.');
+
+/** Appended to the description of every tool whose result carries `scope`. */
+const SCOPE_NOTE =
+  ' The result says whose records it covers in "scope": for someone who is not an HR admin that is their own records only, so never present it as the whole team.';
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The distinct names among matching rows, when the caller filtered by a name: so several people sharing a fragment are never merged silently. */
+const matchedNames = (filter: string | undefined, names: string[]) =>
+  filter?.trim() ? { matched_employees: [...new Set(names)].sort().slice(0, 10) } : {};
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -99,6 +112,7 @@ export function createPeopleTools(
   const now = typeof nowArg === 'function' ? nowArg : () => nowArg;
   const today = () => todayInMalaysia(now());
   /** Whose rows a personal lookup returned: everyone's for HR and in the demo, otherwise the caller's own. */
+  const ownOnly = !viewer.isHr && !viewer.isDemo;
   const scope = viewer.isHr || viewer.isDemo ? 'everyone in the workspace' : 'your own records only';
   /** The first day of a window of `requested` days ending today. */
   const windowStart = (requested: number | undefined) => addDays(today(), -(rowLimit(requested, 7, 31) - 1));
@@ -107,7 +121,9 @@ export function createPeopleTools(
     getPeopleOverview: tool({
       description:
         'The team at a glance today: headcount, number of departments, how many are on leave today, how many came in ' +
-        'and the attendance rate, and how many requests are waiting for approval (leave, claims, overtime, time-off).',
+        'and the attendance rate, and how many requests are waiting for approval (leave, claims, overtime, time-off). ' +
+        'Someone who is not an HR admin gets the team\'s headcount and their own pending requests only.' +
+        SCOPE_NOTE,
       inputSchema: z.object({}),
       execute: async () =>
         safe('getPeopleOverview', async () => {
@@ -117,6 +133,17 @@ export function createPeopleTools(
             data.listTimeOffRequests(), data.listAttendance(date, date),
           ]);
           const at = attendanceOn(attendance, date);
+          const counts = approvalCounts(pendingApprovals(leave, claims, overtime, timeOff));
+          if (ownOnly) {
+            return {
+              date,
+              headcount: employees.filter((e) => e.status === 'active').length,
+              departments: headcountByDepartment(employees).length,
+              your_pending_requests: counts,
+              scope,
+              team_figures: 'On-leave, attendance and approval figures for the whole team are visible to HR admins only.',
+            };
+          }
           return {
             date,
             headcount: employees.filter((e) => e.status === 'active').length,
@@ -124,7 +151,7 @@ export function createPeopleTools(
             on_leave_today: onLeaveOn(leave, date).length,
             at_work_today: at.at_work,
             attendance_rate_pct: at.rate_pct,
-            pending_approvals: approvalCounts(pendingApprovals(leave, claims, overtime, timeOff)),
+            pending_approvals: counts,
             scope,
           };
         }),
@@ -206,7 +233,8 @@ export function createPeopleTools(
 
     listWhoIsOnLeave: tool({
       description:
-        'Who is on approved leave on a day: today if no date is given. Returns each person, the kind of leave and its dates.',
+        'Who is on approved leave on a day: today if no date is given. Returns each person, the kind of leave and its dates.' +
+        SCOPE_NOTE,
       inputSchema: z.object({
         date: z.string().optional().describe('The day to check, as YYYY-MM-DD. Leave it out for today.'),
       }),
@@ -223,6 +251,7 @@ export function createPeopleTools(
               days: r.days,
             })),
             scope,
+            ...(ownOnly ? { covers: 'Only your own leave. Who else is on leave is visible to HR admins only.' } : {}),
           };
         }),
     }),
@@ -230,7 +259,8 @@ export function createPeopleTools(
     listLeaveRequests: tool({
       description:
         'Leave requests, newest first: who, the kind of leave, the dates, the number of days, the reason and the status. ' +
-        'Filter by employee, status or kind of leave.',
+        'Filter by employee, status or kind of leave.' +
+        SCOPE_NOTE,
       inputSchema: z.object({
         employee,
         status: requestStatus,
@@ -248,6 +278,7 @@ export function createPeopleTools(
           );
           return {
             total: rows.length,
+            ...matchedNames(name, rows.map((r) => r.employee_name)),
             requests: rows.slice(0, rowLimit(requested, 20)).map((r) => ({
               employee: r.employee_name,
               type: leaveLabel(r.leave_type),
@@ -264,21 +295,29 @@ export function createPeopleTools(
 
     getLeaveBalances: tool({
       description:
-        'Leave balances for this year: days entitled, used and remaining, per employee and kind of leave. Filter by employee.',
+        'Leave balances for this year: days entitled, used and remaining, per employee and kind of leave. Filter by employee.' +
+        SCOPE_NOTE,
       inputSchema: z.object({ employee }),
       execute: async ({ employee: name }) =>
         safe('getLeaveBalances', async () => {
           const year = Number(today().slice(0, 4));
           const [balances, employees] = await Promise.all([data.listLeaveBalances(year), data.listEmployees()]);
           const rows = leaveBalanceRows(balances, employees).filter((b) => matchesText(b.employee, name));
-          return { year, total: rows.length, balances: rows.slice(0, LOOKUP_MAX), scope };
+          return {
+            year,
+            total: rows.length,
+            ...matchedNames(name, rows.map((b) => b.employee)),
+            balances: rows.slice(0, LOOKUP_MAX),
+            scope,
+          };
         }),
     }),
 
     listPendingApprovals: tool({
       description:
         'Everything waiting for a decision: leave, financial claims, overtime and time-off requests, newest first, ' +
-        'with a count for each kind.',
+        'with a count for each kind.' +
+        SCOPE_NOTE,
       inputSchema: z.object({ limit }),
       execute: async ({ limit: requested }) =>
         safe('listPendingApprovals', async () => {
@@ -302,7 +341,8 @@ export function createPeopleTools(
     listClaims: tool({
       description:
         'Financial claims, newest first: who, the category, the amount in Ringgit, the date, the description, ' +
-        'whether a receipt was attached and the status. Filter by employee, status or category.',
+        'whether a receipt was attached and the status. Filter by employee, status or category.' +
+        SCOPE_NOTE,
       inputSchema: z.object({
         employee,
         status: requestStatus,
@@ -317,6 +357,7 @@ export function createPeopleTools(
           return {
             total: rows.length,
             total_amount: rm(rows.reduce((sum, c) => sum + c.amount_cents, 0)),
+            ...matchedNames(name, rows.map((c) => c.employee_name)),
             claims: rows.slice(0, rowLimit(requested, 20)).map((c) => ({
               employee: c.employee_name,
               category: claimLabel(c.category),
@@ -334,7 +375,8 @@ export function createPeopleTools(
     listOvertime: tool({
       description:
         'Overtime records, newest first: who, the date, the hours, the rate multiplier, the amount in Ringgit and the status. ' +
-        'Filter by employee or status.',
+        'Filter by employee or status.' +
+        SCOPE_NOTE,
       inputSchema: z.object({ employee, status: requestStatus, limit }),
       execute: async ({ employee: name, status, limit: requested }) =>
         safe('listOvertime', async () => {
@@ -343,7 +385,8 @@ export function createPeopleTools(
           );
           return {
             total: rows.length,
-            total_hours: rows.reduce((sum, o) => sum + o.hours, 0),
+            total_hours: round2(rows.reduce((sum, o) => sum + o.hours, 0)),
+            ...matchedNames(name, rows.map((o) => o.employee_name)),
             overtime: rows.slice(0, rowLimit(requested, 20)).map((o) => ({
               employee: o.employee_name,
               work_date: o.work_date,
@@ -360,7 +403,8 @@ export function createPeopleTools(
     getAttendanceSummary: tool({
       description:
         'Attendance over the last few days: how many attendances were on time (present), late, absent or on leave, ' +
-        'the attendance rate, and who was late most often. A null rate means nobody was expected.',
+        'the attendance rate, and who was late most often. A null rate means nobody was expected.' +
+        SCOPE_NOTE,
       inputSchema: z.object({ days }),
       execute: async ({ days: requested }) =>
         safe('getAttendanceSummary', async () => {
@@ -379,7 +423,8 @@ export function createPeopleTools(
 
     getTimesheet: tool({
       description:
-        'Hours worked over the last few days: total and billable hours, and per employee, most hours first. Filter by employee.',
+        'Hours worked over the last few days: total and billable hours, and per employee, most hours first. Filter by employee.' +
+        SCOPE_NOTE,
       inputSchema: z.object({ days, employee }),
       execute: async ({ days: requested, employee: name }) =>
         safe('getTimesheet', async () => {
@@ -390,8 +435,9 @@ export function createPeopleTools(
           return {
             from,
             to,
-            total_hours: rows.reduce((sum, r) => sum + r.hours, 0),
-            billable_hours: rows.reduce((sum, r) => sum + r.billable_hours, 0),
+            total_hours: round2(rows.reduce((sum, r) => sum + r.hours, 0)),
+            billable_hours: round2(rows.reduce((sum, r) => sum + r.billable_hours, 0)),
+            ...matchedNames(name, rows.map((r) => r.employee)),
             by_employee: rows.slice(0, LOOKUP_MAX),
             scope,
           };
@@ -400,7 +446,8 @@ export function createPeopleTools(
 
     listShifts: tool({
       description:
-        'The shift roster for a week, Monday to Sunday: who is on the morning shift, the night shift or off each day.',
+        'The shift roster for a week, Monday to Sunday: who is on the morning shift, the night shift or off each day.' +
+        SCOPE_NOTE,
       inputSchema: z.object({
         week: z.enum(['this', 'next']).optional().describe('This week or next week. This week if left out.'),
       }),
@@ -448,12 +495,14 @@ export function createPeopleTools(
       description:
         'Payroll by month, newest first: whether the run is a draft or paid, how many payslips, and gross pay, ' +
         'deductions and net pay in Ringgit. Only HR can see payroll runs: an empty list for anyone else means ' +
-        'they may not see them.',
+        'they may not see them.' +
+        SCOPE_NOTE,
       inputSchema: z.object({
         months: z.number().optional().describe('How many months to return. 3 if left out, at most 12.'),
       }),
       execute: async ({ months }) =>
         safe('getPayrollSummary', async () => {
+          if (ownOnly) return { runs: [], visible_to: 'HR admins only' };
           const [runs, payslips] = await Promise.all([data.listPayrollRuns(), data.listPayslips()]);
           return {
             runs: payrollSummary(runs, payslips)
@@ -474,7 +523,8 @@ export function createPeopleTools(
     listPayslips: tool({
       description:
         'Payslips, newest month first: who, the month, gross pay, each deduction (EPF, SOCSO, EIS, PCB), net pay ' +
-        'in Ringgit, and whether it is paid. Filter by employee or month.',
+        'in Ringgit, and whether it is paid. Filter by employee or month.' +
+        SCOPE_NOTE,
       inputSchema: z.object({
         employee,
         month: z.string().optional().describe('Only this month, as YYYY-MM.'),
@@ -488,6 +538,7 @@ export function createPeopleTools(
           );
           return {
             total: rows.length,
+            ...matchedNames(name, rows.map((p) => p.employee_name)),
             payslips: rows.slice(0, rowLimit(requested, 20)).map((p) => ({
               employee: p.employee_name,
               month: p.period_month.slice(0, 7),
@@ -507,7 +558,8 @@ export function createPeopleTools(
     getPerformanceSummary: tool({
       description:
         'Performance at a glance: goals on track, at risk and done; the average scorecard score out of 5; how many ' +
-        'reviews were rated exceeds, meets or below; and the five highest scores.',
+        'reviews were rated exceeds, meets or below; and the five highest scores.' +
+        SCOPE_NOTE,
       inputSchema: z.object({}),
       execute: async () =>
         safe('getPerformanceSummary', async () => {
@@ -520,7 +572,8 @@ export function createPeopleTools(
 
     listTrainings: tool({
       description:
-        'Training sessions, newest first: title, category, provider, dates, status and how many people are enrolled. ' +
+        'Training sessions, newest first: title, category, provider, dates and status. HR admins see how many people ' +
+        'are enrolled in each; anyone else is told only whether they themselves are enrolled (you_are_enrolled). ' +
         'Filter by status.',
       inputSchema: z.object({
         status: z.enum(['upcoming', 'in_progress', 'completed']).optional().describe('Only trainings with this status.'),
@@ -539,9 +592,10 @@ export function createPeopleTools(
                 starts_on: t.starts_on,
                 ends_on: t.ends_on,
                 status: t.status,
-                enrolled: enrolments.filter((e) => e.training_id === t.id).length,
+                ...(ownOnly
+                  ? { you_are_enrolled: enrolments.some((e) => e.training_id === t.id) }
+                  : { enrolled: enrolments.filter((e) => e.training_id === t.id).length }),
               })),
-            scope,
           };
         }),
     }),
