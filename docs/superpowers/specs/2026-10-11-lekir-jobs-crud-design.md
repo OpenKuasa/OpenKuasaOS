@@ -3,7 +3,7 @@
 **Date:** 2026-10-11
 **Status:** Draft for review
 **Module:** Lekir (`hire`)
-**Milestone:** Lekir slice 2, piece 2a of 5 — jobs become writable from the Jobs screen and from Lekir.
+**Milestone:** Lekir slice 2, piece 2a of 6 — jobs become writable from the Jobs screen and from Lekir.
 **Builds on:** `docs/superpowers/specs/2026-10-10-lekir-foundation-design.md` (slice 1, merged as PR #113).
 
 ---
@@ -14,7 +14,7 @@ Slice 1 put hiring on Postgres read-only: four tables, eight screens reading the
 with eight lookup tools. Nothing can be created or changed.
 
 Slice 2 was "Jobs + Careers Page" in the roadmap. In brainstorming it grew to include a
-public job board and public applications, so it is built as five pieces, each with its own
+public job board and public applications, so it is built as six pieces, each with its own
 spec, plan and pull request:
 
 | Piece | Delivers |
@@ -24,6 +24,7 @@ spec, plan and pull request:
 | 2c | Application form settings (the Settings screen's "Application form" card, pulled forward from slice 4) |
 | 2d | Public apply form that creates a candidate and an application; CV as a link |
 | 2e | CV upload as a PDF |
+| 2f | Lekir reads one candidate's uploaded CV when a recruiter asks |
 
 ### Goal of this piece
 A member who is not a viewer can create, edit, open, pause, close, reopen and delete jobs on

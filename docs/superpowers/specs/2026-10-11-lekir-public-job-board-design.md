@@ -3,7 +3,7 @@
 **Date:** 2026-10-11
 **Status:** Draft for review
 **Module:** Lekir (`hire`)
-**Milestone:** Lekir slice 2, piece 2b of 5 — a public, read-only job board per workspace.
+**Milestone:** Lekir slice 2, piece 2b of 6 — a public, read-only job board per workspace.
 **Builds on:** `docs/superpowers/specs/2026-10-11-lekir-jobs-crud-design.md` (2a). 2b cannot start until 2a is merged: it needs the job description, salary, closing date and work arrangement fields, and writable jobs.
 
 ---
