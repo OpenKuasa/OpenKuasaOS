@@ -40,7 +40,19 @@ vi.mock('@/lib/agents/config', async (orig) => {
   };
 });
 
-const svc = vi.hoisted(() => ({ client: { tag: 'service' } as object, run: vi.fn() }));
+const svc = vi.hoisted(() => {
+  const o = { client: {} as object, run: vi.fn(), inflight: null as unknown };
+  // Chainable fake for the in-flight guard's SELECT on agent_runs.
+  const chain = {
+    select: () => chain,
+    eq: () => chain,
+    gte: () => chain,
+    limit: () => chain,
+    maybeSingle: async () => ({ data: o.inflight, error: null }),
+  };
+  o.client = { from: () => chain };
+  return o;
+});
 vi.mock('@/lib/supabase/service', () => ({ serviceClient: vi.fn(() => svc.client) }));
 vi.mock('@/lib/agents/weekly-studio', () => ({
   runWeeklyStudio: svc.run,
@@ -53,6 +65,7 @@ beforeEach(() => {
   ctl.created = [];
   svc.run.mockReset();
   svc.run.mockResolvedValue({ runId: 'r1', status: 'done' });
+  svc.inflight = null;
 });
 
 describe('createCampaignAction', () => {
@@ -166,5 +179,11 @@ describe('runAgentNowAction', () => {
     svc.run.mockRejectedValue(new Error('secret-key-123'));
     const res = await runAgentNowAction({});
     expect(res).toEqual({ ok: false, error: 'The run could not be started.' });
+  });
+  it('refuses when a run is already in progress for the org and does not start another', async () => {
+    svc.inflight = { id: 'r0' };
+    const res = await runAgentNowAction({});
+    expect(res).toMatchObject({ ok: false });
+    expect(svc.run).not.toHaveBeenCalled();
   });
 });
