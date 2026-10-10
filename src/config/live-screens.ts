@@ -44,8 +44,7 @@ export const LIVE_SCREENS: ReadonlySet<string> = new Set([
   'people/assistant',
   'people/employees',
 
-  // Bendahara. Supplier Bills and Payments Out read the workspace's own data
-  // but have no form to add to them yet.
+  // Bendahara
   'finance/customers-suppliers',
   'finance/products',
   'finance/supplier-bills',

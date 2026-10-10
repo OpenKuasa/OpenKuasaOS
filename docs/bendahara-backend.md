@@ -17,6 +17,28 @@ client view its actions only when the viewer can edit. The header "Add" button
 is shown only to people who can add. With no Supabase environment it shows
 sample data and no actions.
 
+The rules of a screen or a form that need no browser are pure functions beside
+the data layer, with unit tests; the client components only draw them.
+
+| File | Holds |
+|---|---|
+| `purchase-views.ts` | KPI figures, chart data, table filters and CSV rows for Supplier Bills and Payments Out |
+| `bill-math.ts` | Line amounts and bill totals, rounded exactly as the generated columns `amount` and `sst_amount` round them |
+| `bill-form.ts` | The bill form: defaults, the due date following the supplier's terms, validation, what is sent |
+| `payment-form.ts` | The payment form: which bills can take a payment and how much, defaults, validation, what is sent |
+| `csv.ts` | CSV text for Export: RFC 4180, a UTF-8 byte-order mark, and a guard against spreadsheet formulas |
+
+The forms validate by running the write's own Zod schema on what they are about
+to send, so the browser and the server say the same sentences.
+
+A server action refreshes the screens after every attempt that reached the
+database, refused or not, so a record someone else changed or removed shows as
+it now is. `saveAndPostBillAction` saves a draft and posts it; when only the
+post is refused it answers with the draft's id (`draftId`) and the form goes on
+editing that draft. `getBillAction` reads one draft with its lines for the Edit
+form. `src/app/(app)/finance/error.tsx` is shown when a finance screen's data
+cannot be read.
+
 ## Tables
 
 Every finance table carries `org_id`. A table that other tables point at
@@ -50,6 +72,11 @@ Money is entered once. A payment out is one `finance_transactions` row with
 direction `out`, split across one supplier's bills by `finance_allocations`.
 The view `finance_payments_out` has one row per bill a payment pays;
 `supplier_bill_totals` counts only posted money out as paid.
+
+A bill's `balance` is its total less paid money. What a new payment may take is
+less than that when payments are scheduled: the allocation guard counts
+scheduled payments too. The payment form works this out (`payableBills`) and
+does not offer a bill that scheduled payments already cover.
 
 Statuses of a transaction: `draft` (being written by a database function),
 `scheduled` (not yet money out), `posted` (paid; numbered `PV-0001`), `void`.
@@ -107,13 +134,22 @@ The guards and functions raise these SQLSTATEs; `bills.ts`, `money.ts` and
 | `FIN09` | The payment is posted or void and cannot be changed or deleted, its split cannot be changed, or it is not scheduled and so cannot be marked paid; a payment that was never paid cannot be voided (delete it) |
 | `FIN10` | The bill has no lines, or its lines total nothing; it cannot be saved without a line or posted without an amount |
 | `FIN11` | The bill or payment no longer exists |
+| `42501` | Row-level security refused the write: "You do not have permission to make changes here." |
+| `22003` | A number does not fit its column (quantity × unit price can overflow): "That amount is too large." |
 
 ## Known limits
 
-- Supplier Bills and Payments Out still have no forms; the data layer for them
-  is in `bills.ts` and `money.ts`.
-- The Payments Out screen charts four payment methods; DuitNow, card and
-  e-wallet are counted with bank transfers until its form is built.
+- A scheduled payment cannot be edited: delete it and schedule it again.
+- Supplier Bills and Payments Out load every bill and payment and filter in the
+  browser. The product picker on a bill line is a plain list with no search.
+- KPI figures and Overdue use the UTC date; the forms' default dates use the
+  person's own calendar date.
+- Payment dates are not restricted: "pay now" accepts a future date and
+  "schedule for later" a past one.
+- A payment's account must be active when it is chosen (only active accounts
+  are offered), but the database does not refuse an archived account yet.
+- Voiding a paid bill is offered and refused until its payments are voided.
+- Posted and void bills and payments cannot be deleted, by design.
 - Approval of money out is not enforced yet.
 - Posting goes through database functions that run as the caller. An editor
   writing to the tables directly, rather than through the app, could still post
