@@ -154,6 +154,10 @@ export function Hero() {
             named for the court of Melaka and powered by Taming Sari AI.
           </p>
 
+          <p data-hero-fade className="mt-3 max-w-xl text-sm text-mk-subtle">
+            Work in progress: many screens still show sample data.
+          </p>
+
           <div data-hero-fade className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Button asChild size="lg" className="rounded-full">
               <Link href="/onboarding">
