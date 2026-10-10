@@ -38,7 +38,8 @@ const monthLabel = (d: Date) => MONTHS[Number(monthKey(d).slice(5, 7)) - 1];
 export function timeToHireByMonth(apps: Application[], now: Date, months = 8) {
   return Array.from({ length: months }, (_, i) => {
     // The 15th keeps the month right across time zones and month lengths.
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1 - i), 15));
+    const [year, month] = monthKey(now).split('-').map(Number);
+    const d = new Date(Date.UTC(year, month - 1 - (months - 1 - i), 15));
     const key = monthKey(d);
     const offered = apps.filter((a) => a.offered_at !== null && monthKey(new Date(a.offered_at)) === key);
     const hired = apps.filter((a) => a.hired_at !== null && monthKey(new Date(a.hired_at)) === key);

@@ -34,6 +34,16 @@ const app = (over: Partial<Application>): Application => ({
   offered_at: null, hired_at: null, created_at: '2026-10-01T00:00:00Z', ...over,
 });
 
+// JSON.stringify turns NaN and Infinity into null, so walk the value instead.
+const numbersIn = (value: unknown): number[] =>
+  typeof value === 'number'
+    ? [value]
+    : Array.isArray(value)
+      ? value.flatMap(numbersIn)
+      : value !== null && typeof value === 'object'
+        ? Object.values(value).flatMap(numbersIn)
+        : [];
+
 describe('applicationLabel', () => {
   it('labels every stage and outcome pair', () => {
     expect(applicationLabel('applied', 'active')).toBe('New');
@@ -84,6 +94,10 @@ describe('overview numbers', () => {
       open_jobs: 6, interviews_next_7_days: 6, offers_out: 2, hires_last_30_days: 2,
     });
   });
+  it('does not count a hire dated after now', () => {
+    const future = app({ stage: 'hired', hired_at: '2026-10-11T04:00:00Z' });
+    expect(overviewTotals([], [future], [], NOW).hires_last_30_days).toBe(0);
+  });
   it('spreads applications over 8 weeks, oldest first, summing to the total', async () => {
     const trend = applicationsPerWeek(await data.listApplications(), NOW);
     expect(trend.map((w) => w.label)).toEqual(['Wk1', 'Wk2', 'Wk3', 'Wk4', 'Wk5', 'Wk6', 'Wk7', 'Wk8']);
@@ -132,6 +146,10 @@ describe('dashboard numbers', () => {
     expect(months.map((m) => m.label)).toEqual(['Jul', 'Aug', 'Sep', 'Oct']);
     expect(months.some((m) => m.hire !== null)).toBe(true);
   });
+  it('uses the Kuala Lumpur month for the window', () => {
+    const months = timeToHireByMonth([], new Date('2026-09-30T18:00:00Z'), 4);
+    expect(months[months.length - 1].label).toBe('Oct');
+  });
   it('describes recent activity newest first', async () => {
     const activity = recentActivity(await data.listApplications(), await data.listInterviews(), NOW, 5);
     expect(activity).toHaveLength(5);
@@ -160,6 +178,9 @@ describe('models', () => {
     expect(overview.funnel.map((f) => f.value)).toEqual([0, 0, 0, 0, 0]);
     const dashboard = await buildHireDashboardModel(EMPTY, NOW);
     expect(dashboard.isEmpty).toBe(true);
-    expect(JSON.stringify(dashboard)).not.toMatch(/NaN|Infinity/);
+    expect(numbersIn(overview).every(Number.isFinite)).toBe(true);
+    expect(numbersIn(dashboard).every(Number.isFinite)).toBe(true);
+    expect(dashboard.time).toEqual({ days_to_offer: null, days_to_hire: null, offers: 0, hires: 0 });
+    expect(dashboard.timeByMonth.every((m) => m.hire === null && m.offer === null)).toBe(true);
   });
 });
