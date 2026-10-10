@@ -26,6 +26,19 @@ describe('TUAH_SYSTEM', () => {
     expect(t).toContain('past tense');
   });
 
+  it('calls the change tool at once instead of asking to confirm in words', () => {
+    // The approval card only exists once the tool is called; asking first
+    // leaves the user told to approve something that is not on screen.
+    expect(t).toContain('call the change tool straight away');
+    expect(t).toContain('never ask "are you sure?"');
+    expect(t).toContain('that card is the confirmation');
+  });
+
+  it('reads a rejected change as the user saying no, not as missing permission', () => {
+    expect(t).toContain('the user tapped reject');
+    expect(t).toContain('never a permissions problem');
+  });
+
   it('gets ids from a listing instead of asking for them', () => {
     expect(t).toContain('to get its id');
     expect(t).toContain('never ask the user for an id');
