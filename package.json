@@ -16,6 +16,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "eval:tuah": "vitest run --config vitest.evals.config.mts",
     "smoke:routes": "node scripts/smoke-routes.mjs"
   },
   "dependencies": {
