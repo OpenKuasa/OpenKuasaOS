@@ -61,12 +61,13 @@ describe('jobs', () => {
 });
 
 describe('careers page', () => {
-  it('shows open jobs as Published, closed as Closed, the rest as Draft', async () => {
+  it('shows open jobs as Open while the board is off, closed as Closed, the rest as Draft', async () => {
     const model = await buildCareersModel(data);
     expect(model.openRoles).toBe(6);
+    expect(model.publishedRoles).toBe(0);
     expect(model.rows.find((r) => r.title === 'Content Writer')?.status).toBe('Closed');
     expect(model.rows.find((r) => r.title === 'Accountant')?.status).toBe('Draft');
-    expect(model.rows.find((r) => r.title === 'Customer Support')).toMatchObject({ type: 'Part-time', status: 'Published' });
+    expect(model.rows.find((r) => r.title === 'Customer Support')).toMatchObject({ type: 'Part-time', status: 'Open' });
   });
   it('carries the whole job for editing, and ids for the careers actions', async () => {
     const jobs = await buildJobsModel(data, NOW);
@@ -116,6 +117,36 @@ describe('careers page: what the public board lists', () => {
       { title: 'Older', location: 'Shah Alam' },
     ]);
     expect(model.rows).toHaveLength(7);
+  });
+
+  describe('the status each row carries', () => {
+    const jobs = [
+      job('Described', {}),
+      job('Blank', { description: '  ' }),
+      job('Closed', { status: 'closed' }),
+      job('Draft', { status: 'draft' }),
+      job('Paused', { status: 'paused' }),
+    ];
+    const statuses = async (careers_enabled: boolean) => {
+      const model = await buildCareersModel({
+        ...EMPTY, listJobs: async () => jobs, getSettings: async () => ({ ...settings, careers_enabled }),
+      });
+      return { model, byTitle: Object.fromEntries(model.rows.map((r) => [r.title, r.status])) };
+    };
+
+    it('reads Open for every open job while the board is off', async () => {
+      const { model, byTitle } = await statuses(false);
+      expect(byTitle).toEqual({ Described: 'Open', Blank: 'Open', Closed: 'Closed', Draft: 'Draft', Paused: 'Draft' });
+      expect(model.publishedRoles).toBe(0);
+      expect(model.openRoles).toBe(2);
+    });
+
+    it('reads Published only for an open job with a description while the board is on', async () => {
+      const { model, byTitle } = await statuses(true);
+      expect(byTitle).toEqual({ Described: 'Published', Blank: 'Open', Closed: 'Closed', Draft: 'Draft', Paused: 'Draft' });
+      expect(model.publishedRoles).toBe(1);
+      expect(model.openRoles).toBe(2);
+    });
   });
 
   it('lists nothing for a workspace with no jobs', async () => {

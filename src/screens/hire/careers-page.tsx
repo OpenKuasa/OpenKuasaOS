@@ -73,10 +73,11 @@ const APPLY_SOURCE: Slice[] = [
   { key: 'other', label: 'Other', value: 8, color: 'var(--muted-foreground)' },
 ];
 
-type JobStatus = 'Published' | 'Closed' | 'Draft';
+type JobStatus = 'Published' | 'Open' | 'Closed' | 'Draft';
 
 const STATUS_TONE: Record<JobStatus, string> = {
   Published: 'text-emerald-600 dark:text-emerald-400',
+  Open: 'text-foreground',
   Closed: 'text-muted-foreground',
   Draft: 'text-amber-600 dark:text-amber-400',
 };
@@ -95,6 +96,17 @@ export default async function CareersPageScreen() {
   const settings = model?.settings;
   /** Whether the public board is on. The demo workspace never has one. */
   const boardOn = !demo && settings?.careers_enabled === true;
+  /**
+   * Whether the Status column and the card subtitle say "Published". The demo workspace has no board, yet its
+   * sample screen shows its open jobs as published (every open demo job has a description), so for the label
+   * only the demo counts as on.
+   */
+  const boardLabelOn = demo || boardOn;
+  const rows = (model?.rows ?? []).map((j) => ({
+    ...j,
+    status: demo && j.status === 'Open' ? ('Published' as const) : j.status,
+  }));
+  const publishedRoles = rows.filter((j) => j.status === 'Published').length;
   const boardPath = careersPath(viewer.orgId);
   const origin = demo ? null : originFromHeaders((name) => requestHeaders.get(name));
   /** The first three jobs a visitor would see, in the board's own order. */
@@ -313,7 +325,11 @@ export default async function CareersPageScreen() {
         {/* Job listings table */}
         <BentoCard
           title="Job listings"
-          subtitle={model ? `${model.openRoles} published · ${model.rows.length} total` : undefined}
+          subtitle={
+            model
+              ? `${boardLabelOn ? `${publishedRoles} published` : `${model.openRoles} open`} · ${model.rows.length} total`
+              : undefined
+          }
           icon={Briefcase}
           className="col-span-2 md:col-span-12"
         >
@@ -333,7 +349,7 @@ export default async function CareersPageScreen() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {model.rows.map((j) => (
+                  {rows.map((j) => (
                     <TableRow key={j.id}>
                       <TableCell className="whitespace-nowrap font-medium">
                         {j.title}
@@ -358,7 +374,7 @@ export default async function CareersPageScreen() {
                       </TableCell>
                       {canEdit && (
                         <TableCell className="text-right">
-                          <PublishButton id={j.id} title={j.title} published={j.status === 'Published'} />
+                          <PublishButton id={j.id} title={j.title} published={j.jobStatus === 'open'} />
                         </TableCell>
                       )}
                     </TableRow>
