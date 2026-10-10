@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 
@@ -16,11 +16,13 @@ export function ConfirmRow({
   error,
   onConfirm,
   onCancel,
+  tone = 'destructive',
+  icon: Icon = Trash2,
 }: {
   colSpan: number;
   /** Names the question for screen readers, e.g. "Delete Lim Hardware". */
   label: string;
-  /** The question itself. */
+  /** The question itself. It may hold a field, such as the date a payment was made. */
   children: ReactNode;
   confirmLabel: string;
   pendingLabel: string;
@@ -28,24 +30,34 @@ export function ConfirmRow({
   error: string | null;
   onConfirm: () => void;
   onCancel: () => void;
+  /** `destructive` (the default) for deleting and voiding; `default` for a step that loses nothing. */
+  tone?: 'destructive' | 'default';
+  /** The icon on the confirm button; a bin unless given. */
+  icon?: LucideIcon;
 }) {
+  const destructive = tone === 'destructive';
   return (
-    <TableRow className="bg-destructive/5 hover:bg-destructive/5">
+    <TableRow className={destructive ? 'bg-destructive/5 hover:bg-destructive/5' : 'bg-muted/40 hover:bg-muted/40'}>
       <TableCell colSpan={colSpan}>
         <div
           role="group"
           aria-label={label}
           // Stays in view when the table has been scrolled sideways on a phone.
           className="sticky left-2 flex max-w-[calc(100vw-4rem)] flex-wrap items-center gap-3 py-1 whitespace-normal md:max-w-none"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || pending) return;
+            event.stopPropagation();
+            onCancel();
+          }}
         >
-          <p className="min-w-48 flex-1 text-sm">{children}</p>
+          <div className="min-w-48 flex-1 text-sm">{children}</div>
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {error}
             </p>
           ) : null}
-          <Button type="button" variant="destructive" size="sm" onClick={onConfirm} disabled={pending}>
-            <Trash2 className="size-4" />
+          <Button type="button" variant={destructive ? 'destructive' : 'default'} size="sm" onClick={onConfirm} disabled={pending}>
+            <Icon className="size-4" />
             {pending ? pendingLabel : confirmLabel}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={pending} autoFocus data-finance-focus>
