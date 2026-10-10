@@ -125,6 +125,40 @@ logged and treated as not found. Ids are validated as UUIDs before any call.
 - Both pages follow the `src/app/f/[formId]` conventions; read the Next.js guide in
   `node_modules/next/dist/docs/` before writing them.
 
+### 5.2a Public page design requirements
+The board and job pages are the first Lekir surfaces strangers see, most often on a phone
+from a shared link. They use the app's existing tokens, fonts and components (no new
+palette, no purple or violet), following the public lead form page for tone.
+
+- **Mobile first.** Designed at 375 pixels wide and scaled up; one column; no horizontal
+  scrolling; body text at least 16px with a line height of 1.5 or more; the job description
+  is held to a readable measure (about 65 to 75 characters) on wide screens.
+- **Hierarchy.** One `h1` per page (the workspace's headline on the board, the job title on
+  a job page), then `h2` for sections; no skipped levels.
+- **Job list.** Each job is one large link target (the whole card, at least 44 pixels
+  tall) with the title as the link text, then department, location, arrangement and type
+  as text. "Applications closed" is a word, never colour alone.
+- **Job page.** Key facts (location, arrangement, type, salary when shown, closing date)
+  sit in a short definition list above the description, so they are scannable before the
+  long text. A visible "All open roles" link returns to the board.
+- **Dates and money** are formatted for Malaysia: "31 October 2026", "RM 4,000 – RM 6,000
+  a month", using tabular figures.
+- **Empty and missing states** say what happened and what to do: "No open roles right now.
+  Check back soon." and, for not found, "This page isn't available. The role may have been
+  filled or the link may be out of date."
+- **Contrast and focus.** Text meets 4.5:1 in light and dark themes; focus rings are
+  visible on every link.
+- **Performance.** Server-rendered with no client JavaScript needed to read a job; no
+  layout shift; no images required.
+- **Keyboard and screen reader.** A skip link to the main content; landmarks (`header`,
+  `main`); the page title names the job and the workspace.
+
+On the Careers Page screen, the same form rules as 2a's job form apply to the branding
+form (visible labels, errors under the field, pending Save, confirmation that does not take
+focus). The Publish switch is a real switch control with a label, states its consequence in
+text beside it, and confirms before switching **on** ("Make your open jobs public?"),
+since that is the step that exposes data. "Copy link" confirms with "Link copied".
+
 ### 5.3 Capability and tools
 - `updateCareersPage` in `src/lib/hire/capabilities.ts`: input `careers_enabled?`,
   `careers_headline?` (up to 80), `careers_tagline?` (up to 160); upserts the workspace's

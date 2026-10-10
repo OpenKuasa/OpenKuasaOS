@@ -213,6 +213,50 @@ as the detail line.
 - The form is a client component fed by the server screen; the rest of the screen stays a
   server component.
 
+### 7.3 Interaction and accessibility requirements
+These apply to the job form, the row menu and the delete confirm. They follow the app's
+existing CRUD screens (`src/screens/crm/contacts-page.tsx`, `deals-page.tsx`,
+`crm-form.ts`); read those first and reuse their panel, dialog and form-state pieces
+rather than building new ones.
+
+**Form**
+- Every input has a visible `<label>` tied to it; placeholders are examples, never the label.
+- Required fields (title) are marked, and the mark is explained once at the top of the form.
+- Fields are grouped under three headings: "Role" (title, department, employment type,
+  headcount), "Where" (location, work arrangement), "Details" (description, salary, closing
+  date). Salary min and max sit side by side with "RM" and "a month" shown as text beside
+  the inputs, and helper text under them: "Leave blank if you'd rather not say."
+- Input types match the data: `inputmode="numeric"` for salary and headcount,
+  `type="date"` for the closing date.
+- A field is validated when the user leaves it, not on every keystroke. Its error appears
+  directly under it, says what is wrong and how to fix it ("Maximum salary can't be lower
+  than the minimum"), and is announced (`aria-describedby`, `role="alert"`).
+- On a failed save, focus moves to the first field with an error. A server-side refusal
+  that belongs to a field is shown under that field; anything else shows at the top of the
+  panel with a way forward.
+- The Save button shows a pending state and is disabled while saving, so a double click
+  cannot create two jobs. Success closes the panel and shows a brief confirmation that does
+  not take focus (`aria-live="polite"`).
+- Closing the panel with unsaved changes asks first.
+
+**Panel and dialogs**
+- The panel and the delete confirm trap focus while open, close on Escape, and return focus
+  to the control that opened them.
+- The delete confirm names the job, says it cannot be undone, puts the destructive button
+  in the danger style and away from Cancel, and focuses Cancel first.
+
+**Row actions**
+- The row menu button has an accessible name that includes the job ("Actions for Sales
+  Executive"). Every action is reachable by keyboard.
+- Status is never shown by colour alone: the pill carries the word.
+- A disabled action says why in its title and in text a screen reader gets.
+- Hit areas are at least 44 by 44 pixels; the screen works at 375 pixels wide without
+  horizontal scrolling (the table scrolls inside its own container, as it does now).
+
+**Motion**
+- Panel and dialog transitions are 150 to 300 ms, use transform and opacity only, and are
+  removed under `prefers-reduced-motion`.
+
 ### 7.2 Careers Page
 The row action that reads "Publish" for a draft, paused or closed job calls
 `setJobStatusAction` with `open`; for a published job it reads "Unpublish" and closes it.
