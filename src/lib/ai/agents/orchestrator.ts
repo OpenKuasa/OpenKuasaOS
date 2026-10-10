@@ -121,8 +121,8 @@ const TEAM_AREA = {
 
 /**
  * Tuah, the cross-app assistant on the Command page and the floating button.
- * It has the marketing tools Jebat has and Kasturi's CRM tools (lookups, and
- * changes behind an approval), runs on the model those rules were tuned on,
+ * It has the marketing tools Jebat has, Kasturi's CRM tools (lookups, and
+ * changes behind an approval) and Lekir's hiring lookups, runs on the model those rules were tuned on,
  * and says so rather than inventing data from the products it cannot see yet.
  */
 export function runTuah(
@@ -139,9 +139,15 @@ export function runTuah(
    * carries out what they prepare, instead of holding every tool itself.
    */
   team?: Omit<TeamContext, 'apiKey'> | null,
+  /** The workspace's hiring data. Lookups only, so it needs no workspace role. */
+  hire?: HireAccess | null,
 ) {
-  // Every product the user can reach: marketing always, the CRM in a workspace.
-  const products = [reachProduct(reach), ...(crm ? [crmProduct(crm)] : [])];
+  // Every product the user can reach: marketing always, the CRM in a workspace, hiring when passed.
+  const products = [
+    reachProduct(reach),
+    ...(crm ? [crmProduct(crm)] : []),
+    ...(hire ? [hireProduct(hire)] : []),
+  ];
   const teamTools = team ? createTeamTools(products, { ...team, apiKey }) : null;
   const { tools, toolApproval } = teamTools ?? combineToolkits(products);
   const system = team
