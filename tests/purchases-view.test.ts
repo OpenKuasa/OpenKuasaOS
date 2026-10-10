@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { billsView, paymentsView, type BillRow, type PaymentRow } from '@/lib/finance/purchases';
+import { billsView, fetchAll, paymentsView, type BillRow, type PaymentRow } from '@/lib/finance/purchases';
 
 const today = '2026-10-09';
 
@@ -69,4 +69,15 @@ test('payment cards count only paid money; trend covers the last 8 months', () =
   expect(view.trend[0]).toEqual({ label: 'Mar', electronic: 2.5, cash: 0 });
   expect(view.trend[7]).toEqual({ label: 'Oct', electronic: 3, cash: 1 });
   expect(view.byMethod.map((m) => m.value)).toEqual([3, 0, 1, 0]);
+});
+
+test('fetchAll reads past the 1,000-row page limit', async () => {
+  const all = Array.from({ length: 2500 }, (_, i) => i);
+  const asked: number[] = [];
+  const rows = await fetchAll<number>(async (from, to) => {
+    asked.push(from);
+    return { data: all.slice(from, to + 1), error: null };
+  });
+  expect(rows).toEqual(all);
+  expect(asked).toEqual([0, 1000, 2000]);
 });
