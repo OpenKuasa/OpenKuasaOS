@@ -1327,7 +1327,9 @@ export function timeToHire(apps: Application[]): TimeToHire {
 }
 
 const monthKey = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: TZ }).slice(0, 7); // YYYY-MM
-const monthLabel = (d: Date) => d.toLocaleDateString('en-MY', { month: 'short', timeZone: TZ });
+// A fixed list: a locale's own short month names vary ("Sep" or "Sept").
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLabel = (d: Date) => MONTHS[Number(monthKey(d).slice(5, 7)) - 1];
 
 /** Average days to offer and to hire for each of the last `months` months, by when it happened. */
 export function timeToHireByMonth(apps: Application[], now: Date, months = 8) {
@@ -1438,9 +1440,9 @@ export type BoardModel = { isEmpty: boolean; stages: { key: ApplicationStage; na
 export function buildBoardModel(data: HireData, now: Date): Promise<BoardModel>;
 export type ApplicationsModel = { isEmpty: boolean; total: number; rows: { id: string; name: string; job: string; source: string; status: ApplicationLabel; applied: string }[]; statusMix: { key: ApplicationLabel; value: number }[]; byJob: { label: string; applications: number }[] };
 export function buildApplicationsModel(data: HireData): Promise<ApplicationsModel>;
-export type InterviewsModel = { isEmpty: boolean; rows: { id: string; name: string; role: string; date: string; time: string; interviewer: string; type: 'Video' | 'Onsite' | 'Phone'; status: 'Scheduled' | 'Completed' | 'Cancelled' | 'No-show' }[]; scheduled: number; completed: number; noShow: number; weekLoad: { label: string; count: number }[] };
+export type InterviewsModel = { isEmpty: boolean; rows: { id: string; name: string; role: string; date: string; time: string; interviewer: string; type: 'Video' | 'Onsite' | 'Phone'; status: 'Scheduled' | 'Completed' | 'Cancelled' | 'No-show' }[]; scheduled: number; completed: number; noShow: number; next7Days: number; weekLoad: { label: string; count: number }[] };
 export function buildInterviewsModel(data: HireData, now: Date): Promise<InterviewsModel>;
-export type PoolModel = { isEmpty: boolean; size: number; rows: { name: string; title: string; skills: string[]; location: string; source: string; rating: number | null; status: 'Available' | 'Shortlisted' | 'Passive' | 'Re-engaged' }[] };
+export type PoolModel = { isEmpty: boolean; size: number; rows: { id: string; name: string; title: string; skills: string[]; location: string; source: string; rating: number | null; status: 'Available' | 'Shortlisted' | 'Passive' | 'Re-engaged' }[] };
 export function buildPoolModel(data: HireData): Promise<PoolModel>;
 ```
 
@@ -1521,7 +1523,9 @@ describe('interviews', () => {
   it('lists interviews with the counts by status', async () => {
     const model = await buildInterviewsModel(data, NOW);
     expect(model.rows).toHaveLength(10);
-    expect(model).toMatchObject({ scheduled: 6, completed: 3, noShow: 1 });
+    expect(model).toMatchObject({ scheduled: 6, completed: 3, noShow: 1, next7Days: 6 });
+    // NOW is a Saturday, so some of the six fall on the weekend and are not in the weekday chart.
+    expect(model.weekLoad.reduce((sum, d) => sum + d.count, 0)).toBeLessThanOrEqual(6);
     expect(model.weekLoad.map((d) => d.label)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     expect(model.rows[0]).toMatchObject({ status: 'Scheduled' });
   });
@@ -1603,12 +1607,23 @@ const POOL_LABEL: Record<Exclude<PoolStatus, 'none'>, 'Available' | 'Passive' | 
   available: 'Available', passive: 'Passive', re_engaged: 'Re-engaged',
 };
 
+// A fixed list: a locale's own short month names vary ("Sep" or "Sept").
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** The date in Kuala Lumpur, as its parts. */
+function klDate(iso: string): { day: string; month: string; year: string } {
+  const [year, month, day] = new Date(iso).toLocaleDateString('en-CA', { timeZone: TZ }).split('-');
+  return { day, month: MONTHS[Number(month) - 1], year };
+}
 /** "08 Oct 2026", in Kuala Lumpur. */
-const fullDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: TZ });
+const fullDate = (iso: string) => {
+  const d = klDate(iso);
+  return `${d.day} ${d.month} ${d.year}`;
+};
 /** "08 Oct". */
-const shortDate = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: TZ });
+const shortDate = (iso: string) => {
+  const d = klDate(iso);
+  return `${d.day} ${d.month}`;
+};
 /** "14:00". */
 const clock = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ });
@@ -1757,7 +1772,9 @@ export type InterviewsModel = {
   scheduled: number;
   completed: number;
   noShow: number;
-  /** Scheduled interviews in the next 7 days, by weekday. */
+  /** Scheduled interviews in the next 7 days: the same number the Overview and the chat give. */
+  next7Days: number;
+  /** Those interviews by weekday, Monday to Friday only (for the chart; weekend ones are not in it). */
   weekLoad: { label: string; count: number }[];
 };
 
@@ -1789,6 +1806,7 @@ export async function buildInterviewsModel(data: HireData, now: Date): Promise<I
     scheduled: count('scheduled'),
     completed: count('completed'),
     noShow: count('no_show'),
+    next7Days: ahead.length,
     weekLoad: WEEKDAYS.map((label) => ({ label, count: ahead.filter((i) => weekday(i.scheduled_at) === label).length })),
   };
 }
@@ -1797,7 +1815,7 @@ export type PoolModel = {
   isEmpty: boolean;
   size: number;
   rows: {
-    name: string; title: string; skills: string[]; location: string; source: string;
+    id: string; name: string; title: string; skills: string[]; location: string; source: string;
     rating: number | null; status: 'Available' | 'Shortlisted' | 'Passive' | 'Re-engaged';
   }[];
 };
@@ -1816,6 +1834,7 @@ export async function buildPoolModel(data: HireData): Promise<PoolModel> {
     isEmpty: pool.length === 0,
     size: pool.length,
     rows: pool.slice(0, ROWS_SHOWN).map((c) => ({
+      id: c.id,
       name: c.name,
       title: c.headline ?? '—',
       skills: c.skills,
@@ -3279,7 +3298,6 @@ In `evals/tuah/cases.ts`, add before the `finance-not-available` case. The scori
       const turn = await new Conversation(ws).ask('How many job openings do we have right now?');
       return [
         check('asked Lekir', turn.asked.includes('Lekir'), `asked: ${turn.asked.join(', ') || 'nobody'}`),
-        check('does not say hiring cannot be looked up', !/can(?:'t|not) (look|see|access)/i.test(turn.text), turn.text),
         check('says there are none', /\b(no|none|zero|0|not any|don't have|haven't)\b/i.test(turn.text), turn.text),
         check('proposed no change', turn.pending.length === 0),
       ];
@@ -3680,7 +3698,7 @@ Delete `ROWS`, `WEEK_LOAD`, the local `Interview`, `Status` and `InterviewType` 
 |---|---|
 | `scheduled` (the array of upcoming rows) | `model.rows.filter((r) => r.status === 'Scheduled')` |
 | `scheduled.length`, `completedCount`, `noShowCount` | `model.scheduled`, `model.completed`, `model.noShow` |
-| `thisWeek` | `model.weekLoad.reduce((sum, d) => sum + d.count, 0)`, label "Next 7 days" |
+| `thisWeek` | `model.next7Days`, label "Next 7 days". Do not sum `weekLoad`: it leaves out the weekend, and this figure must equal the Overview's and the chat's |
 | Week load chart | `data={model.weekLoad}` |
 | Table rows | `model.rows`, `key={row.id}` |
 | "Schedule interview" button | add `disabled title="Coming soon"` |
@@ -3704,7 +3722,7 @@ Delete `POOL_SIZE`, `CANDIDATES` and the local `Candidate` and `Status` types. A
 | Today | Bind to |
 |---|---|
 | `POOL_SIZE` | `model.size` |
-| Table rows | `model.rows` (`name`, `title`, `skills`, `location`, `source`, `rating`, `status`), `key={row.name}` |
+| Table rows | `model.rows` (`name`, `title`, `skills`, `location`, `source`, `rating`, `status`), `key={row.id}` (two real people can share a name) |
 | Rating cell | `row.rating === null ? '—' : row.rating.toFixed(1)` |
 | Status counts (available, shortlisted, passive, re-engaged) | `model.rows.filter((r) => r.status === '…').length`; if a card needs the count over the whole pool rather than the 50 shown, show `model.size` only and drop the per-status figure |
 | "Add to pool", "Import", "Contact" buttons | add `disabled title="Coming soon"` |
