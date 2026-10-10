@@ -4,7 +4,6 @@ import {
   Gauge,
   Megaphone,
   PieChart,
-  Plus,
   TrendingUp,
   Users,
 } from 'lucide-react';
@@ -22,17 +21,15 @@ import {
   type Slice,
 } from '@/components/charts';
 import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { LiveDot } from '@/components/ui/live-dot';
+import { AdStudioTable } from '@/components/reach/ad-studio-table';
+import { createClient } from '@/lib/supabase/server';
+import { getReachData } from '@/lib/reach/supabase';
+import { getViewer } from '@/lib/auth/viewer';
+import { can } from '@/lib/auth/permissions';
+import { deriveAdsOverview, deriveSpendByChannel } from '@/lib/ai/tools';
+import type { Campaign, Channel } from '@/lib/reach/types';
 
-/* ---- mock data (Rimba Ventures Sdn Bhd) --------------------------- */
+/* ---- demo-only values: no live source yet (shown only to demo viewers) ---- */
 
 const SPEND_LEADS = [
   { label: 'Wk1', spend: 540, leads: 92 },
@@ -47,19 +44,27 @@ const SPEND_LEADS_SERIES: Series[] = [
   { key: 'leads', label: 'Leads', color: 'var(--chart-1)' },
 ];
 
-const SPEND_BY_CHANNEL: Slice[] = [
-  { key: 'whatsapp', label: 'WhatsApp', value: 1480, color: 'var(--chart-1)' },
-  { key: 'facebook', label: 'Facebook', value: 1260, color: 'var(--chart-2)' },
-  { key: 'instagram', label: 'Instagram', value: 900, color: 'var(--chart-5)' },
-  { key: 'tiktok', label: 'TikTok', value: 640, color: 'var(--chart-3)' },
-];
+const CHANNEL_LABEL: Record<Channel, string> = {
+  whatsapp: 'WhatsApp',
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+};
+const CHANNEL_COLOR: Record<Channel, string> = {
+  whatsapp: 'var(--chart-1)',
+  facebook: 'var(--chart-2)',
+  instagram: 'var(--chart-5)',
+  tiktok: 'var(--chart-3)',
+};
 
-const LEADS_BY_CHANNEL = [
-  { label: 'WhatsApp', leads: 280 },
-  { label: 'Facebook', leads: 190 },
-  { label: 'Instagram', leads: 140 },
-  { label: 'TikTok', leads: 90 },
-];
+function Muted({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="grid min-h-24 place-items-center text-center text-sm text-muted-foreground">
+      {children}
+    </p>
+  );
+}
+
 const LEADS_BY_CHANNEL_SERIES: Series[] = [
   { key: 'leads', label: 'Leads', color: 'var(--chart-1)' },
 ];
@@ -72,75 +77,42 @@ const AD_FUNNEL: Slice[] = [
   { key: 'customers', label: 'Customers', value: 180, color: 'var(--chart-4)' },
 ];
 
-type CampaignStatus = 'Active' | 'Paused';
-
-type Campaign = {
-  id: string;
-  name: string;
-  status: CampaignStatus;
-  spend: string;
-  reach: string;
-  leads: number;
-  cpl: string;
-};
-
-const CAMPAIGNS: Campaign[] = [
-  {
-    id: '1',
-    name: 'Ramadan–Raya Promo',
-    status: 'Active',
-    spend: 'RM 1,200',
-    reach: '48K',
-    leads: 96,
-    cpl: 'RM 12.50',
-  },
-  {
-    id: '2',
-    name: 'New Product Launch',
-    status: 'Active',
-    spend: 'RM 1,850',
-    reach: '61K',
-    leads: 70,
-    cpl: 'RM 26.40',
-  },
-  {
-    id: '3',
-    name: 'Retargeting — Cart',
-    status: 'Paused',
-    spend: 'RM 640',
-    reach: '12K',
-    leads: 54,
-    cpl: 'RM 11.85',
-  },
-  {
-    id: '4',
-    name: 'Brand Awareness',
-    status: 'Paused',
-    spend: 'RM 590',
-    reach: '22K',
-    leads: 18,
-    cpl: 'RM 32.80',
-  },
-];
-
 /* ------------------------------------------------------------------ */
 
-export default function AdStudioScreen() {
+export default async function AdStudioScreen() {
+  const supabase = await createClient();
+  const [data, viewer] = await Promise.all([getReachData(supabase), getViewer()]);
+  const campaigns: Campaign[] = await data.listCampaigns();
+  const overview = deriveAdsOverview(campaigns);
+  const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
+  const isDemo = viewer.isDemo;
+  const na = <Muted>Not available yet</Muted>;
+
+  const spendByChannel = deriveSpendByChannel(campaigns);
+  const spendSlices: Slice[] = spendByChannel.by_channel
+    .filter((c) => c.spend_cents > 0)
+    .map((c) => ({
+      key: c.channel,
+      label: CHANNEL_LABEL[c.channel],
+      value: c.spend_cents / 100,
+      color: CHANNEL_COLOR[c.channel],
+    }));
+  const leadsByChannel = (Object.keys(CHANNEL_LABEL) as Channel[])
+    .map((ch) => ({
+      label: CHANNEL_LABEL[ch],
+      leads: campaigns.filter((c) => c.channel === ch).reduce((a, c) => a + c.leads_count, 0),
+    }))
+    .filter((r) => r.leads > 0);
+
   return (
     <ScreenContainer>
       <PageHeader
         title="Ad Studio"
         subtitle="Create and manage AI-powered ad campaigns."
         actions={
-          <>
-            <Button variant="outline" size="sm">
-              Connect Meta
-            </Button>
-            <Button size="sm">
-              <Plus className="size-4" />
-              New Campaign
-            </Button>
-          </>
+          <Button variant="outline" size="sm">
+            Connect Meta
+          </Button>
         }
       />
 
@@ -167,60 +139,32 @@ export default function AdStudioScreen() {
           </div>
         </BentoCard>
 
-        {/* KPI row */}
+        {/* KPI row — active / spend / CPL are live; Reach has no source yet */}
         <BentoCard tone="primary" className="col-span-1 md:col-span-3">
           <BentoStat
             label="Active campaigns"
-            value="3"
-            delta="+1"
+            value={String(overview.active_campaigns)}
             onPrimary
-            chart={
-              <Sparkline
-                data={[2, 2, 3, 2, 3, 3]}
-                color="var(--primary-foreground)"
-                height={36}
-              />
-            }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Ad spend"
-            value="RM 4,280"
-            delta="This month"
-            deltaTone="flat"
-            chart={<Sparkline data={[540, 620, 680, 760, 840, 840]} color="var(--chart-2)" height={36} />}
-          />
+          <BentoStat label="Ad spend" value={overview.total_spend} />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
           <BentoStat
             label="Reach"
-            value="128K"
-            delta="+9%"
-            deltaTone="up"
+            value={isDemo ? '128K' : 'Not available yet'}
+            delta={isDemo ? '+9%' : undefined}
+            deltaTone={isDemo ? 'up' : undefined}
             chart={
-              <Sparkline
-                data={[88, 96, 104, 112, 121, 128]}
-                color="var(--chart-5)"
-                height={36}
-              />
+              isDemo ? (
+                <Sparkline data={[88, 96, 104, 112, 121, 128]} color="var(--chart-5)" height={36} />
+              ) : undefined
             }
           />
         </BentoCard>
         <BentoCard className="col-span-1 md:col-span-3">
-          <BentoStat
-            label="Cost / lead"
-            value="RM 6.10"
-            delta="−8%"
-            deltaTone="up"
-            chart={
-              <Sparkline
-                data={[7.4, 7.1, 7.3, 6.8, 6.4, 6.1]}
-                color="var(--chart-3)"
-                height={36}
-              />
-            }
-          />
+          <BentoStat label="Cost / lead" value={overview.blended_cpl} />
         </BentoCard>
 
         {/* Spend & leads trend + spend mix */}
@@ -230,35 +174,49 @@ export default function AdStudioScreen() {
           icon={TrendingUp}
           className="col-span-2 md:col-span-8"
         >
-          <AreaTrend data={SPEND_LEADS} series={SPEND_LEADS_SERIES} height={240} showLegend />
+          {isDemo ? (
+            <AreaTrend data={SPEND_LEADS} series={SPEND_LEADS_SERIES} height={240} showLegend />
+          ) : (
+            na
+          )}
         </BentoCard>
         <BentoCard
           title="Spend by channel"
-          subtitle="This month (RM)"
+          subtitle="All campaigns (RM)"
           icon={PieChart}
           className="col-span-2 md:col-span-4"
         >
-          <DonutStat
-            data={SPEND_BY_CHANNEL}
-            height={240}
-            centerValue="4,280"
-            centerLabel="RM spend"
-          />
+          {spendSlices.length === 0 ? (
+            <Muted>No campaigns yet</Muted>
+          ) : (
+            <DonutStat
+              data={spendSlices}
+              height={240}
+              centerValue={(spendByChannel.total_spend_cents / 100).toLocaleString('en-MY', {
+                maximumFractionDigits: 0,
+              })}
+              centerLabel="RM spend"
+            />
+          )}
         </BentoCard>
 
         {/* Leads by channel + ad funnel + budget */}
         <BentoCard
           title="Leads by channel"
-          subtitle="This month"
+          subtitle="All campaigns"
           icon={BarChart3}
           className="col-span-2 md:col-span-4"
         >
-          <BarGroup
-            data={LEADS_BY_CHANNEL}
-            series={LEADS_BY_CHANNEL_SERIES}
-            horizontal
-            height={200}
-          />
+          {leadsByChannel.length === 0 ? (
+            <Muted>No leads yet</Muted>
+          ) : (
+            <BarGroup
+              data={leadsByChannel}
+              series={LEADS_BY_CHANNEL_SERIES}
+              horizontal
+              height={200}
+            />
+          )}
         </BentoCard>
         <BentoCard
           title="Ad funnel"
@@ -266,27 +224,31 @@ export default function AdStudioScreen() {
           icon={Filter}
           className="col-span-2 md:col-span-4"
         >
-          <FunnelFlow data={AD_FUNNEL} height={200} />
+          {isDemo ? <FunnelFlow data={AD_FUNNEL} height={200} /> : na}
         </BentoCard>
         <BentoCard
           title="Budget used"
-          subtitle="RM 4,280 of RM 6,000"
+          subtitle={isDemo ? 'RM 4,280 of RM 6,000' : undefined}
           icon={Gauge}
           className="col-span-2 md:col-span-4"
         >
-          <RadialGauge
-            value={71}
-            valueLabel="71%"
-            label="of budget"
-            color="var(--chart-2)"
-            height={200}
-          />
+          {isDemo ? (
+            <RadialGauge
+              value={71}
+              valueLabel="71%"
+              label="of budget"
+              color="var(--chart-2)"
+              height={200}
+            />
+          ) : (
+            na
+          )}
         </BentoCard>
 
         {/* Campaigns table */}
         <BentoCard
           title="Campaigns"
-          subtitle="Live & paused this month"
+          subtitle="Live & paused"
           icon={Megaphone}
           action={
             <Button variant="outline" size="sm">
@@ -296,43 +258,7 @@ export default function AdStudioScreen() {
           }
           className="col-span-2 md:col-span-12"
         >
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/40">
-                  <TableHead>Campaign</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Spend</TableHead>
-                  <TableHead className="text-right">Reach</TableHead>
-                  <TableHead className="text-right">Leads</TableHead>
-                  <TableHead className="text-right">CPL</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {CAMPAIGNS.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="whitespace-nowrap font-medium">
-                      {c.name}
-                    </TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <LiveDot active={c.status === 'Active'} />
-                        <span className="text-sm">{c.status}</span>
-                      </span>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-right tabular-nums">
-                      {c.spend}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{c.reach}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.leads}</TableCell>
-                    <TableCell className="whitespace-nowrap text-right tabular-nums">
-                      {c.cpl}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <AdStudioTable campaigns={campaigns} canEdit={canEdit} />
         </BentoCard>
       </BentoGrid>
     </ScreenContainer>
