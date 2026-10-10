@@ -31,6 +31,7 @@ const ROW = {
   lead_score: 92,
   owner_user_id: 'user-1',
   last_interaction_at: '2026-10-09T10:00:00.000Z',
+  tags: ['VIP', 'Wholesale buyer'],
 };
 
 describe('listCrmContacts', () => {
@@ -45,7 +46,7 @@ describe('listCrmContacts', () => {
     expect(from).toHaveBeenCalledWith('crm_contacts');
     // Exactly the columns of crm_contacts in the Kasturi schema migration.
     expect(contactsQuery.select).toHaveBeenCalledWith(
-      'id,email,company,first_name,last_name,phone,country,status,lead_score,owner_user_id,last_interaction_at',
+      'id,email,company,first_name,last_name,phone,country,status,lead_score,owner_user_id,last_interaction_at,tags',
       { count: 'exact' },
     );
     expect(contactsQuery.eq).toHaveBeenCalledWith('org_id', 'org-1');
@@ -67,6 +68,7 @@ describe('listCrmContacts', () => {
           score: 92,
           pic: 'Faiz Hakim',
           lastInteraction: '9 Oct 2026',
+          tags: ['VIP', 'Wholesale buyer'],
           form: {
             firstName: 'Aisyah',
             lastName: 'Rahim',
@@ -76,6 +78,7 @@ describe('listCrmContacts', () => {
             country: 'MY',
             status: 'qualified',
             leadScore: '92',
+            tags: 'VIP, Wholesale buyer',
           },
         },
       ],
@@ -100,6 +103,15 @@ describe('listCrmContacts', () => {
       country: '—',
     });
     expect(from).not.toHaveBeenCalledWith('profiles');
+  });
+
+  test('lists a contact whose tags column is null with no tags', async () => {
+    const { client } = createClient({ data: [{ ...ROW, tags: null }], count: 1, error: null });
+
+    const { contacts } = await listCrmContacts(client, 'org-1');
+
+    expect(contacts[0].tags).toEqual([]);
+    expect(contacts[0].form?.tags).toBe('');
   });
 
   test('still returns contacts when the owner names cannot be read', async () => {

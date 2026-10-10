@@ -28,6 +28,7 @@ function createInsertClient() {
         lead_score: 72,
         owner_user_id: null,
         last_interaction_at: null,
+        tags: ['VIP', 'Wholesale'],
       },
       error: null,
     })),
@@ -48,6 +49,7 @@ describe('create Kasturi contact', () => {
         country: ' my ',
         status: 'Qualified',
         leadScore: '72',
+        tags: ' VIP , wholesale  buyer ,, vip ',
       }),
       'org-1',
     );
@@ -62,8 +64,73 @@ describe('create Kasturi contact', () => {
       country: 'MY',
       status: 'qualified',
       lead_score: 72,
+      tags: ['VIP', 'wholesale buyer'],
     });
   });
+
+  test('sends no tags when the form has no tags field', () => {
+    const payload = parseCrmContactForm(
+      form({ firstName: 'Aisyah', email: 'aisyah@example.com' }),
+      'org-1',
+    );
+
+    expect(payload).toEqual({
+      org_id: 'org-1',
+      first_name: 'Aisyah',
+      last_name: null,
+      email: 'aisyah@example.com',
+      phone: null,
+      company: null,
+      country: 'MY',
+      status: 'lead',
+      lead_score: 0,
+      tags: [],
+    });
+  });
+
+  test('rejects too many tags before insert', () => {
+    const tags = Array.from({ length: 11 }, (_, i) => `tag-${i}`).join(',');
+
+    expect(() =>
+      parseCrmContactForm(
+        form({ firstName: 'Aisyah', email: 'aisyah@example.com', tags }),
+        'org-1',
+      ),
+    ).toThrow('Use at most 10 tags per contact.');
+  });
+
+  test.each([
+    ['new', 'lead'],
+    ['New Lead', 'lead'],
+    ['New Leads', 'lead'],
+    [' new leads ', 'lead'],
+    ['Leads', 'lead'],
+    ['Lead', 'lead'],
+    ['Customers', 'customer'],
+    ['Customer', 'customer'],
+    ['Contacted', 'contacted'],
+    ['QUALIFIED', 'qualified'],
+    ['Archived', 'archived'],
+  ])('stores the status label %j as %j', (label, stored) => {
+    const payload = parseCrmContactForm(
+      form({ firstName: 'Aisyah', email: 'aisyah@example.com', status: label }),
+      'org-1',
+    );
+
+    expect(payload.status).toBe(stored);
+  });
+
+  test.each(['prospect', 'VIP', 'new customer', ''])(
+    'falls back to lead for the unknown status %j',
+    (label) => {
+      const payload = parseCrmContactForm(
+        form({ firstName: 'Aisyah', email: 'aisyah@example.com', status: label }),
+        'org-1',
+      );
+
+      expect(payload.status).toBe('lead');
+    },
+  );
 
   test('accepts archived as a status', () => {
     const payload = parseCrmContactForm(
@@ -94,7 +161,7 @@ describe('create Kasturi contact', () => {
 
   test('defaults to the status and country the table accepts', () => {
     const payload = parseCrmContactForm(
-      form({ firstName: 'Aisyah', email: 'aisyah@example.com', status: 'new' }),
+      form({ firstName: 'Aisyah', email: 'aisyah@example.com', status: 'prospect' }),
       'org-1',
     );
 
@@ -126,6 +193,7 @@ describe('create Kasturi contact', () => {
       country: 'MY',
       status: 'qualified',
       lead_score: 72,
+      tags: ['VIP', 'Wholesale'],
     });
 
     expect(from).toHaveBeenCalledWith('crm_contacts');
@@ -139,10 +207,15 @@ describe('create Kasturi contact', () => {
       country: 'MY',
       status: 'qualified',
       lead_score: 72,
+      tags: ['VIP', 'Wholesale'],
     });
-    expect(query.select).toHaveBeenCalled();
+    expect(query.select).toHaveBeenCalledWith(
+      'id,email,company,first_name,last_name,phone,country,status,lead_score,owner_user_id,last_interaction_at,tags',
+    );
     expect(query.single).toHaveBeenCalled();
     expect(contact.email).toBe('aisyah@example.com');
     expect(contact.status).toBe('Qualified');
+    expect(contact.tags).toEqual(['VIP', 'Wholesale']);
+    expect(contact.form?.tags).toBe('VIP, Wholesale');
   });
 });

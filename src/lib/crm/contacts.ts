@@ -12,6 +12,8 @@ export type CrmContact = {
   score: number;
   pic: string | null;
   lastInteraction: string | null;
+  /** Free-form labels. Absent on sample rows. */
+  tags?: string[];
   /** Raw values keyed by the form's field names, for prefilling the edit form. */
   form?: Record<string, string>;
 };
@@ -31,6 +33,7 @@ export type CrmContactFields = {
   country: string;
   status: string;
   lead_score: number;
+  tags: string[];
 };
 
 export type CrmContactInsert = CrmContactFields & {
@@ -53,6 +56,7 @@ type CrmContactRow = {
   lead_score: number;
   owner_user_id: string | null;
   last_interaction_at: string | null;
+  tags: string[] | null;
 };
 
 /** Columns of `crm_contacts` the Contacts screen lists. */
@@ -68,6 +72,7 @@ const CONTACT_COLUMNS = [
   'lead_score',
   'owner_user_id',
   'last_interaction_at',
+  'tags',
 ].join(',');
 
 /** Database status -> the label the screen shows. */
@@ -92,9 +97,19 @@ function optionalString(value: string) {
   return value.length > 0 ? value : null;
 }
 
+/** The words people see for a status, mapped back to the stored value. */
+const STATUS_ALIASES: Record<string, string> = {
+  new: 'lead',
+  new_lead: 'lead',
+  new_leads: 'lead',
+  leads: 'lead',
+  customers: 'customer',
+};
+
 function normalizeStatus(value: string) {
-  const status = value.trim().toLowerCase().replaceAll(' ', '_');
-  return STATUSES.has(status) ? status : 'lead';
+  const status = value.trim().toLowerCase().replace(/\s+/g, '_');
+  if (STATUSES.has(status)) return status;
+  return STATUS_ALIASES[status] ?? 'lead';
 }
 
 function normalizeScore(value: string) {
@@ -102,6 +117,32 @@ function normalizeScore(value: string) {
   const score = Number(value);
   if (!Number.isFinite(score)) return 0;
   return Math.min(100, Math.max(0, Math.round(score)));
+}
+
+/** At most this many tags per contact, each at most this long. */
+export const MAX_TAGS = 10;
+export const MAX_TAG_LENGTH = 30;
+
+/**
+ * Tags are typed as one comma-separated line. Blank entries and repeats
+ * (ignoring case) are dropped; the first spelling of a tag is kept.
+ */
+export function parseTags(value: string): string[] {
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  for (const part of value.split(',')) {
+    const tag = part.trim().replace(/\s+/g, ' ');
+    if (!tag || seen.has(tag.toLowerCase())) continue;
+    if (tag.length > MAX_TAG_LENGTH) {
+      throw new CrmContactFormError(`Keep each tag to ${MAX_TAG_LENGTH} characters or fewer.`);
+    }
+    seen.add(tag.toLowerCase());
+    tags.push(tag);
+  }
+  if (tags.length > MAX_TAGS) {
+    throw new CrmContactFormError(`Use at most ${MAX_TAGS} tags per contact.`);
+  }
+  return tags;
 }
 
 function formatDate(value: string | null) {
@@ -131,6 +172,8 @@ export function parseCrmContactFields(formData: FormData): CrmContactFields {
   if (!/^[A-Z]{2}$/.test(country)) {
     throw new CrmContactFormError('Use a two-letter country code, such as MY.');
   }
+  // After the fields every contact needs, so their messages come first.
+  const tags = parseTags(readString(formData, 'tags'));
 
   return {
     first_name: firstName,
@@ -141,6 +184,7 @@ export function parseCrmContactFields(formData: FormData): CrmContactFields {
     country,
     status: normalizeStatus(status),
     lead_score: normalizeScore(leadScore),
+    tags,
   };
 }
 
@@ -177,6 +221,7 @@ export function mapCrmContact(row: CrmContactRow, ownerName: string | null = nul
     score: row.lead_score,
     pic: ownerName,
     lastInteraction: formatDate(row.last_interaction_at),
+    tags: row.tags ?? [],
     form: {
       firstName: row.first_name,
       lastName: row.last_name ?? '',
@@ -186,6 +231,7 @@ export function mapCrmContact(row: CrmContactRow, ownerName: string | null = nul
       country: row.country ?? '',
       status: row.status,
       leadScore: String(row.lead_score),
+      tags: (row.tags ?? []).join(', '),
     },
   };
 }
