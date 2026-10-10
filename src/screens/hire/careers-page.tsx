@@ -30,9 +30,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { can } from '@/lib/auth/permissions';
+import { getViewer } from '@/lib/auth/viewer';
 import { buildCareersModel } from '@/lib/hire/lists';
 import { cn } from '@/lib/utils';
 import { LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire } from '@/screens/hire/parts';
+import { PublishButton } from '@/screens/hire/publish-button';
 
 /* ---- sample look for widgets with no source yet (demo visitors only) -- */
 
@@ -79,7 +82,11 @@ const STATUS_TONE: Record<JobStatus, string> = {
 /* ------------------------------------------------------------------ */
 
 export default async function CareersPageScreen() {
-  const { model, isDemo } = await loadHire('careers-page', (data) => buildCareersModel(data));
+  const [{ model, isDemo }, viewer] = await Promise.all([
+    loadHire('careers-page', (data) => buildCareersModel(data)),
+    getViewer(),
+  ]);
+  const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
   const published = (model?.rows ?? []).filter((j) => j.status === 'Published');
 
   return (
@@ -314,11 +321,12 @@ export default async function CareersPageScreen() {
                     <TableHead>Type</TableHead>
                     <TableHead className="text-right">Applicants</TableHead>
                     <TableHead>Status</TableHead>
+                    {canEdit && <TableHead className="text-right">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {model.rows.map((j, index) => (
-                    <TableRow key={`${j.title}-${index}`}>
+                  {model.rows.map((j) => (
+                    <TableRow key={j.id}>
                       <TableCell className="whitespace-nowrap font-medium">
                         {j.title}
                       </TableCell>
@@ -340,6 +348,11 @@ export default async function CareersPageScreen() {
                           {j.status}
                         </span>
                       </TableCell>
+                      {canEdit && (
+                        <TableCell className="text-right">
+                          <PublishButton id={j.id} title={j.title} published={j.status === 'Published'} />
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

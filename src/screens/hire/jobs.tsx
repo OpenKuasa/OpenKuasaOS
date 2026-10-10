@@ -1,4 +1,4 @@
-import { BarChart3, Briefcase, PieChart, Plus, Search } from 'lucide-react';
+import { BarChart3, Briefcase, PieChart, Search } from 'lucide-react';
 import { ScreenContainer } from '@/components/screen/screen-container';
 import { PageHeader } from '@/components/screen/page-header';
 import { BentoGrid, BentoCard, BentoStat } from '@/components/bento/bento';
@@ -8,7 +8,6 @@ import {
   type Series,
   type Slice,
 } from '@/components/charts';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -17,22 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { LiveDot } from '@/components/ui/live-dot';
+import { can } from '@/lib/auth/permissions';
+import { getViewer } from '@/lib/auth/viewer';
 import { buildJobsModel } from '@/lib/hire/lists';
-import { cn } from '@/lib/utils';
+import { JobsTable } from '@/screens/hire/jobs-table';
 import { LOAD_FAILED, Muted, NOT_AVAILABLE, loadHire } from '@/screens/hire/parts';
 
 /* ---- static config ------------------------------------------------ */
-
-type JobStatus = 'Open' | 'Paused' | 'Closed' | 'Draft';
 
 const APPLICANTS_SERIES: Series[] = [
   { key: 'applicants', label: 'Applicants', color: 'var(--chart-2)' },
@@ -45,17 +35,13 @@ const STATUS_COLOR: Record<string, string> = {
   draft: 'var(--chart-2)',
 };
 
-const PILL: Record<JobStatus, string> = {
-  Open: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-  Paused: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
-  Closed: 'bg-muted text-muted-foreground',
-  Draft: 'bg-sky-500/15 text-sky-600 dark:text-sky-400',
-};
-
 /* ------------------------------------------------------------------ */
 
 export default async function JobsScreen() {
-  const { model } = await loadHire('jobs', buildJobsModel);
+  const [{ model }, viewer] = await Promise.all([loadHire('jobs', buildJobsModel), getViewer()]);
+  const canEdit = !viewer.isDemo && can(viewer.role, 'edit-data');
+  // The date in Kuala Lumpur, so the form and the server agree on "today".
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
   const statusMix: Slice[] = (model?.statusMix ?? []).map((s) => ({
     ...s,
     color: STATUS_COLOR[s.key],
@@ -68,12 +54,6 @@ export default async function JobsScreen() {
       <PageHeader
         title="Jobs"
         subtitle="Your open positions, Saudara."
-        actions={
-          <Button size="sm" disabled title="Coming soon">
-            <Plus className="size-4" />
-            Post a Job
-          </Button>
-        }
       />
 
       <BentoGrid>
@@ -175,57 +155,14 @@ export default async function JobsScreen() {
               </SelectContent>
             </Select>
           </div>
-          {!model ? LOAD_FAILED : model.isEmpty ? (
-            <Muted>No jobs yet</Muted>
-          ) : (
+          {!model ? LOAD_FAILED : (
             <>
-              <div className="mt-3 overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/40">
-                      <TableHead>Role</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead className="text-right">Applicants</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Posted</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {model.rows.map((job) => (
-                      <TableRow key={job.id}>
-                        <TableCell className="whitespace-nowrap font-medium">
-                          <span className="flex items-center gap-2.5">
-                            <LiveDot active={job.status === 'Open'} />
-                            {job.title}
-                          </span>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">
-                          {job.dept}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {job.applicants}
-                        </TableCell>
-                        <TableCell>
-                          <span
-                            className={cn(
-                              'inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
-                              PILL[job.status],
-                            )}
-                          >
-                            {job.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">
-                          {job.posted}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="border-t px-4 py-3 text-sm text-muted-foreground">
-                Showing {model.rows.length} jobs · {model.totalApplicants} applicants
-              </div>
+              <JobsTable rows={model.rows} canEdit={canEdit} today={today} />
+              {!model.isEmpty && (
+                <div className="border-t px-4 py-3 text-sm text-muted-foreground">
+                  Showing {model.rows.length} jobs · {model.totalApplicants} applicants
+                </div>
+              )}
             </>
           )}
         </BentoCard>

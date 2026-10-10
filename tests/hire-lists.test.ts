@@ -67,6 +67,12 @@ describe('careers page', () => {
     expect(model.rows.find((r) => r.title === 'Accountant')?.status).toBe('Draft');
     expect(model.rows.find((r) => r.title === 'Customer Support')).toMatchObject({ type: 'Part-time', status: 'Published' });
   });
+  it('carries the whole job for editing, and ids for the careers actions', async () => {
+    const jobs = await buildJobsModel(data, NOW);
+    expect(jobs.rows[0].job).toMatchObject({ id: jobs.rows[0].id, title: jobs.rows[0].title });
+    const careers = await buildCareersModel(data);
+    expect(careers.rows.every((r) => typeof r.id === 'string' && typeof r.jobStatus === 'string')).toBe(true);
+  });
 });
 
 describe('candidates board', () => {
