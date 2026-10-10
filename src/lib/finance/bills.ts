@@ -142,6 +142,13 @@ export type BillLine = {
 
 export type BillDetail = BillListRow & { supplier_ref: string | null; notes: string | null; lines: BillLine[] };
 
+/**
+ * The answer to "Save and post". When the draft was saved but posting it was
+ * refused, `draftId` is that draft, so the form goes on editing it instead of
+ * saving a second copy.
+ */
+export type SaveAndPostResult = FinResult<{ id: string; bill_no: string }> & { draftId?: string };
+
 const LIST_COLUMNS = 'id,bill_no,supplier_id,supplier_name,bill_date,due_date,total,paid,balance,display_status';
 
 function toListRow(row: Record<string, unknown>): BillListRow {
