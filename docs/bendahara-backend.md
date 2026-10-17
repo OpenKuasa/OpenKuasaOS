@@ -181,6 +181,7 @@ policy.
 | `finance_invoices`, `finance_invoice_lines` | Sales invoices and their lines. A draft has no `invoice_no`. Lines keep the order they were entered in (`position`). `quotation_id` is the quotation an invoice was made from, if any. |
 | `finance_quotations`, `finance_quotation_lines` | Quotations and their lines, shaped like invoices. A draft has no `quotation_no`. |
 | `finance_credit_notes` | A credit against one posted invoice: one amount and a reason, no lines. A draft has no `credit_note_no`. |
+| `finance_supplier_credit_notes`, `finance_supplier_credit_applications` | A credit from a supplier against one posted bill (one amount, a reason, the supplier's own reference), and which bill took how much of it. See Supplier credit notes. |
 | `finance_transactions` | One row per movement of money: direction, account, date, amount, method, status. |
 | `finance_allocations` | How a movement is split across the documents it pays. Each row names exactly one document: a bill (`bill_id`), an invoice (`invoice_id`), a credit note (`credit_note_id`) or an expense (`expense_id`). `reason` is what a refund is for. One payment pays one kind of document: bills, or invoices and credit notes, or expenses. |
 | `finance_expenses` | An expense: a date, a category, a vendor who is a contact (`vendor_id`) or a typed name (`vendor_name`), never both, and `amount`, which has its SST inside it (`sst_amount` is that part). `status` is `pending`, `approved` or `rejected`; `approved_by` and `approved_at` say who decided and when, whichever way. It has no number. |
@@ -195,12 +196,12 @@ policy.
 `select public.finance_next_number(target_org, doc)` with `doc` set to
 `'invoice'` returns the next number (`INV-0001`) and moves the counter on. It locks the workspace's row for that
 type, so simultaneous callers never get the same number. Types: `invoice`,
-`quotation`, `credit_note`, `bill`, `receipt`, `voucher`, `transfer`, `contra` (`CT-0001`, taken when a contra entry is posted). Call it from inside
+`quotation`, `credit_note`, `supplier_credit_note`, `bill`, `receipt`, `voucher`, `transfer`, `contra` (`CT-0001`, taken when a contra entry is posted). Call it from inside
 the database function that posts a document, so a failed post does not use up a
 number.
 
 A quotation takes its `QT-` number when it is sent and a credit note its `CN-`
-number when it is issued. A refund is money out and takes a `PV-` number when
+number when it is issued, and a supplier credit note its `SCN-` number when it is issued. A refund is money out and takes a `PV-` number when
 it is paid out, from the same counter as a payment to a supplier. A payment
 voucher of any other kind takes its `PV-` number from that counter too, when
 it is paid, and a cash receipt its `RC-` number when it is posted, from the
@@ -1790,6 +1791,58 @@ offers follows its status (`creditNoteActions`): a draft is edited, issued or
 deleted; an issued credit note is voided, and refunded while something of it
 can still be; a void one offers nothing.
 
+## Supplier credit notes
+
+`20261120090000_bendahara_supplier_credit_notes` (tables and rules only; the
+screen is not built yet). A supplier credit note is one
+`finance_supplier_credit_notes` row: one amount against one posted supplier bill,
+a `reason` (`overpaid`, `returned_goods`, `short_delivery`, `other`), the
+supplier's own reference, and a `status` of `draft`, `issued` or `void`.
+Issuing gives it the next `SCN-` number (`finance_issue_supplier_credit_note`).
+The supplier is the bill's supplier; it is not stored twice. There is no
+money in from a supplier, and no note without a bill. All the issued notes of
+a bill together never exceed the bill's total (`FIN05`).
+
+**Credit on a bill.** `finance_supplier_credit_applications` says which bill took
+how much of a note (`credit_note_id`, `bill_id`, `amount`; one row per note and
+bill). On issue the note is applied to its own bill, up to what that bill still
+owes: its total, less payments (posted, or waiting to be paid) and credit
+already on it. What is left stays open on the supplier, and an owner or admin
+applies it to a later posted bill of the same supplier (`FIN42` for another
+supplier's bill). The applications of a note never exceed the note, and the
+payments and credit on a bill never exceed its total (`FIN05`): the guard on
+applications checks the second from the credit side, and
+`finance_allocation_guard_credit`, a trigger that fires right after
+`finance_allocation_guard`, from the payment side, so a payment voucher cannot
+pay past the credit. Applying credit makes no ledger entry: the note already
+reduced Accounts Payable when it was issued. A row is never edited; it is taken
+off (deleted, by an owner or admin) and put on again.
+
+**Figures.** `supplier_bill_totals` gains `credited` (last column). `paid` is
+still posted money out; `balance` and `display_status` take the credit off, so
+a bill the credit covers reads `paid`. `finance_supplier_credit_note_totals`
+adds the bill's number, the supplier, `applied` and `open_amount` (the part of
+an issued note on no bill yet). On `finance_purchase_order_totals`,
+`billed_total`, `over_billed` and `billed_over_received` take the issued notes
+on the order's bills off, so an order the supplier has corrected stops reading
+as over-billed. A draft note counts for nothing.
+
+**The books.** An issued note debits Accounts Payable and credits the bill's
+category by its amount (`finance_ledger_lines`, source `supplier_credit_note`).
+A void posts a reversal on the day it was voided, as for the other documents.
+
+**Void.** Issuing and voiding need an owner or admin (`FIN14`), as do putting
+credit on a bill and taking it off. A note is voided only while its credit is on
+its own bill alone; voiding takes that off again, so the bill owes it. If the
+credit has been used on another bill, take it off that bill first (`FIN41`). A
+bill cannot be voided while a draft or issued note is against it, or while
+credit is applied to it (`FIN43`).
+
+**With contra entries.** `supplier_bill_totals` keeps its `set_off` column and takes both it and
+`credited` off `balance`. Payments, posted contra entries and applied credit together may not pass a
+bill's total (`FIN05`): `finance_supplier_credit_application_guard`, `finance_allocation_guard_credit`
+and `finance_contra_guard_credit` each count the other two.
+
 ## Refunds
 
 The form offers what `refundTargets` works out from the invoices, the credit
@@ -2174,6 +2227,9 @@ quotation, a credit note or a refund by the file that made the call.
 | `FIN32` | An invoice or bill that a posted contra entry sets off is not voided. `bills.ts` and `invoices.ts`: "A contra entry sets this off. Void the contra entry first." |
 | `FIN33` | Refunds on an invoice depend on a contra entry, so it is not voided. `contras.ts` |
 | `FIN37` | Money does not move on an archived account: a payment is not started on one, moved onto one, or sent for approval, approved, scheduled, posted or marked paid while its account is archived. `result.ts` has the one sentence (`ACCOUNT_ARCHIVED`), which `money.ts`, `refunds.ts` and `cash-receipts.ts` each list in their own map; `transfers.ts` words it as it words `FIN16`. A member recording a payment in, a refund or a paid-now payment out on an archived account is answered `FIN37` (the draft is refused before the sign-off rule), where before this rule they were answered `FIN14`; posting, approving and marking paid by a member still answer `FIN14`. |
+| `FIN41` | A supplier credit note cannot be voided while its credit is used on another bill: take it off that bill first |
+| `FIN42` | Credit can only be applied to a bill from the same supplier as the credit note |
+| `FIN43` | A bill with a draft or issued supplier credit note against it, or with credit applied to it, cannot be voided |
 
 `FIN23`, `FIN24` and `FIN25` are not the Receipts Inbox's alone. The ledger
 migrations (`20261108091500` to `20261108094500`) raise `FIN23` to `FIN27` with

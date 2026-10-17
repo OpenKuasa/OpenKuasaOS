@@ -57,6 +57,7 @@ export const ENTRIES_PAGE_SIZE = 50;
 const SOURCE_SCREENS: Record<LedgerSource, string> = {
   invoice: 'Invoices',
   credit_note: 'Credit Notes',
+  supplier_credit_note: 'Supplier Bills',
   payment_in: 'Cash Receipts',
   refund: 'Refunds',
   bill: 'Supplier Bills',

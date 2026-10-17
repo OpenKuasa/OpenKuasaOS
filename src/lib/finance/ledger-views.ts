@@ -27,6 +27,7 @@ export const STANDS_FOR_LABELS: Record<AccountStandsFor, string> = {
 export const SOURCE_LABELS: Record<LedgerSource, string> = {
   invoice: 'Invoice',
   credit_note: 'Credit note',
+  supplier_credit_note: 'Supplier credit note',
   payment_in: 'Receipt',
   refund: 'Refund',
   bill: 'Supplier bill',
@@ -46,6 +47,8 @@ export const SOURCE_LABELS: Record<LedgerSource, string> = {
 export const SOURCE_PATHS: Record<LedgerSource, string | null> = {
   invoice: '/finance/invoices',
   credit_note: '/finance/credit-notes',
+  // A supplier credit note has no screen of its own yet; it is found on its bill.
+  supplier_credit_note: '/finance/supplier-bills',
   payment_in: '/finance/cash-receipts',
   refund: '/finance/refunds',
   bill: '/finance/supplier-bills',
