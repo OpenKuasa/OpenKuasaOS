@@ -14,8 +14,11 @@ import { displayDate } from '@/lib/finance/view-helpers';
  *
  * The order's figures are in the order's currency, which is its bills'
  * currency too (FIN49); nothing is converted. Contra entries are in ringgit, so
- * that line is, and it is drawn only when there is one. A list, not a table, so
- * a long bill number wraps at phone width instead of scrolling.
+ * that line is, and it is drawn only when there is one. "Billed so far" already
+ * has the supplier's issued credit notes off it (#273), so when an order carries
+ * credit a "Credit notes" line says how much, again only when there is some, so
+ * billed, credit, contra and paid add up for the approver. A list, not a table,
+ * so a long bill number wraps at phone width instead of scrolling.
  */
 export function VoucherOrderFigures({ figures }: { figures: VoucherFigures }) {
   const billLine = (bill: VoucherFigures['withoutOrder'][number]) => (
@@ -48,6 +51,12 @@ export function VoucherOrderFigures({ figures }: { figures: VoucherFigures }) {
             <dd className="text-right">{money(order.received, order.currency)}</dd>
             <dt className="text-muted-foreground">Billed so far</dt>
             <dd className="text-right">{money(order.billed, order.currency)}</dd>
+            {order.creditNotes > 0 ? (
+              <>
+                <dt className="text-muted-foreground">Credit notes</dt>
+                <dd className="text-right">{money(order.creditNotes, order.currency)}</dd>
+              </>
+            ) : null}
             <dt className="text-muted-foreground">Paid so far</dt>
             <dd className="text-right">{money(order.paid, order.currency)}</dd>
             <dt className="font-medium">This payment</dt>

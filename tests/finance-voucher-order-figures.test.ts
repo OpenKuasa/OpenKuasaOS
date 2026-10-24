@@ -143,6 +143,24 @@ describe('the figures beside the approve step', () => {
     expect(figures.orders[0]).toMatchObject({ paid: 100, setOff: 40 });
   });
 
+  it("adds up the credit the order's bills have had off billed so far, and skips a voided bill", () => {
+    const bills = [
+      // Billed so far already has these off it (#273), so the line says how much was taken off.
+      bill({ paid: 100, credited: 25 }),
+      bill({ id: BILL_B, bill_no: 'BILL-0002', total: 100, balance: 70, paid: 0, credited: 30 }),
+      bill({ id: BILL_VOID, bill_no: 'BILL-0009', credited: 900, display_status: 'void' }),
+    ];
+    const figures = voucherOrderFigures(VOUCHER, [payment({ amount: 125 })], bills, [order({ billed_total: 270 })]);
+
+    expect(figures.orders[0]).toMatchObject({ billed: 270, creditNotes: 55, paid: 100, setOff: 0 });
+  });
+
+  it('leaves the credit line at nothing for an order whose bills were never credited', () => {
+    const figures = voucherOrderFigures(VOUCHER, [payment()], [bill()], [order()]);
+
+    expect(figures.orders[0].creditNotes).toBe(0);
+  });
+
   it("keeps a foreign order's figures in its own currency, never the ringgit that left the bank", () => {
     const bills = [bill({ currency: 'USD', total: 200, paid: 50, balance: 150 })];
     const figures = voucherOrderFigures(

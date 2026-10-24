@@ -13,6 +13,12 @@
  *   is not in `paid`; it is shown on its own "Set off by contra" line instead,
  *   so the figures still add up for the approver. Contra entries are in
  *   ringgit, so that line is.
+ * - "Billed so far" already has the supplier's issued credit notes taken off it
+ *   (#273, `finance_purchase_order_totals`), so an order with credit reads lower
+ *   than its bills add up to. The credit is therefore shown on its own line,
+ *   again only when there is some, read off the bills' `credited`. A supplier
+ *   credit note is ringgit only, so a foreign order has none and the line is
+ *   not drawn for it.
  * - Delivery order numbers are left out entirely: deliveries are not stored as
  *   records yet, only a running total per line (#190).
  */
@@ -33,6 +39,8 @@ export type FiguresBill = {
   paid: number;
   /** Settled by posted contra entries, in ringgit; 0 when none. */
   set_off?: number;
+  /** Credited by issued supplier credit notes, in ringgit; 0 when none. */
+  credited?: number;
   purchase_order_id: string | null;
 };
 
@@ -70,6 +78,11 @@ export type VoucherFigureOrder = {
   thisPayment: number;
   /** Settled by posted contra entries, in ringgit; 0 when none, and the line is then not drawn. */
   setOff: number;
+  /**
+   * Already taken off "billed so far" by issued supplier credit notes on the order's bills, in ringgit; 0 when
+   * none, and the line is then not drawn. Read off the bills' `credited`, the same figure the over-billing note uses.
+   */
+  creditNotes: number;
   /** Where the order's own screen opens that order, for the line-by-line detail. */
   href: string;
   bills: VoucherFigureBill[];
@@ -153,6 +166,7 @@ export function voucherOrderFigures(
       paid: sen(orderBills.reduce((sum, b) => sum + b.paid, 0)),
       thisPayment: sen(lines.reduce((sum, line) => sum + line.thisPayment, 0)),
       setOff: sen(orderBills.reduce((sum, b) => sum + (b.set_off ?? 0), 0)),
+      creditNotes: sen(orderBills.reduce((sum, b) => sum + (b.credited ?? 0), 0)),
       href: orderScreenHref(orderId),
       bills: lines,
     });

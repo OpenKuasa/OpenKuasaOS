@@ -23,6 +23,7 @@ const figures: VoucherFigures = {
       paid: 100,
       thisPayment: 275,
       setOff: 50,
+      creditNotes: 25,
       href: '/finance/purchase-orders?po=po-1',
       bills: [
         {
@@ -48,6 +49,7 @@ describe('the figures beside the approve question', () => {
     expect(t).toContain('Ordered RM 325.00');
     expect(t).toContain('Received RM 225.00');
     expect(t).toContain('Billed so far RM 325.00');
+    expect(t).toContain('Credit notes RM 25.00');
     expect(t).toContain('Paid so far RM 100.00');
     expect(t).toContain('This payment RM 275.00');
     expect(t).toContain('Set off by contra RM 50.00');
@@ -70,5 +72,11 @@ describe('the figures beside the approve question', () => {
     const t = text(renderToStaticMarkup(<VoucherOrderFigures figures={plain} />));
     expect(t).not.toContain('Set off by contra');
     expect(t).not.toContain('No purchase order');
+  });
+
+  it('leaves the credit line out when the order has had no credit note', () => {
+    const plain: VoucherFigures = { orders: [{ ...figures.orders[0], creditNotes: 0 }], withoutOrder: [] };
+    const t = text(renderToStaticMarkup(<VoucherOrderFigures figures={plain} />));
+    expect(t).not.toContain('Credit notes');
   });
 });
